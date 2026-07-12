@@ -1,9 +1,10 @@
 import type { PresetDef } from "../types";
 
 /**
- * Hyperspace starfield: stars streak outward from center, speed driven by
- * bass, twinkle by treble, beat adds a warp kick. Stateless — star positions
- * are procedural (hashed grid in polar/depth space).
+ * Hyperspace starfield: stars streak outward from center, cruise speed on
+ * the slow energy envelope, "punch" controls how hard bass/beats kick.
+ * Stateless — star positions are procedural (hashed grid in polar/depth
+ * space).
  */
 export const starfield: PresetDef = {
   id: "starfield",
@@ -16,11 +17,21 @@ export const starfield: PresetDef = {
     { key: "streak", label: "Streak", min: 0, max: 1, step: 0.01, default: 0.5 },
     { key: "twinkle", label: "Twinkle", min: 0, max: 1, step: 0.01, default: 0.5 },
   ],
+  advanced: [
+    { key: "cruiseFloor", label: "Cruise floor", min: 0, max: 1, step: 0.02, default: 0.25 },
+    { key: "cruiseEnergy", label: "Cruise energy", min: 0, max: 2, step: 0.05, default: 0.9 },
+    { key: "kickBass", label: "Bass kick", min: 0, max: 3, step: 0.05, default: 1.1 },
+    { key: "kickBeat", label: "Beat kick", min: 0, max: 2, step: 0.05, default: 0.7 },
+    { key: "starFill", label: "Star fill", min: 0.05, max: 0.9, step: 0.05, default: 0.35 },
+    { key: "starSize", label: "Star size", min: 20, max: 200, step: 5, default: 90 },
+    { key: "hueVariance", label: "Hue variance", min: 0, max: 180, step: 5, default: 60 },
+    { key: "centerGlow", label: "Center glow", min: 0, max: 0.8, step: 0.02, default: 0.15 },
+    { key: "beatGlow", label: "Beat glow", min: 0, max: 1, step: 0.02, default: 0.4 },
+    { key: "bgLevel", label: "Bg level", min: 0, max: 0.1, step: 0.005, default: 0.025 },
+    { key: "vignette", label: "Vignette", min: 0, max: 1, step: 0.05, default: 0.35 },
+  ],
   wgsl: /* wgsl */ `
 fn preset(uv: vec2f) -> vec4f {
-  let hue = param(0); let density = param(1); let speed = param(2);
-  let punch = param(3); let streak = param(4); let twinkle = param(5);
-
   let p = centered(uv);
   let r = length(p) + 1e-4;
   let a = atan2(p.y, p.x);
@@ -28,40 +39,41 @@ fn preset(uv: vec2f) -> vec4f {
   // Cruise speed rides the slow energy envelope (smooth, never jumpy);
   // "punch" controls how much instantaneous bass/beat kicks on top. At
   // punch 0 the field drifts calmly even on hectic tracks.
-  let cruise = speed * (0.25 + u.energy * 0.9);
-  let kick = (u.bass * 1.1 + u.beatIntensity * 0.7) * punch;
+  let cruise = P_speed() * (P_cruiseFloor() + u.energy * P_cruiseEnergy());
+  let kick = (u.bass * P_kickBass() + u.beatIntensity * P_kickBeat()) * P_punch();
   let spd = cruise * (1.0 + kick * 2.2);
 
   // Deep-space background
-  var col = hsl2rgb(hue + 30.0, 0.6, 0.025) * (1.0 + u.bass * 0.6);
-  col += hsl2rgb(hue, 0.7, 0.35) * exp(-r * 6.0) * (0.15 + u.beatIntensity * 0.4);
+  var col = hsl2rgb(P_hue() + 30.0, 0.6, P_bgLevel()) * (1.0 + u.bass * 0.6);
+  col += hsl2rgb(P_hue(), 0.7, 0.35) * exp(-r * 6.0)
+       * (P_centerGlow() + u.beatIntensity * P_beatGlow());
 
   // 3 depth layers of procedural stars in (angle, inverse-radius) space
   for (var l = 0; l < 3; l++) {
     let fl = f32(l);
     let angCells = 48.0 + fl * 32.0;
     let z = 0.35 / r + u.time * spd * (1.0 + fl * 0.6) * 4.0;
-    let q = vec2f((a / TAU + 0.5) * angCells, z * density);
+    let q = vec2f((a / TAU + 0.5) * angCells, z * P_density());
     let cell = floor(q);
     let f = fract(q) - 0.5;
     let h1 = hash21(cell + fl * 91.7);
     let h2 = hash21(cell + fl * 91.7 + 37.1);
     // Only some cells contain a star
-    if (h1 > 0.65) {
+    if (h1 > 1.0 - P_starFill()) {
       let off = (vec2f(h1, h2) - 0.5) * 0.6;
       // Streaks: stretch along the motion (depth) axis, more when fast
-      let stretch = 1.0 + streak * spd * 10.0;
+      let stretch = 1.0 + P_streak() * spd * 10.0;
       let dv = vec2f((f.x - off.x) * 1.4, (f.y - off.y) / stretch);
       let d = length(dv);
-      let tw = 0.6 + 0.4 * sin(u.time * (3.0 + twinkle * 12.0) * (0.5 + h2) + h1 * 40.0 + u.treble * 6.0);
+      let tw = 0.6 + 0.4 * sin(u.time * (3.0 + P_twinkle() * 12.0) * (0.5 + h2) + h1 * 40.0 + u.treble * 6.0);
       let fade = smoothstep(0.02, 0.2, r) * (1.0 - fl * 0.22);
-      let starHue = hue + (h2 - 0.5) * 60.0;
-      col += hsl2rgb(starHue, 0.45, 0.85) * exp(-d * d * 90.0) * tw * fade;
+      let starHue = P_hue() + (h2 - 0.5) * P_hueVariance();
+      col += hsl2rgb(starHue, 0.45, 0.85) * exp(-d * d * P_starSize()) * tw * fade;
     }
   }
 
   // Vignette
-  col *= 1.0 - r * r * 0.35;
+  col *= 1.0 - r * r * P_vignette();
   return vec4f(col, 1.0);
 }
 `,

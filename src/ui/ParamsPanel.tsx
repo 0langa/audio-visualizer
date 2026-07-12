@@ -1,7 +1,14 @@
-import type { BgMode, BgSettings, ParamValues, PresetDef } from "../render/types";
+import { useState } from "react";
+import type {
+  BgMode,
+  BgSettings,
+  ParamSpec,
+  ParamValues,
+  PresetDef,
+} from "../render/types";
 import { BG_PRESET, BG_SOLID, BG_TRANSPARENT } from "../render/types";
 import { Slider } from "./Slider";
-import { IconClose } from "./Icons";
+import { IconChevronRight, IconClose } from "./Icons";
 
 function hexToRgb(hex: string): [number, number, number] {
   const v = parseInt(hex.slice(1), 16);
@@ -22,6 +29,34 @@ const BG_OPTIONS: Array<{ mode: BgMode; label: string }> = [
   { mode: BG_TRANSPARENT, label: "Transparent" },
 ];
 
+function ParamRow(props: {
+  spec: ParamSpec;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const { spec: p, value } = props;
+  const isToggle = p.step === 1 && p.min === 0 && p.max === 1;
+  return isToggle ? (
+    <label className="row toggle-row">
+      <span className="row-label">{p.label}</span>
+      <button
+        className={`switch ${value > 0.5 ? "on" : ""}`}
+        role="switch"
+        aria-checked={value > 0.5}
+        onClick={() => props.onChange(value > 0.5 ? 0 : 1)}
+      >
+        <span className="knob" />
+      </button>
+    </label>
+  ) : (
+    <label className="row param-row">
+      <span className="row-label">{p.label}</span>
+      <Slider min={p.min} max={p.max} step={p.step} value={value} onChange={props.onChange} />
+      <span className="row-value">{value.toFixed(p.step < 1 ? 2 : 0)}</span>
+    </label>
+  );
+}
+
 /** Right-hand settings panel: active preset parameters + background. */
 export function ParamsPanel(props: {
   preset: PresetDef;
@@ -33,6 +68,20 @@ export function ParamsPanel(props: {
   rendererKind: string;
   onClose: () => void;
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(
+    () => localStorage.getItem("viz.advancedOpen") === "1",
+  );
+  const toggleAdvanced = () => {
+    setShowAdvanced((v) => {
+      localStorage.setItem("viz.advancedOpen", v ? "0" : "1");
+      return !v;
+    });
+  };
+  const advanced = props.preset.advanced ?? [];
+  const changedCount = advanced.filter(
+    (p) => (props.params[p.key] ?? p.default) !== p.default,
+  ).length;
+
   return (
     <aside className="chrome params-panel">
       <div className="panel-header">
@@ -50,37 +99,41 @@ export function ParamsPanel(props: {
               Reset
             </button>
           </div>
-          {props.preset.params.map((p) => {
-            const isToggle = p.step === 1 && p.min === 0 && p.max === 1;
-            const value = props.params[p.key] ?? p.default;
-            return isToggle ? (
-              <label key={p.key} className="row toggle-row">
-                <span className="row-label">{p.label}</span>
-                <button
-                  className={`switch ${value > 0.5 ? "on" : ""}`}
-                  role="switch"
-                  aria-checked={value > 0.5}
-                  onClick={() => props.onParam(p.key, value > 0.5 ? 0 : 1)}
-                >
-                  <span className="knob" />
-                </button>
-              </label>
-            ) : (
-              <label key={p.key} className="row param-row">
-                <span className="row-label">{p.label}</span>
-                <Slider
-                  min={p.min}
-                  max={p.max}
-                  step={p.step}
-                  value={value}
-                  onChange={(v) => props.onParam(p.key, v)}
-                />
-                <span className="row-value">
-                  {value.toFixed(p.step < 1 ? 2 : 0)}
+          {props.preset.params.map((p) => (
+            <ParamRow
+              key={p.key}
+              spec={p}
+              value={props.params[p.key] ?? p.default}
+              onChange={(v) => props.onParam(p.key, v)}
+            />
+          ))}
+
+          {advanced.length > 0 && (
+            <>
+              <button
+                className={`advanced-toggle ${showAdvanced ? "open" : ""}`}
+                onClick={toggleAdvanced}
+              >
+                <IconChevronRight size={13} />
+                Advanced
+                <span className="advanced-count">
+                  {changedCount > 0 ? `${changedCount} changed` : `${advanced.length}`}
                 </span>
-              </label>
-            );
-          })}
+              </button>
+              {showAdvanced && (
+                <div className="advanced-body">
+                  {advanced.map((p) => (
+                    <ParamRow
+                      key={p.key}
+                      spec={p}
+                      value={props.params[p.key] ?? p.default}
+                      onChange={(v) => props.onParam(p.key, v)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </section>
 
         <section className="panel-section">

@@ -1,7 +1,8 @@
 import type { AudioFeatures } from "../audio/types";
+import { allParams } from "./types";
 import type { BgSettings, ParamValues, PresetDef, Renderer } from "./types";
 
-const MAX_PARAMS = 16;
+const MAX_PARAMS = 48;
 /** Downsampled waveform points exposed to shaders */
 const WAVE_POINTS = 512;
 /** Uniform struct size in bytes (12 x 4 scalars + vec4 bgColor) */
@@ -249,8 +250,17 @@ export class WebGPURenderer implements Renderer {
 
   setPreset(preset: PresetDef): void {
     this.preset = preset;
+    // Generate named accessors (P_<key>) for every param in ABI order so
+    // preset WGSL never touches raw indices.
+    const specs = allParams(preset);
+    if (specs.length > MAX_PARAMS) {
+      console.error(`[preset ${preset.id}] ${specs.length} params > ${MAX_PARAMS}`);
+    }
+    const accessors = specs
+      .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
+      .join("\n");
     const module = this.device.createShaderModule({
-      code: HEADER + preset.wgsl,
+      code: HEADER + accessors + "\n" + preset.wgsl,
     });
     // Surface WGSL mistakes during preset development
     void module.getCompilationInfo().then((info) => {
@@ -318,7 +328,7 @@ export class WebGPURenderer implements Renderer {
     this.device.queue.writeBuffer(this.waveBuf, 0, this.waveData);
 
     this.paramsData.fill(0);
-    this.preset.params.forEach((p, i) => {
+    allParams(this.preset).forEach((p, i) => {
       if (i < MAX_PARAMS) this.paramsData[i] = params[p.key] ?? p.default;
     });
     this.device.queue.writeBuffer(this.paramsBuf, 0, this.paramsData);

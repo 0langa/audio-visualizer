@@ -15,12 +15,23 @@ export const metaballs: PresetDef = {
     { key: "glow", label: "Glow", min: 0, max: 1, step: 0.01, default: 0.5 },
     { key: "threshold", label: "Merge", min: 0.6, max: 1.6, step: 0.02, default: 1.0 },
   ],
+  advanced: [
+    { key: "orbitX", label: "Orbit width", min: 0.1, max: 0.5, step: 0.01, default: 0.28 },
+    { key: "orbitY", label: "Orbit height", min: 0.1, max: 0.5, step: 0.01, default: 0.24 },
+    { key: "radiusFloor", label: "Size floor", min: 0.1, max: 1.5, step: 0.05, default: 0.55 },
+    { key: "radiusBand", label: "Band swell", min: 0, max: 2.5, step: 0.05, default: 1.1 },
+    { key: "beatSwell", label: "Beat swell", min: 0, max: 0.6, step: 0.02, default: 0.15 },
+    { key: "rimStart", label: "Rim start", min: 0.2, max: 1, step: 0.02, default: 0.55 },
+    { key: "innerGrad", label: "Inner gradient", min: 0, max: 1, step: 0.02, default: 0.35 },
+    { key: "hueField", label: "Hue per blob", min: 0, max: 60, step: 1, default: 24 },
+    { key: "beatBright", label: "Beat brighten", min: 0, max: 0.3, step: 0.01, default: 0.08 },
+    { key: "bgLevel", label: "Bg level", min: 0, max: 0.15, step: 0.005, default: 0.045 },
+    { key: "vignette", label: "Vignette", min: 0, max: 1, step: 0.05, default: 0.4 },
+  ],
   wgsl: /* wgsl */ `
 fn preset(uv: vec2f) -> vec4f {
-  let hue = param(0); let count = i32(param(1)); let size = param(2);
-  let speed = param(3); let glow = param(4); let threshold = param(5);
-
   let p = centered(uv);
+  let count = i32(P_count());
 
   var field = 0.0;
   var hueAcc = 0.0;
@@ -32,35 +43,35 @@ fn preset(uv: vec2f) -> vec4f {
     var band = u.bass;
     if (i % 3 == 1) { band = u.mid; }
     if (i % 3 == 2) { band = u.treble; }
-    let t = u.time * speed * (0.5 + h * 0.6);
+    let t = u.time * P_speed() * (0.5 + h * 0.6);
     let pos = vec2f(
-      sin(t + ph) * (0.28 + h * 0.1) * u.aspect * 0.8,
-      cos(t * 1.31 + ph * 1.7) * (0.24 + h * 0.08),
+      sin(t + ph) * (P_orbitX() + h * 0.1) * u.aspect * 0.8,
+      cos(t * 1.31 + ph * 1.7) * (P_orbitY() + h * 0.08),
     );
-    let rad = size * (0.55 + band * 1.1 + u.beatIntensity * 0.15);
+    let rad = P_size() * (P_radiusFloor() + band * P_radiusBand() + u.beatIntensity * P_beatSwell());
     let d2 = dot(p - pos, p - pos);
     let contrib = rad * rad / (d2 + 1e-5);
     field += contrib;
-    hueAcc += contrib * fi * 24.0;
+    hueAcc += contrib * fi * P_hueField();
   }
 
-  let localHue = hue + hueAcc / max(field, 1e-4);
+  let localHue = P_hue() + hueAcc / max(field, 1e-4);
 
   // Surface + rim
-  let surface = smoothstep(threshold, threshold * 1.12, field);
-  let rim = smoothstep(threshold * 0.55, threshold, field) * (1.0 - surface);
+  let surface = smoothstep(P_threshold(), P_threshold() * 1.12, field);
+  let rim = smoothstep(P_threshold() * P_rimStart(), P_threshold(), field) * (1.0 - surface);
 
   // Background
   let r = length(p);
-  var col = hsl2rgb(hue + 180.0, 0.4, 0.045) * (1.0 - r * 0.7);
+  var col = hsl2rgb(P_hue() + 180.0, 0.4, P_bgLevel()) * (1.0 - r * 0.7);
 
   // Blob body with inner gradient
-  let inner = clamp((field - threshold) * 0.35, 0.0, 0.45);
-  col = mix(col, hsl2rgb(localHue, 0.85, 0.42 + inner + u.beatIntensity * 0.08), surface);
+  let inner = clamp((field - P_threshold()) * 0.35, 0.0, P_innerGrad() + 0.1);
+  col = mix(col, hsl2rgb(localHue, 0.85, 0.42 + inner + u.beatIntensity * P_beatBright()), surface);
   // Rim glow
-  col += hsl2rgb(localHue + 30.0, 0.9, 0.55) * rim * (0.4 + glow * 0.9);
+  col += hsl2rgb(localHue + 30.0, 0.9, 0.55) * rim * (0.4 + P_glow() * 0.9);
 
-  col *= 1.0 - r * r * 0.4;
+  col *= 1.0 - r * r * P_vignette();
   return vec4f(col, 1.0);
 }
 `,

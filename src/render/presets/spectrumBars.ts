@@ -17,17 +17,26 @@ export const spectrumBars: PresetDef = {
     { key: "mirror", label: "Mirror", min: 0, max: 1, step: 1, default: 0 },
     { key: "peaks", label: "Peak caps", min: 0, max: 1, step: 1, default: 1 },
   ],
+  advanced: [
+    { key: "barHeight", label: "Bar height", min: 0.3, max: 1, step: 0.01, default: 0.92 },
+    { key: "barSat", label: "Bar saturation", min: 0, max: 1, step: 0.01, default: 0.85 },
+    { key: "barLift", label: "Bar gradient", min: 0, max: 0.6, step: 0.01, default: 0.35 },
+    { key: "glowReach", label: "Glow reach", min: 2, max: 14, step: 0.5, default: 10 },
+    { key: "capBright", label: "Cap brightness", min: 0, max: 1.5, step: 0.05, default: 0.9 },
+    { key: "bgLevel", label: "Bg level", min: 0, max: 0.2, step: 0.005, default: 0.05 },
+    { key: "bgBassGlow", label: "Bg bass glow", min: 0, max: 0.2, step: 0.005, default: 0.05 },
+    { key: "beatFlash", label: "Beat flash", min: 0, max: 0.4, step: 0.01, default: 0.08 },
+    { key: "beatBright", label: "Beat brighten", min: 0, max: 0.3, step: 0.01, default: 0.08 },
+    { key: "vignette", label: "Vignette", min: 0, max: 1.2, step: 0.05, default: 0.55 },
+  ],
   wgsl: /* wgsl */ `
 fn preset(uvIn: vec2f) -> vec4f {
-  let hue = param(0); let hueSpread = param(1); let glow = param(2);
-  let barGap = param(3); let beatZoom = param(4); let mirror = param(5);
-
   // Beat zoom: scale around center
-  var uv = (uvIn - 0.5) / (1.0 + u.beatIntensity * beatZoom) + 0.5;
+  var uv = (uvIn - 0.5) / (1.0 + u.beatIntensity * P_beatZoom()) + 0.5;
 
   // Optional mirror around center column
   var x = uv.x;
-  if (mirror > 0.5) { x = abs(uv.x - 0.5) * 2.0; }
+  if (P_mirror() > 0.5) { x = abs(uv.x - 0.5) * 2.0; }
 
   let n = f32(u.binCount);
   let fi = clamp(x * n, 0.0, n - 0.001);
@@ -38,33 +47,33 @@ fn preset(uvIn: vec2f) -> vec4f {
 
   // Background: dark radial wash breathing with bass + beat flash
   let d = distance(uv, vec2f(0.5, 0.55));
-  let bgHue = hue + 40.0;
-  var col = hsl2rgb(bgHue, 0.5, 0.05 + u.bass * 0.05) * (1.0 - d * 0.9);
-  col += hsl2rgb(hue, 0.7, 0.5) * u.beatIntensity * 0.08 * (1.0 - d);
+  let bgHue = P_hue() + 40.0;
+  var col = hsl2rgb(bgHue, 0.5, P_bgLevel() + u.bass * P_bgBassGlow()) * (1.0 - d * 0.9);
+  col += hsl2rgb(P_hue(), 0.7, 0.5) * u.beatIntensity * P_beatFlash() * (1.0 - d);
 
   let y = 1.0 - uv.y; // bars grow from bottom
-  let barH = v * 0.92;
-  let gapMask = step(barGap * 0.5, inBar) * step(inBar, 1.0 - barGap * 0.5);
-  let barHue = hue + (fi / n) * hueSpread;
+  let barH = v * P_barHeight();
+  let gapMask = step(P_barGap() * 0.5, inBar) * step(inBar, 1.0 - P_barGap() * 0.5);
+  let barHue = P_hue() + (fi / n) * P_hueSpread();
 
   // Bar body with vertical gradient
   if (y < barH) {
     let g = y / max(barH, 0.001);
-    col = hsl2rgb(barHue, 0.85, 0.35 + g * 0.35 + u.beatIntensity * 0.08) * gapMask
+    col = hsl2rgb(barHue, P_barSat(), 0.35 + g * P_barLift() + u.beatIntensity * P_beatBright()) * gapMask
         + col * (1.0 - gapMask);
   } else {
     // Glow above the bar
-    let fall = exp(-(y - barH) * (14.0 - glow * 10.0));
-    col += hsl2rgb(barHue, 0.9, 0.5) * fall * glow * v * gapMask;
+    let fall = exp(-(y - barH) * (14.0 - P_glow() * P_glowReach()));
+    col += hsl2rgb(barHue, 0.9, 0.5) * fall * P_glow() * v * gapMask;
   }
 
   // Peak caps (toggleable)
-  let capD = abs(y - pk * 0.92);
-  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.006, 0.0, capD) * gapMask * 0.9
-       * step(0.5, param(6));
+  let capD = abs(y - pk * P_barHeight());
+  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.006, 0.0, capD) * gapMask * P_capBright()
+       * step(0.5, P_peaks());
 
   // Vignette
-  col *= 1.0 - d * d * 0.55;
+  col *= 1.0 - d * d * P_vignette();
   return vec4f(col, 1.0);
 }
 `,

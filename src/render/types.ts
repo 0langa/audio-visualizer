@@ -19,14 +19,26 @@ export interface PresetDef {
   name: string;
   params: ParamSpec[];
   /**
+   * Expert knobs: every internal constant worth touching. Rendered collapsed
+   * in the UI; same ParamValues store, same shader ABI as `params`.
+   */
+  advanced?: ParamSpec[];
+  /**
    * WGSL fragment body. Receives:
-   *   uv (0..1), features uniforms, bins/peaks storage arrays, params array
+   *   uv (0..1), features uniforms, bins/peaks/waveform storage arrays.
+   * Each param spec (main + advanced) is exposed as a generated accessor
+   * `P_<key>()` — use those, not raw indices.
    * Must define: fn preset(uv: vec2f) -> vec4f
    */
   wgsl: string;
 }
 
 export type ParamValues = Record<string, number>;
+
+/** Main + advanced specs in ABI order (buffer packing = accessor indices). */
+export function allParams(preset: PresetDef): ParamSpec[] {
+  return preset.advanced ? [...preset.params, ...preset.advanced] : preset.params;
+}
 
 /**
  * Background modes, composited centrally after the preset runs:
@@ -58,6 +70,6 @@ export interface Renderer {
 
 export function defaultParams(preset: PresetDef): ParamValues {
   const out: ParamValues = {};
-  for (const p of preset.params) out[p.key] = p.default;
+  for (const p of allParams(preset)) out[p.key] = p.default;
   return out;
 }

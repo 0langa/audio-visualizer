@@ -1,7 +1,7 @@
 import type { PresetDef } from "../types";
 
 /**
- * Circular spectrum: bars radiate outward from a pulsing core ring, with
+ * Circular spectrum: bars radiate outward from a calm breathing core, with
  * optional rotational symmetry and beat-kicked rotation.
  */
 export const radialBurst: PresetDef = {
@@ -16,27 +16,42 @@ export const radialBurst: PresetDef = {
     { key: "glow", label: "Glow", min: 0, max: 1, step: 0.01, default: 0.55 },
     { key: "peaks", label: "Peak arcs", min: 0, max: 1, step: 1, default: 1 },
   ],
+  advanced: [
+    { key: "barLen", label: "Bar length", min: 0.1, max: 0.6, step: 0.01, default: 0.34 },
+    { key: "ringBreathe", label: "Ring breathe", min: 0, max: 0.4, step: 0.01, default: 0.12 },
+    { key: "coreSize", label: "Core scale", min: 0.3, max: 0.95, step: 0.01, default: 0.7 },
+    { key: "corePump", label: "Core pump", min: 0, max: 0.3, step: 0.01, default: 0.08 },
+    { key: "coreBeat", label: "Core beat kick", min: 0, max: 0.2, step: 0.01, default: 0.04 },
+    { key: "wobBase", label: "Wobble base", min: 0, max: 0.1, step: 0.005, default: 0.03 },
+    { key: "wobAmp", label: "Wobble swell", min: 0, max: 0.3, step: 0.005, default: 0.11 },
+    { key: "wobClamp", label: "Wobble limit", min: 0, max: 0.25, step: 0.005, default: 0.14 },
+    { key: "spinBase", label: "Wobble spin", min: 0, max: 1.5, step: 0.05, default: 0.25 },
+    { key: "spinEnergy", label: "Spin energy", min: 0, max: 1.5, step: 0.05, default: 0.35 },
+    { key: "coreBright", label: "Core brightness", min: 0, max: 0.8, step: 0.02, default: 0.35 },
+    { key: "detailRing", label: "Detail ring", min: 0, max: 1, step: 1, default: 1 },
+    { key: "detailPos", label: "Detail position", min: 0.2, max: 0.9, step: 0.01, default: 0.55 },
+    { key: "beatBloom", label: "Beat bloom", min: 0, max: 0.4, step: 0.01, default: 0.1 },
+    { key: "vignette", label: "Vignette", min: 0, max: 1.2, step: 0.05, default: 0.5 },
+  ],
   wgsl: /* wgsl */ `
 fn preset(uv: vec2f) -> vec4f {
-  let hue = param(0); let hueSpread = param(1); let innerR = param(2);
-  let sym = max(1.0, param(3)); let rotSpeed = param(4); let glow = param(5);
-
   let p = centered(uv);
   let r = length(p);
-  var a = atan2(p.y, p.x) + u.time * rotSpeed * TAU * 0.1 + u.beatIntensity * 0.12;
+  var a = atan2(p.y, p.x) + u.time * P_rotSpeed() * TAU * 0.1 + u.beatIntensity * 0.12;
 
   // Fold into symmetric segments, mirrored inside each for seamless wrap
+  let sym = max(1.0, P_symmetry());
   let seg = fract(a / TAU * sym + 10.0);
   let xs = abs(seg * 2.0 - 1.0);
   let v = binAt(xs);
   let pk = peakAt(xs);
 
-  let inner = innerR * (1.0 + u.bass * 0.12 + u.beatIntensity * 0.06);
-  let len = v * 0.34;
-  let barHue = hue + xs * hueSpread;
+  let inner = P_innerRadius() * (1.0 + u.bass * P_ringBreathe() + u.beatIntensity * 0.06);
+  let len = v * P_barLen();
+  let barHue = P_hue() + xs * P_hueSpread();
 
   // Background wash
-  var col = hsl2rgb(hue + 60.0, 0.5, 0.04 + u.mid * 0.04) * (1.0 - r * 0.8);
+  var col = hsl2rgb(P_hue() + 60.0, 0.5, 0.04 + u.mid * 0.04) * (1.0 - r * 0.8);
 
   // Radial bar body
   let inBar = step(inner, r) * step(r, inner + len);
@@ -45,39 +60,38 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Glow beyond bar tip
   let tip = inner + len;
-  let fall = exp(-max(r - tip, 0.0) * (18.0 - glow * 12.0));
-  col += hsl2rgb(barHue, 0.9, 0.5) * fall * glow * v * step(tip, r);
+  let fall = exp(-max(r - tip, 0.0) * (18.0 - P_glow() * 12.0));
+  col += hsl2rgb(barHue, 0.9, 0.5) * fall * P_glow() * v * step(tip, r);
 
   // Peak arc (toggleable)
-  let pkR = inner + pk * 0.34;
+  let pkR = inner + pk * P_barLen();
   col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.005, 0.0, abs(r - pkR)) * 0.8
-       * step(0.5, param(6));
+       * step(0.5, P_peaks());
 
-  // Core disc: bass breathes it, beats kick it, band-driven harmonics
-  // undulate the edge (smooth shapes, punchy amplitudes — reactive without
-  // the per-frame spikes raw waveform sampling caused)
-  // Geometry rides only slow signals — fast bands jitter, energy glides
-  let pump = 1.0 + u.energy * 0.08 + u.beatIntensity * 0.04;
-  let coreR = inner * 0.70 * pump;
-  // One slow-rotating dominant mode, amplitude on the slow energy envelope:
-  // quiet = near-circle, loud passage = gentle tri-lobe swell. Secondary
-  // mode adds subtle detail. Hard clamp keeps the core inside the bar ring.
-  let spin = u.time * (0.25 + u.energy * 0.35);
-  let amp = inner * (0.03 + u.energy * 0.11);
+  // Core disc: geometry rides only slow signals — fast bands jitter,
+  // energy glides. One slow-rotating dominant mode; amplitude on the slow
+  // envelope; hard clamp keeps the core inside the bar ring.
+  let pump = 1.0 + u.energy * P_corePump() + u.beatIntensity * P_coreBeat();
+  let coreR = inner * P_coreSize() * pump;
+  let spin = u.time * (P_spinBase() + u.energy * P_spinEnergy());
+  let amp = inner * (P_wobBase() + u.energy * P_wobAmp());
   var wob = sin(a * 3.0 + spin) * amp
           + sin(a * 6.0 - spin * 0.7 + 1.3) * amp * 0.35;
-  let lim = inner * 0.14;
+  let lim = inner * P_wobClamp();
   wob = clamp(wob, -lim, lim);
   let core = smoothstep(coreR + wob + 0.005, coreR + wob - 0.005, r);
-  let coreL = 0.12 + u.energy * 0.35 + u.beatIntensity * 0.10;
-  col = mix(col, hsl2rgb(hue + 30.0, 0.75, coreL), core);
+  let coreL = 0.12 + u.energy * P_coreBright() + u.beatIntensity * P_beatBloom();
+  col = mix(col, hsl2rgb(P_hue() + 30.0, 0.75, coreL), core);
+
   // Thin waveform detail ring inside the core: fast micro-motion reads as
   // "alive" on a hairline without deforming the silhouette
-  let wr = coreR * 0.55 + waveAt(fract(a / TAU + 0.5)) * 0.02;
-  col += hsl2rgb(hue + 50.0, 0.6, 0.65) * smoothstep(0.004, 0.0, abs(r - wr)) * core * 0.5;
+  if (P_detailRing() > 0.5) {
+    let wr = coreR * P_detailPos() + waveAt(fract(a / TAU + 0.5)) * 0.02;
+    col += hsl2rgb(P_hue() + 50.0, 0.6, 0.65) * smoothstep(0.004, 0.0, abs(r - wr)) * core * 0.5;
+  }
 
   // Vignette
-  col *= 1.0 - r * r * 0.5;
+  col *= 1.0 - r * r * P_vignette();
   return vec4f(col, 1.0);
 }
 `,

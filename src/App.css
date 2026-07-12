@@ -555,7 +555,7 @@ button:disabled {
 
 .param-row {
   display: grid;
-  grid-template-columns: 80px 1fr 40px;
+  grid-template-columns: 76px 1fr 44px;
 }
 
 .row-label {
@@ -572,6 +572,55 @@ button:disabled {
 
 .toggle-row {
   justify-content: space-between;
+}
+
+/* advanced expander */
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  margin: 2px 0 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+
+.advanced-toggle:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+
+.advanced-toggle svg {
+  transition: transform 0.18s;
+}
+
+.advanced-toggle.open svg {
+  transform: rotate(90deg);
+}
+
+.advanced-count {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.advanced-body {
+  padding: 4px 0 2px 8px;
+  border-left: 2px solid rgba(106, 168, 255, 0.25);
+  margin-left: 4px;
+}
+
+.advanced-body .row-label {
+  font-size: 11.5px;
 }
 
 /* switch */
