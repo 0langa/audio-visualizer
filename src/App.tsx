@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioEngine } from "./audio/engine";
 import { RealtimeAnalyzer } from "./audio/realtimeSource";
-import { renderDemoTrack } from "./audio/demoTrack";
+import { demos } from "./audio/demoTrack";
 import type { PlaybackState } from "./audio/types";
 import { Canvas2DRenderer } from "./render/canvas2dRenderer";
 import { WebGPURenderer } from "./render/webgpuRenderer";
@@ -168,10 +168,12 @@ export default function App() {
     }
   }, []);
 
-  const loadDemo = useCallback(async () => {
+  const loadDemo = useCallback(async (id: string) => {
+    const demo = demos.find((d) => d.id === id);
+    if (!demo) return;
     const engine = engineRef.current!;
-    const buf = await renderDemoTrack(engine.ctx.sampleRate);
-    engine.loadBuffer(buf, "Demo loop (synthesized)");
+    const buf = await demo.render(engine.ctx.sampleRate);
+    engine.loadBuffer(buf, `Demo: ${demo.name}`);
     await engine.play();
   }, []);
 
@@ -218,9 +220,23 @@ export default function App() {
               }}
             />
           </label>
-          <button className="btn" onClick={() => void loadDemo()}>
-            Demo track
-          </button>
+          <select
+            className="preset-select demo-select"
+            value=""
+            title="Load a synthesized demo track"
+            onChange={(e) => {
+              if (e.target.value) void loadDemo(e.target.value);
+            }}
+          >
+            <option value="" disabled>
+              Demo track…
+            </option>
+            {demos.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
           <button className="btn" onClick={() => setShowPanel((v) => !v)}>
             {showPanel ? "Hide params" : "Params"}
           </button>

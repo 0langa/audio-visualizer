@@ -14,6 +14,7 @@ export const radialBurst: PresetDef = {
     { key: "symmetry", label: "Symmetry", min: 1, max: 8, step: 1, default: 2 },
     { key: "rotSpeed", label: "Rotation", min: -1, max: 1, step: 0.02, default: 0.12 },
     { key: "glow", label: "Glow", min: 0, max: 1, step: 0.01, default: 0.55 },
+    { key: "peaks", label: "Peak arcs", min: 0, max: 1, step: 1, default: 1 },
   ],
   wgsl: /* wgsl */ `
 fn preset(uv: vec2f) -> vec4f {
@@ -47,9 +48,10 @@ fn preset(uv: vec2f) -> vec4f {
   let fall = exp(-max(r - tip, 0.0) * (18.0 - glow * 12.0));
   col += hsl2rgb(barHue, 0.9, 0.5) * fall * glow * v * step(tip, r);
 
-  // Peak arc
+  // Peak arc (toggleable)
   let pkR = inner + pk * 0.34;
-  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.005, 0.0, abs(r - pkR)) * 0.8;
+  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.005, 0.0, abs(r - pkR)) * 0.8
+       * step(0.5, param(6));
 
   // Core disc: waveform-textured, rms-breathing
   let coreR = inner * 0.72;

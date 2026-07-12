@@ -53,7 +53,8 @@ export class OfflineAnalyzer {
       sampleRate: buffer.sampleRate,
       fftBins: FFT_SIZE / 2,
       binCount,
-      waveformLength: FFT_SIZE,
+      // 3/4 window: the rest is trigger-search headroom (see FeaturePipeline)
+      waveformLength: Math.floor((FFT_SIZE * 3) / 4),
     });
   }
 

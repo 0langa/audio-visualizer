@@ -28,7 +28,7 @@ struct Uniforms {
   aspect: f32,
   waveCount: u32,
   progress: f32,
-  _pad0: f32,
+  energy: f32,
   _pad1: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -269,6 +269,7 @@ export class WebGPURenderer implements Renderer {
     this.uniformF32[7] = this.canvas.width / Math.max(1, this.canvas.height);
     this.uniformU32[8] = WAVE_POINTS;
     this.uniformF32[9] = f.duration > 0 ? f.time / f.duration : 0;
+    this.uniformF32[10] = f.energy;
     this.device.queue.writeBuffer(this.uniformBuf, 0, this.uniformData);
     this.device.queue.writeBuffer(this.binsBuf!, 0, f.bins);
     this.device.queue.writeBuffer(this.peaksBuf!, 0, f.peaks);

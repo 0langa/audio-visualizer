@@ -22,7 +22,8 @@ export class RealtimeAnalyzer {
       sampleRate: engine.ctx.sampleRate,
       fftBins,
       binCount,
-      waveformLength: engine.analyser.fftSize,
+      // 3/4 window: the rest is trigger-search headroom (see FeaturePipeline)
+      waveformLength: Math.floor((engine.analyser.fftSize * 3) / 4),
     });
   }
 

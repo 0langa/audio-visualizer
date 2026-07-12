@@ -93,6 +93,7 @@ export class FeaturePipeline {
       peaks: new Float32Array(this.binCount),
       waveform: new Float32Array(config.waveformLength),
       rms: 0,
+      energy: 0,
       bass: 0,
       mid: 0,
       treble: 0,
@@ -128,10 +129,28 @@ export class FeaturePipeline {
       f.peaks[i] = Math.max(f.peaks[i] - gravity, f.bins[i]);
     }
 
-    f.waveform.set(input.waveform.subarray(0, f.waveform.length));
+    // Oscilloscope-style trigger: start the displayed waveform at the first
+    // rising zero-crossing so the trace is phase-stable frame to frame
+    // (untriggered waveforms jitter/flicker at any volume). The search
+    // headroom is input.length - output.length, guaranteed by the sources
+    // passing waveformLength < fftSize.
+    const wIn = input.waveform;
+    const wOut = f.waveform;
+    const headroom = Math.max(0, wIn.length - wOut.length);
+    let trig = 0;
+    for (let i = 1; i < headroom; i++) {
+      if (wIn[i - 1] <= 0 && wIn[i] > 0) {
+        trig = i;
+        break;
+      }
+    }
+    wOut.set(wIn.subarray(trig, trig + wOut.length));
+
     let sum = 0;
-    for (let i = 0; i < input.waveform.length; i++) sum += input.waveform[i] ** 2;
-    f.rms = clamp01(Math.sqrt(sum / input.waveform.length) * 2.5);
+    for (let i = 0; i < wIn.length; i++) sum += wIn[i] ** 2;
+    f.rms = clamp01(Math.sqrt(sum / wIn.length) * 2.5);
+    // Slow envelope (~0.8 s time constant): calm baseline for motion speeds
+    f.energy += (f.rms - f.energy) * (1 - Math.exp(-dt * 1.2));
 
     f.bass = bandMean(mag, this.bassRange);
     f.mid = bandMean(mag, this.midRange);

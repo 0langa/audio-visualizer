@@ -15,6 +15,7 @@ export const ledMatrix: PresetDef = {
     { key: "hueShift", label: "Hue shift", min: 0, max: 360, step: 1, default: 0 },
     { key: "dim", label: "Unlit glow", min: 0, max: 1, step: 0.01, default: 0.35 },
     { key: "rounded", label: "Rounded", min: 0, max: 1, step: 1, default: 1 },
+    { key: "peaks", label: "Peak dots", min: 0, max: 1, step: 1, default: 1 },
   ],
   wgsl: /* wgsl */ `
 fn ledCell(l: vec2f, gap: f32, rounded: f32) -> f32 {
@@ -58,9 +59,9 @@ fn preset(uv: vec2f) -> vec4f {
   let hot = 0.45 + 0.15 * smoothstep(level - 2.0, level, cy + 0.5) + u.beatIntensity * 0.08;
   col += hsl2rgb(cellHue, 0.9, hot) * mask * lit;
 
-  // Peak-hold dot
+  // Peak-hold dot (toggleable)
   let pkRow = floor(pk * rows);
-  if (cy == pkRow && pk > 0.02) {
+  if (cy == pkRow && pk > 0.02 && param(6) > 0.5) {
     col += hsl2rgb(hueShift + 10.0, 0.4, 0.85) * mask;
   }
 

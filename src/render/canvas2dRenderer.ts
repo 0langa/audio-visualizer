@@ -51,10 +51,11 @@ export class Canvas2DRenderer implements Renderer {
       const barHue = hue + (i / n) * hueSpread;
       ctx.fillStyle = `hsl(${barHue} 85% ${45 + f.beatIntensity * 8}%)`;
       ctx.fillRect(i * bw + (bw * gap) / 2, H - h, bw * (1 - gap), h);
-      // peak cap
-      const pk = f.peaks[i] * H * 0.92;
-      ctx.fillStyle = `hsl(${barHue} 30% 90%)`;
-      ctx.fillRect(i * bw + (bw * gap) / 2, H - pk - 2, bw * (1 - gap), 2);
+      if ((params.peaks ?? 1) > 0.5) {
+        const pk = f.peaks[i] * H * 0.92;
+        ctx.fillStyle = `hsl(${barHue} 30% 90%)`;
+        ctx.fillRect(i * bw + (bw * gap) / 2, H - pk - 2, bw * (1 - gap), 2);
+      }
     }
   }
 

@@ -177,6 +177,10 @@ body,
   background: #14161f;
 }
 
+.demo-select {
+  flex: 0 1 160px;
+}
+
 .param {
   display: grid;
   grid-template-columns: 78px 1fr 36px;

@@ -15,6 +15,7 @@ export const spectrumBars: PresetDef = {
     { key: "barGap", label: "Bar gap", min: 0, max: 0.6, step: 0.01, default: 0.22 },
     { key: "beatZoom", label: "Beat zoom", min: 0, max: 0.15, step: 0.005, default: 0.05 },
     { key: "mirror", label: "Mirror", min: 0, max: 1, step: 1, default: 0 },
+    { key: "peaks", label: "Peak caps", min: 0, max: 1, step: 1, default: 1 },
   ],
   wgsl: /* wgsl */ `
 fn preset(uvIn: vec2f) -> vec4f {
@@ -57,9 +58,10 @@ fn preset(uvIn: vec2f) -> vec4f {
     col += hsl2rgb(barHue, 0.9, 0.5) * fall * glow * v * gapMask;
   }
 
-  // Peak caps
+  // Peak caps (toggleable)
   let capD = abs(y - pk * 0.92);
-  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.006, 0.0, capD) * gapMask * 0.9;
+  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.006, 0.0, capD) * gapMask * 0.9
+       * step(0.5, param(6));
 
   // Vignette
   col *= 1.0 - d * d * 0.55;

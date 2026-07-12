@@ -74,6 +74,23 @@ structurally impossible — there is no clock, only indices.
 Encode speed: GPU shader presets render far faster than realtime; H.264
 hardware encode ~100-300 fps at 1080p. A 3-minute track ≈ 1-2 min export.
 
+## Sync precision budget
+
+Export: exact by construction (see above) — frame N *is* t = N/fps of the
+decoded buffer. No jitter, no drift, sample-accurate forever.
+
+Live playback: the analyser reads the samples currently entering the output
+device, so visuals lead the ears by the device output latency
+(`AudioContext.outputLatency`, ~10-30 ms on Windows/WASAPI), plus one vsync
+(8-16 ms) for presentation. Total skew stays inside ±30 ms — well under the
+ITU-R BT.1359 detectability window (audio may lag video ~125 ms / lead
+~45 ms before humans notice). Both feature paths share the audio clock, so
+skew is constant, never accumulating.
+
+If sub-vsync alignment is ever wanted live: delay features through a ring
+buffer sized to `outputLatency` before rendering. Knob documented here so it
+doesn't get invented twice.
+
 ## Invariants to protect
 
 - Presets stay pure (features, time, params) → deterministic export.

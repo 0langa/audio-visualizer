@@ -12,6 +12,8 @@ export interface AudioFeatures {
   waveform: Float32Array;
   /** Overall loudness 0..1 */
   rms: number;
+  /** Slow loudness envelope (~1s), 0..1 — drives calm/idle motion */
+  energy: number;
   /** Band energies 0..1 */
   bass: number;
   mid: number;

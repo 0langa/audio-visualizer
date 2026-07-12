@@ -11,21 +11,26 @@ export const starfield: PresetDef = {
   params: [
     { key: "hue", label: "Hue", min: 0, max: 360, step: 1, default: 220 },
     { key: "density", label: "Density", min: 2, max: 14, step: 0.5, default: 7 },
-    { key: "speed", label: "Speed", min: 0.05, max: 1.5, step: 0.05, default: 0.4 },
-    { key: "warp", label: "Bass warp", min: 0, max: 3, step: 0.05, default: 1.4 },
+    { key: "speed", label: "Speed", min: 0.02, max: 1.5, step: 0.02, default: 0.3 },
+    { key: "punch", label: "Punch", min: 0, max: 1, step: 0.01, default: 0.45 },
     { key: "streak", label: "Streak", min: 0, max: 1, step: 0.01, default: 0.5 },
     { key: "twinkle", label: "Twinkle", min: 0, max: 1, step: 0.01, default: 0.5 },
   ],
   wgsl: /* wgsl */ `
 fn preset(uv: vec2f) -> vec4f {
   let hue = param(0); let density = param(1); let speed = param(2);
-  let warp = param(3); let streak = param(4); let twinkle = param(5);
+  let punch = param(3); let streak = param(4); let twinkle = param(5);
 
   let p = centered(uv);
   let r = length(p) + 1e-4;
   let a = atan2(p.y, p.x);
 
-  let spd = speed * (0.35 + u.bass * warp + u.beatIntensity * 0.8);
+  // Cruise speed rides the slow energy envelope (smooth, never jumpy);
+  // "punch" controls how much instantaneous bass/beat kicks on top. At
+  // punch 0 the field drifts calmly even on hectic tracks.
+  let cruise = speed * (0.25 + u.energy * 0.9);
+  let kick = (u.bass * 1.1 + u.beatIntensity * 0.7) * punch;
+  let spd = cruise * (1.0 + kick * 2.2);
 
   // Deep-space background
   var col = hsl2rgb(hue + 30.0, 0.6, 0.025) * (1.0 + u.bass * 0.6);

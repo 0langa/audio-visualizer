@@ -10,8 +10,10 @@ Desktop music visualizer. Tauri 2 + React + TypeScript, WebGPU rendering (Canvas
   Spectrum Bars, Radial Burst, Oscilloscope, Starfield Warp, Tunnel,
   Kaleido Nebula, Metaballs, LED Matrix
 - Deterministic offline analysis path (own FFT) — foundation for frame-perfect
-  MP4 export, see [docs/EXPORT-DESIGN.md](docs/EXPORT-DESIGN.md)
-- Synthesized demo track for instant testing without files
+  MP4 export, see [docs/EXPORT-DESIGN.md](docs/EXPORT-DESIGN.md); sync budget
+  documented there (live skew ≤ ~30 ms constant, export sample-exact)
+- Three synthesized demo tracks (120 BPM house / 174 BPM DnB / 70 BPM ambient)
+  for instant cross-style testing without files
 
 ## Architecture
 

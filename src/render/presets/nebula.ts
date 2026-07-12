@@ -14,13 +14,25 @@ export const nebula: PresetDef = {
     { key: "kaleido", label: "Kaleido", min: 0, max: 12, step: 1, default: 6 },
     { key: "contrast", label: "Contrast", min: 0, max: 1, step: 0.01, default: 0.5 },
     { key: "sparkle", label: "Sparkle", min: 0, max: 1, step: 0.01, default: 0.5 },
+    { key: "beatRipple", label: "Beat ripple", min: 0, max: 1, step: 0.01, default: 0.6 },
   ],
   wgsl: /* wgsl */ `
 fn preset(uv: vec2f) -> vec4f {
   let hue = param(0); let scale = param(1); let flow = param(2);
   let kaleido = param(3); let contrast = param(4); let sparkle = param(5);
+  let beatRipple = param(6);
 
   var p = centered(uv);
+
+  // Beat ripple: a distortion ring expands from center as beatIntensity
+  // decays (1 -> 0 maps to radius 0 -> edge). Makes the sync unmistakable
+  // without changing the nebula's character between beats.
+  let rp = length(p);
+  if (u.beatIntensity > 0.01 && rp > 1e-4) {
+    let rippleR = (1.0 - u.beatIntensity) * 1.1;
+    let wave = exp(-abs(rp - rippleR) * 16.0) * u.beatIntensity * beatRipple;
+    p += (p / rp) * wave * 0.09;
+  }
 
   // Kaleidoscope fold
   if (kaleido >= 2.0) {
@@ -49,9 +61,14 @@ fn preset(uv: vec2f) -> vec4f {
   let g = pow(noise2(q * 9.0 + vec2f(t * 6.0, -t * 4.0)), 18.0);
   col += vec3f(1.0, 0.95, 0.9) * g * u.treble * sparkle * 2.0;
 
-  // Beat bloom from center
+  // Beat bloom from center + bright rim tracing the ripple front
   let r2 = length(p);
   col += hsl2rgb(hue, 0.8, 0.55) * u.beatIntensity * 0.18 * exp(-r2 * 3.0);
+  if (u.beatIntensity > 0.01) {
+    let rippleR2 = (1.0 - u.beatIntensity) * 1.1;
+    let rim = exp(-abs(rp - rippleR2) * 20.0) * u.beatIntensity * beatRipple;
+    col += hsl2rgb(hue + 40.0, 0.7, 0.6) * rim * 0.5;
+  }
 
   col *= 1.0 - dot(p, p) * 0.35;
   return vec4f(col, 1.0);
