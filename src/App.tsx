@@ -30,7 +30,7 @@ import {
 } from "./ui/Icons";
 import "./App.css";
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 
 const LS_PRESET = "viz.activePreset";
 const LS_PARAMS = "viz.params.v1";
