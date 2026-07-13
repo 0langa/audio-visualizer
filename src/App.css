@@ -1275,3 +1275,14 @@ kbd {
   color: var(--text-faint);
   font-size: 11px;
 }
+
+.seek-section-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 1px;
+  pointer-events: none;
+}

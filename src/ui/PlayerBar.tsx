@@ -15,6 +15,8 @@ function fmt(t: number): string {
  */
 export function PlayerBar(props: {
   playback: PlaybackState;
+  /** Section boundaries (seconds) shown as ticks on the seek bar. */
+  sections: number[];
   volume: number;
   muted: boolean;
   onTogglePlay: () => void;
@@ -73,6 +75,15 @@ export function PlayerBar(props: {
       >
         <div className="seek-track">
           <div className="seek-fill" style={{ width: `${pct}%` }} />
+          {enabled &&
+            props.sections.map((t) => (
+              <div
+                key={t}
+                className="seek-section-tick"
+                title="Section change"
+                style={{ left: `${(t / playback.duration) * 100}%` }}
+              />
+            ))}
           <div className="seek-handle" style={{ left: `${pct}%` }} />
         </div>
         {hoverT !== null && enabled && (

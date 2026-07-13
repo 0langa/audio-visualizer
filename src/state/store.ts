@@ -163,6 +163,8 @@ interface SessionSlice {
   beatGrid: BeatGrid | null;
   /** Detected musical key; null before analysis / for atonal tracks. */
   trackKey: KeyEstimate | null;
+  /** Section boundaries (seconds) — seek-bar markers, future scene seeds. */
+  sections: number[];
   analyzing: boolean;
   exportSettings: ExportSettings;
   exporting: ExportProgress | null;
@@ -301,6 +303,7 @@ export const useVizStore = create<VizState>((set, get) => {
     stereoWidth: 0,
     beatGrid: null,
     trackKey: null,
+    sections: [],
     analyzing: false,
     exportSettings: {
       resIdx: 1,
@@ -841,12 +844,12 @@ export const useVizStore = create<VizState>((set, get) => {
       const buf = getEngine().audioBuffer;
       if (!buf) return;
       const id = ++analysisId;
-      set({ beatGrid: null, trackKey: null, analyzing: true });
+      set({ beatGrid: null, trackKey: null, sections: [], analyzing: true });
       getAnalyzer().setBeatGrid(null);
       const { result } = analyzeTrack(buf);
-      void result.then(({ grid, key }) => {
+      void result.then(({ grid, key, sections }) => {
         if (id !== analysisId) return; // a newer track superseded this job
-        set({ beatGrid: grid, trackKey: key, analyzing: false });
+        set({ beatGrid: grid, trackKey: key, sections, analyzing: false });
         getAnalyzer().setBeatGrid(grid);
       });
     },

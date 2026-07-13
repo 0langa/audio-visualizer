@@ -3,6 +3,7 @@ declare const self: DedicatedWorkerGlobalScope;
 
 import { analyzeBeatGrid } from "./beatGrid";
 import { estimateKey } from "./keyDetect";
+import { detectSections } from "./sections";
 import type { PcmData } from "../types";
 
 /**
@@ -27,7 +28,10 @@ self.onmessage = (e: MessageEvent<InMessage>) => {
       for (let i = 0; i < mono.length; i++) mono[i] *= g;
     }
     const key = estimateKey(mono, msg.pcm.sampleRate);
-    self.postMessage({ type: "analysis", id: msg.id, grid, key }, [grid.beatTimes.buffer]);
+    const sections = detectSections(mono, msg.pcm.sampleRate);
+    self.postMessage({ type: "analysis", id: msg.id, grid, key, sections }, [
+      grid.beatTimes.buffer,
+    ]);
   } catch (err) {
     self.postMessage({ type: "error", id: msg.id, message: (err as Error).message });
   }

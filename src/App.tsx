@@ -76,6 +76,7 @@ export default function App() {
   const trackKey = useVizStore((s) => s.trackKey);
   const activeMods = useVizStore((s) => s.activeMods);
   const smoothSpectrum = useVizStore((s) => s.smoothSpectrum);
+  const sections = useVizStore((s) => s.sections);
   const exportSettings = useVizStore((s) => s.exportSettings);
   const exporting = useVizStore((s) => s.exporting);
   const exportError = useVizStore((s) => s.exportError);
@@ -444,6 +445,7 @@ export default function App() {
 
       <PlayerBar
         playback={playback}
+        sections={sections}
         volume={volume}
         muted={muted}
         onTogglePlay={() => void store().togglePlay()}

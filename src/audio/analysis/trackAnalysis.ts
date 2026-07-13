@@ -1,6 +1,7 @@
 import type { BeatGrid } from "./beatGrid";
 import { analyzeBeatGrid } from "./beatGrid";
 import { estimateKey, type KeyEstimate } from "./keyDetect";
+import { detectSections } from "./sections";
 import type { PcmData } from "../types";
 import { pcmFromAudioBuffer } from "../offlineSource";
 
@@ -12,6 +13,8 @@ import { pcmFromAudioBuffer } from "../offlineSource";
 export interface TrackAnalysis {
   grid: BeatGrid | null;
   key: KeyEstimate | null;
+  /** Section boundaries, seconds. Empty when undetected. */
+  sections: number[];
 }
 
 let worker: Worker | null = null;
@@ -24,7 +27,13 @@ function ensureWorker(): Worker | null {
     worker = new Worker(new URL("./analysisWorker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (
       e: MessageEvent<
-        | { type: "analysis"; id: number; grid: BeatGrid; key: KeyEstimate | null }
+        | {
+            type: "analysis";
+            id: number;
+            grid: BeatGrid;
+            key: KeyEstimate | null;
+            sections: number[];
+          }
         | { type: "error"; id: number; message: string }
       >,
     ) => {
@@ -32,15 +41,16 @@ function ensureWorker(): Worker | null {
       const resolve = pending.get(msg.id);
       if (!resolve) return;
       pending.delete(msg.id);
-      if (msg.type === "analysis") resolve({ grid: msg.grid, key: msg.key });
-      else {
+      if (msg.type === "analysis") {
+        resolve({ grid: msg.grid, key: msg.key, sections: msg.sections });
+      } else {
         console.error("[analysis]", msg.message);
-        resolve({ grid: null, key: null });
+        resolve({ grid: null, key: null, sections: [] });
       }
     };
     worker.onerror = () => {
       // Worker failed to boot — resolve everything null; callers fall back
-      for (const resolve of pending.values()) resolve({ grid: null, key: null });
+      for (const resolve of pending.values()) resolve({ grid: null, key: null, sections: [] });
       pending.clear();
     };
   }
@@ -61,9 +71,13 @@ export function analyzeTrack(audio: AudioBuffer): { id: number; result: Promise<
       result: Promise.resolve().then(() => {
         try {
           const mono = copy.channels[0];
-          return { grid: analyzeBeatGrid(copy), key: estimateKey(mono, copy.sampleRate) };
+          return {
+            grid: analyzeBeatGrid(copy),
+            key: estimateKey(mono, copy.sampleRate),
+            sections: detectSections(mono, copy.sampleRate),
+          };
         } catch {
-          return { grid: null, key: null };
+          return { grid: null, key: null, sections: [] };
         }
       }),
     };
