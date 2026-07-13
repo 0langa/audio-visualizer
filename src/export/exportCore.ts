@@ -1,5 +1,6 @@
 import { ArrayBufferTarget, Muxer, StreamTarget } from "mp4-muxer";
 import { OfflineAnalyzer } from "../audio/offlineSource";
+import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { PcmData, SyncSettings } from "../audio/types";
 import { WebGPURenderer } from "../render/webgpuRenderer";
 import type { BgSettings, ParamValues } from "../render/types";
@@ -36,6 +37,8 @@ export interface ExportJob {
   sync?: SyncSettings;
   /** Pre-rasterized overlay (text/logo), premultiplied, at output size. */
   overlay?: ImageBitmap;
+  /** Beat grid (already shifted for segments) — visuals lock to it. */
+  beatGrid?: BeatGrid;
   /**
    * Seamless-loop crossfade (seconds). The final crossfade window blends
    * into the FIRST frames/samples, so the last frame ≈ frame 0 and the loop
@@ -208,7 +211,7 @@ export async function runExportJob(
     }
 
     // --- Video lane: deterministic frame walk
-    const analyzer = new OfflineAnalyzer(pcm, job.fps, 96, job.sync);
+    const analyzer = new OfflineAnalyzer(pcm, job.fps, 96, job.sync, job.beatGrid ?? null);
     const total = analyzer.frameCount;
     // Loop mode: keep the first K rendered frames; blend them into the last K
     const xfadeFrames = job.loopCrossfadeSec

@@ -3,6 +3,7 @@ import { FeaturePipeline } from "./featurePipeline";
 import { RealFFT } from "./dsp/fft";
 import { LoudnessMeter } from "./dsp/lufs";
 import { stereoWidth } from "./dsp/stereo";
+import { gridPhase, type BeatGrid } from "./analysis/beatGrid";
 
 const FFT_SIZE = 4096;
 
@@ -50,7 +51,16 @@ export class OfflineAnalyzer {
   private nextFrame = 0;
   private duration: number;
 
-  constructor(pcm: PcmData, fps: number, binCount = 96, sync?: SyncSettings) {
+  private grid: BeatGrid | null;
+
+  constructor(
+    pcm: PcmData,
+    fps: number,
+    binCount = 96,
+    sync?: SyncSettings,
+    grid: BeatGrid | null = null,
+  ) {
+    this.grid = grid;
     this.fps = fps;
     this.sampleRate = pcm.sampleRate;
     this.duration = pcm.duration;
@@ -108,6 +118,7 @@ export class OfflineAnalyzer {
       duration: this.duration,
       width: stereoWidth(this.left.subarray(start, end), this.right.subarray(start, end)),
       lufs: this.meter.momentary,
+      ...(this.grid ? { bpm: this.grid.bpm, ...gridPhase(this.grid, t) } : {}),
     });
   }
 }

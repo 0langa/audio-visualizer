@@ -6,7 +6,7 @@ const MAX_PARAMS = 48;
 /** Downsampled waveform points exposed to shaders */
 const WAVE_POINTS = 512;
 /** Uniform struct size in bytes (scalars + vec4 bgColor + sync block) */
-const UNIFORM_SIZE = 80;
+const UNIFORM_SIZE = 96;
 
 /**
  * WebGPU renderer. Fullscreen-triangle pass; the active preset supplies the
@@ -36,6 +36,10 @@ struct Uniforms {
   driveBeat: f32,
   voice: f32,
   width: f32,
+  bpm: f32,
+  beatPhase: f32,
+  barPhase: f32,
+  _pad3: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> bins: array<f32>;
@@ -378,6 +382,9 @@ export class WebGPURenderer implements Renderer {
     this.uniformF32[17] = f.driveBeat;
     this.uniformF32[18] = f.voice;
     this.uniformF32[19] = f.width;
+    this.uniformF32[20] = f.bpm;
+    this.uniformF32[21] = f.beatPhase;
+    this.uniformF32[22] = f.barPhase;
     this.device.queue.writeBuffer(this.uniformBuf, 0, this.uniformData);
     this.device.queue.writeBuffer(this.binsBuf!, 0, f.bins);
     this.device.queue.writeBuffer(this.peaksBuf!, 0, f.peaks);

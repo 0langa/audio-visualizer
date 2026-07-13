@@ -2,6 +2,7 @@ import type { SyncSettings } from "../audio/types";
 import { pcmFromAudioBuffer } from "../audio/offlineSource";
 import type { BgSettings, ParamValues } from "../render/types";
 import { runExportJob, type ExportCoreResult, type ExportJob } from "./exportCore";
+import type { BeatGrid } from "../audio/analysis/beatGrid";
 
 /**
  * Main-thread export API. Spawns the export worker (UI stays fluid), falls
@@ -30,6 +31,8 @@ export interface ExportOptions {
   segment?: { start: number; duration: number };
   /** Seamless-loop crossfade in seconds (blends tail into head). */
   loopCrossfadeSec?: number;
+  /** Beat grid in TRACK time; segment exports shift it automatically. */
+  beatGrid?: BeatGrid;
   /** Desktop: stream the file here instead of building a Blob. */
   streamToPath?: string;
   onProgress?: (framesDone: number, framesTotal: number) => void;
@@ -128,6 +131,13 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     sync: o.sync,
     overlay: o.overlay,
     loopCrossfadeSec: o.loopCrossfadeSec,
+    beatGrid:
+      o.beatGrid && o.segment
+        ? {
+            ...o.beatGrid,
+            beatTimes: o.beatGrid.beatTimes.map((t) => t - o.segment!.start),
+          }
+        : o.beatGrid,
     mode: o.streamToPath ? "stream" : "buffer",
   };
 

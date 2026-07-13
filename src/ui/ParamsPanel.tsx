@@ -123,6 +123,8 @@ export function ParamsPanel(props: {
   onAspect: (a: Aspect) => void;
   /** Momentary loudness readout; null before playback. */
   lufs: number | null;
+  /** Detected tempo; null while unanalyzed. */
+  bpm: number | null;
   overlayLayers: OverlayLayer[];
   assets: Record<string, OverlayAsset>;
   hasCoverArt: boolean;
@@ -441,6 +443,11 @@ export function ParamsPanel(props: {
         <span className="renderer-badge" title="Active render backend">
           {props.rendererKind}
         </span>
+        {props.bpm !== null && props.bpm > 0 && (
+          <span className="renderer-badge" title="Detected tempo (beat grid)">
+            {props.bpm.toFixed(props.bpm % 1 === 0 ? 0 : 1)} BPM
+          </span>
+        )}
         {props.lufs !== null && (
           <span
             className="renderer-badge"

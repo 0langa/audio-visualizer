@@ -31,6 +31,12 @@ export interface AudioFeatures {
   width: number;
   /** Momentary loudness, LUFS (BS.1770 400 ms window); -70 floor */
   lufs: number;
+  /** Detected tempo (0 until track analysis lands) */
+  bpm: number;
+  /** 0..1 position within the current beat (0 until analysis lands) */
+  beatPhase: number;
+  /** 0..1 position within the current 4-beat bar */
+  barPhase: number;
   /** True exactly on onset frames */
   beat: boolean;
   /** 1 on beat, exponential decay after — drive pulses with this */

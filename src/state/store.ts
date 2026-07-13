@@ -8,6 +8,8 @@ import { presetById, presets } from "../render/presets";
 import { exportVideo } from "../export/videoExporter";
 import { APP_VERSION } from "../version";
 import { getAnalyzer, getEngine, getRenderer, initServices, remeasure } from "./services";
+import { analyzeTrack } from "../audio/analysis/trackAnalysis";
+import type { BeatGrid } from "../audio/analysis/beatGrid";
 import {
   bytesToDataUrl,
   downloadBlob,
@@ -148,6 +150,9 @@ interface SessionSlice {
   lufs: number | null;
   /** Smoothed stereo width readout 0..1. */
   stereoWidth: number;
+  /** Track beat grid; null before analysis lands. */
+  beatGrid: BeatGrid | null;
+  analyzing: boolean;
   exportSettings: ExportSettings;
   exporting: ExportProgress | null;
   exportError: string | null;
@@ -196,6 +201,8 @@ interface Actions {
   removeOverlayLayer(id: string): void;
   /** Re-rasterize the overlay at the live canvas size (debounced). */
   refreshOverlay(): void;
+  /** Run the offline analysis pass (beat grid) on the loaded track. */
+  analyzeCurrentTrack(): void;
 }
 
 export type VizState = DocumentSlice & SessionSlice & Actions;
@@ -210,6 +217,8 @@ let liveCanvas: HTMLCanvasElement | null = null;
 let overlayTimer: ReturnType<typeof setTimeout> | undefined;
 /** Monotonic token: only the newest raster result gets applied. */
 let overlayToken = 0;
+/** Latest analysis job id — stale results are dropped. */
+let analysisId = 0;
 
 function resolveParams(presetId: string, overrides: Record<string, ParamValues>): ParamValues {
   const preset = presetById(presetId);
@@ -271,6 +280,8 @@ export const useVizStore = create<VizState>((set, get) => {
     coverArt: null,
     lufs: null,
     stereoWidth: 0,
+    beatGrid: null,
+    analyzing: false,
     exportSettings: {
       resIdx: 1,
       fps: 60,
@@ -404,6 +415,7 @@ export const useVizStore = create<VizState>((set, get) => {
         }
         set({ trackMeta: meta, coverArt });
         get().refreshOverlay();
+        get().analyzeCurrentTrack();
       } catch (e) {
         set({ error: `Could not decode "${file.name}" (${(e as Error).message})` });
       }
@@ -420,6 +432,7 @@ export const useVizStore = create<VizState>((set, get) => {
         await engine.play();
         set({ trackMeta: { title: demo.name, artist: "" }, coverArt: null });
         get().refreshOverlay();
+        get().analyzeCurrentTrack();
       } catch (e) {
         set({ error: `Demo failed: ${(e as Error).message}` });
       }
@@ -548,6 +561,7 @@ export const useVizStore = create<VizState>((set, get) => {
           overlay,
           segment,
           loopCrossfadeSec: canvasMode ? 0.5 : undefined,
+          beatGrid: get().beatGrid ?? undefined,
           // Desktop: stream straight to the picked file (flat memory);
           // browser dev falls back to an in-memory blob + download.
           streamToPath: savePath ?? undefined,
@@ -782,6 +796,20 @@ export const useVizStore = create<VizState>((set, get) => {
       set({ overlayLayers, assets });
       saveStoredOverlay(overlayLayers, assets);
       get().refreshOverlay();
+    },
+
+    analyzeCurrentTrack() {
+      const buf = getEngine().audioBuffer;
+      if (!buf) return;
+      const id = ++analysisId;
+      set({ beatGrid: null, analyzing: true });
+      getAnalyzer().setBeatGrid(null);
+      const { result } = analyzeTrack(buf);
+      void result.then((grid) => {
+        if (id !== analysisId) return; // a newer track superseded this job
+        set({ beatGrid: grid, analyzing: false });
+        getAnalyzer().setBeatGrid(grid);
+      });
     },
 
     refreshOverlay() {

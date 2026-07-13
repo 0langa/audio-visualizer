@@ -38,6 +38,10 @@ export interface PipelineInput {
   width?: number;
   /** Momentary LUFS for this frame (undefined = keep previous). */
   lufs?: number;
+  /** Beat-grid readouts for this frame (undefined = keep previous). */
+  bpm?: number;
+  beatPhase?: number;
+  barPhase?: number;
 }
 
 /**
@@ -116,6 +120,9 @@ export class FeaturePipeline {
       treble: 0,
       width: 0,
       lufs: -70,
+      bpm: 0,
+      beatPhase: 0,
+      barPhase: 0,
       beat: false,
       beatIntensity: 0,
       time: 0,
@@ -211,6 +218,9 @@ export class FeaturePipeline {
       f.width += (input.width - f.width) * (1 - Math.exp(-dt * 8));
     }
     if (input.lufs !== undefined) f.lufs = input.lufs;
+    if (input.bpm !== undefined) f.bpm = input.bpm;
+    if (input.beatPhase !== undefined) f.beatPhase = input.beatPhase;
+    if (input.barPhase !== undefined) f.barPhase = input.barPhase;
 
     f.time = input.time;
     f.duration = input.duration;

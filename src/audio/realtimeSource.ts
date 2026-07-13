@@ -4,6 +4,7 @@ import { FeaturePipeline } from "./featurePipeline";
 import { RealFFT } from "./dsp/fft";
 import { LoudnessMeter } from "./dsp/lufs";
 import { stereoWidth } from "./dsp/stereo";
+import { gridPhase, type BeatGrid } from "./analysis/beatGrid";
 
 /**
  * Realtime analysis source: pulls the most recent fftSize time-domain samples
@@ -25,6 +26,7 @@ export class RealtimeAnalyzer {
   private timeL: Float32Array;
   private timeR: Float32Array;
   private meter: LoudnessMeter;
+  private grid: BeatGrid | null = null;
   private lastFrameAt: number | null = null;
 
   constructor(engine: AudioEngine, binCount = 96) {
@@ -48,6 +50,11 @@ export class RealtimeAnalyzer {
   /** Choose what the visuals follow. */
   setSync(sync: SyncSettings): void {
     this.pipeline.setSync(sync);
+  }
+
+  /** Attach the track's beat grid once analysis lands (null = none yet). */
+  setBeatGrid(grid: BeatGrid | null): void {
+    this.grid = grid;
   }
 
   /** Call once per animation frame with a seconds timestamp. */
@@ -77,6 +84,9 @@ export class RealtimeAnalyzer {
       duration: this.engine.duration,
       width: stereoWidth(this.timeL, this.timeR),
       lufs: this.engine.playing ? this.meter.momentary : undefined,
+      ...(this.grid
+        ? { bpm: this.grid.bpm, ...gridPhase(this.grid, this.engine.currentTime) }
+        : {}),
     });
   }
 }
