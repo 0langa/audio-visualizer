@@ -1,0 +1,108 @@
+import { describe, expect, it } from "vitest";
+import { RealFFT } from "./fft";
+
+/** Reference: naive O(N^2) DFT with the same Hann window and scaling as RealFFT. */
+function naiveMagnitudes(input: Float32Array, size: number): Float64Array {
+  const windowed = new Float64Array(size);
+  for (let i = 0; i < size; i++) {
+    windowed[i] = input[i] * 0.5 * (1 - Math.cos((2 * Math.PI * i) / (size - 1)));
+  }
+  const out = new Float64Array(size / 2);
+  for (let k = 0; k < size / 2; k++) {
+    let re = 0;
+    let im = 0;
+    for (let n = 0; n < size; n++) {
+      const phi = (-2 * Math.PI * k * n) / size;
+      re += windowed[n] * Math.cos(phi);
+      im += windowed[n] * Math.sin(phi);
+    }
+    out[k] = Math.hypot(re, im) * (4 / size);
+  }
+  return out;
+}
+
+function dbToLinear(db: number): number {
+  return db === -Infinity ? 0 : Math.pow(10, db / 20);
+}
+
+/** Deterministic pseudo-random numbers (mulberry32). */
+function prng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+describe("RealFFT", () => {
+  it("rejects non-power-of-2 sizes", () => {
+    expect(() => new RealFFT(1000)).toThrow();
+  });
+
+  it("matches a naive DFT on random input (N=1024)", () => {
+    const size = 1024;
+    const rand = prng(0xc0ffee);
+    const input = new Float32Array(size);
+    for (let i = 0; i < size; i++) input[i] = rand() * 2 - 1;
+
+    const fft = new RealFFT(size);
+    const outDb = new Float32Array(size / 2);
+    fft.magnitudesDb(input, outDb);
+    const expected = naiveMagnitudes(input, size);
+
+    for (let k = 0; k < size / 2; k++) {
+      const got = dbToLinear(outDb[k]);
+      const want = expected[k];
+      expect(Math.abs(got - want)).toBeLessThanOrEqual(1e-4 + 2e-3 * Math.max(got, want));
+    }
+  });
+
+  it("puts a bin-centered full-scale sine at ~0 dB in the right bin", () => {
+    const size = 4096;
+    const k = 100;
+    const input = new Float32Array(size);
+    for (let n = 0; n < size; n++) input[n] = Math.sin((2 * Math.PI * k * n) / size);
+
+    const fft = new RealFFT(size);
+    const outDb = new Float32Array(size / 2);
+    fft.magnitudesDb(input, outDb);
+
+    let maxBin = 0;
+    for (let i = 1; i < size / 2; i++) if (outDb[i] > outDb[maxBin]) maxBin = i;
+    expect(maxBin).toBe(k);
+    // Hann coherent gain is compensated by the 4/N scale, so a full-scale
+    // bin-centered sine lands at 0 dB (± window edge effects).
+    expect(outDb[k]).toBeGreaterThan(-0.1);
+    expect(outDb[k]).toBeLessThan(0.1);
+    // Hann main lobe: adjacent bins sit ~6 dB down.
+    expect(outDb[k - 1]).toBeGreaterThan(-6.5);
+    expect(outDb[k - 1]).toBeLessThan(-5.5);
+    // Far bins are deep in the noise floor.
+    expect(outDb[k + 500]).toBeLessThan(-100);
+  });
+
+  it("returns -Infinity for silence", () => {
+    const size = 512;
+    const fft = new RealFFT(size);
+    const outDb = new Float32Array(size / 2);
+    fft.magnitudesDb(new Float32Array(size), outDb);
+    for (const v of outDb) expect(v).toBe(-Infinity);
+  });
+
+  it("is deterministic across repeated calls", () => {
+    const size = 2048;
+    const rand = prng(42);
+    const input = new Float32Array(size);
+    for (let i = 0; i < size; i++) input[i] = rand() * 2 - 1;
+
+    const fft = new RealFFT(size);
+    const a = new Float32Array(size / 2);
+    const b = new Float32Array(size / 2);
+    fft.magnitudesDb(input, a);
+    fft.magnitudesDb(input, b);
+    expect(Array.from(a)).toEqual(Array.from(b));
+  });
+});
