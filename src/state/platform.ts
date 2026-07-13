@@ -148,6 +148,14 @@ export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${btoa(bin)}`;
 }
 
+/** Tauri only: crash-safe autosave of the current project to app data. */
+export async function writeAutosave(contents: string): Promise<void> {
+  if (!isTauri()) return; // browser sessions persist via localStorage already
+  const { writeTextFile, mkdir, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+  await mkdir("", { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => undefined);
+  await writeTextFile("autosave.avproj", contents, { baseDir: BaseDirectory.AppData });
+}
+
 export function downloadBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

@@ -22,6 +22,7 @@ import {
   openTextFile,
   pickSavePath,
   saveTextFile,
+  writeAutosave,
 } from "./platform";
 import {
   defaultImageLayer,
@@ -252,6 +253,7 @@ let overlayTimer: ReturnType<typeof setTimeout> | undefined;
 let overlayToken = 0;
 /** Latest analysis job id — stale results are dropped. */
 let analysisId = 0;
+let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 function resolveParams(presetId: string, overrides: Record<string, ParamValues>): ParamValues {
   const preset = presetById(presetId);
@@ -303,6 +305,17 @@ export const useVizStore = create<VizState>((set, get) => {
     pushHistory(docOf(get()), key);
     const d = historyDepths();
     set({ undoDepth: d.undo, redoDepth: d.redo });
+    scheduleAutosave();
+  };
+
+  /** Crash-safe project autosave (desktop), debounced past edit bursts. */
+  const scheduleAutosave = () => {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      void writeAutosave(serializeProject(docOf(get()), APP_VERSION)).catch((e) =>
+        console.error("[autosave]", e),
+      );
+    }, 5000);
   };
 
   return {

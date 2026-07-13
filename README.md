@@ -1,6 +1,6 @@
 # Audio Visualizer
 
-Desktop music visualizer. Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core. v1.7.0.
+Desktop music visualizer. Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core. v2.0.0.
 
 Free and open source. Built to become a professional-grade tool for producers and artists — local-first, no cloud rendering, no watermarks, no subscriptions.
 
@@ -37,6 +37,13 @@ Free and open source. Built to become a professional-grade tool for producers an
   exports
 - **Smooth curve toggle**: spline-connected spectrum (Catmull-Rom through
   the bins) instead of hard-edged bars, across all visuals
+- **Timeline workstation** (press T): arrange scenes (any visual per song
+  part) with beat-snapped drag, crossfade transitions, and keyframe
+  automation lanes for any parameter — against a waveform overview with a
+  beat/bar ruler and section markers. Exports render the arrangement
+  frame-perfectly.
+- **Undo/redo** (Ctrl+Z / Ctrl+Y) across every edit, with gesture grouping
+  (a slider drag is one step); crash-safe autosave on desktop
 - Sync-source system: choose what visuals react to (kicks, energy, bass,
   melody, voice, treble) + smoothing, per mode
 - Background system on every preset: preset-animated, any solid color
@@ -112,7 +119,6 @@ CI runs typecheck, lint, format check, tests and build on every push/PR.
 
 - Producer basics, remaining: video/image backgrounds, preset thumbnails
 - Musical sync, remaining: stem import as additional sync sources
-- Timeline: scenes, keyframes, automation, undo/redo
 - Visual ceiling: multi-pass render graph, real bloom/post stack, compute
   particles, 3D camera scenes, custom WGSL preset SDK
 - Delivery: PNG sequences + alpha, more codecs, batch render queue,
