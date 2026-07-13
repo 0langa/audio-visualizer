@@ -4,6 +4,7 @@ import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { PcmData, SyncSettings } from "../audio/types";
 import { WebGPURenderer } from "../render/webgpuRenderer";
 import type { BgSettings, ParamValues } from "../render/types";
+import { applyMods, type ModRoute } from "../state/modMatrix";
 import { presetById } from "../render/presets";
 
 /**
@@ -39,6 +40,8 @@ export interface ExportJob {
   overlay?: ImageBitmap;
   /** Beat grid (already shifted for segments) — visuals lock to it. */
   beatGrid?: BeatGrid;
+  /** Modulation routes for the preset — applied per frame like the live view. */
+  mods?: ModRoute[];
   /**
    * Seamless-loop crossfade (seconds). The final crossfade window blends
    * into the FIRST frames/samples, so the last frame ≈ frame 0 and the loop
@@ -225,7 +228,11 @@ export async function runExportJob(
       if (encoderError) throw encoderError;
 
       const features = analyzer.nextFrameFeatures();
-      renderer.render(features, n / job.fps, job.params);
+      renderer.render(
+        features,
+        n / job.fps,
+        applyMods(presetById(job.presetId), job.params, job.mods ?? [], features),
+      );
       // Ensure the GPU finished before snapshotting the canvas
       await renderer.gpuDone();
 

@@ -1253,3 +1253,25 @@ kbd {
   width: min(100cqw, calc(100cqh * var(--ar)));
   height: min(100cqh, calc(100cqw / var(--ar)));
 }
+
+/* ---------- modulation matrix ---------- */
+
+.mod-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.mod-select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 96px;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+.mod-arrow {
+  color: var(--text-faint);
+  font-size: 11px;
+}

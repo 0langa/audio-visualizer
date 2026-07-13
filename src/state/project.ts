@@ -3,6 +3,7 @@ import type { BgSettings, ParamValues } from "../render/types";
 import { BG_PRESET, BG_SOLID, BG_TRANSPARENT } from "../render/types";
 import { presets } from "../render/presets";
 import type { OverlayAsset, OverlayLayer, OverlayAnchor } from "../render/overlay";
+import { validModsByPreset, type ModRoute } from "./modMatrix";
 
 /**
  * .avproj — the project file format. Versioned JSON around the store's
@@ -12,10 +13,11 @@ import type { OverlayAsset, OverlayLayer, OverlayAnchor } from "../render/overla
  *  - Unknown presets/params are preserved on load (forward compatibility:
  *    a file from a newer app with more presets still opens).
  *
- * History: v1 = preset/params/sync/bg · v2 (+) overlay layers + assets
+ * History: v1 = preset/params/sync/bg · v2 (+) overlay layers + assets ·
+ * v3 (+) modulation-matrix routes
  */
 
-export const PROJECT_VERSION = 2;
+export const PROJECT_VERSION = 3;
 export const PROJECT_EXTENSION = "avproj";
 
 /** Frame aspect: "free" fills the window; fixed ratios letterbox the stage. */
@@ -36,6 +38,7 @@ export interface ProjectDocument {
   overlayLayers: OverlayLayer[];
   assets: Record<string, OverlayAsset>;
   aspect: Aspect;
+  modsByPreset: Record<string, ModRoute[]>;
 }
 
 export interface ProjectFile {
@@ -96,6 +99,7 @@ export function parseProject(json: string): ProjectDocument {
     overlayLayers: validLayers(doc.overlayLayers, assets),
     assets,
     aspect: validAspect(doc.aspect),
+    modsByPreset: validModsByPreset(doc.modsByPreset),
   };
 }
 

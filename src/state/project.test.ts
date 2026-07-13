@@ -45,6 +45,9 @@ const doc: ProjectDocument = {
   ],
   assets: { "as-1": { id: "as-1", name: "logo.png", dataUrl: PIXEL } },
   aspect: "9:16",
+  modsByPreset: {
+    [presets[2].id]: [{ id: "mr-1", source: "kick", param: "intensity", amount: 0.6 }],
+  },
 };
 
 describe("project files (.avproj)", () => {
@@ -56,7 +59,7 @@ describe("project files (.avproj)", () => {
   it("stamps metadata", () => {
     const file = JSON.parse(serializeProject(doc, "1.2.0"));
     expect(file.kind).toBe("avproj");
-    expect(file.schemaVersion).toBe(2);
+    expect(file.schemaVersion).toBe(3);
     expect(file.appVersion).toBe("1.2.0");
     expect(typeof file.savedAt).toBe("string");
   });
@@ -82,11 +85,27 @@ describe("project files (.avproj)", () => {
     delete file.document.overlayLayers;
     delete file.document.assets;
     delete file.document.aspect;
+    delete file.document.modsByPreset;
     const parsed = parseProject(JSON.stringify(file));
     expect(parsed.overlayLayers).toEqual([]);
     expect(parsed.assets).toEqual({});
     expect(parsed.aspect).toBe("free"); // v1 default
+    expect(parsed.modsByPreset).toEqual({}); // pre-v3 default
     expect(parsed.presetId).toBe(doc.presetId);
+  });
+
+  it("sanitizes mod routes (bad sources/amounts dropped or clamped)", () => {
+    const file = JSON.parse(serializeProject(doc, "1.5.0"));
+    file.document.modsByPreset = {
+      ok: [
+        { id: "a", source: "kick", param: "x", amount: 5 }, // clamped to 1
+        { id: "b", source: "psychic", param: "x", amount: 0.5 }, // dropped
+        { id: "c", source: "bass", param: "", amount: 0.5 }, // dropped (no param)
+      ],
+    };
+    const parsed = parseProject(JSON.stringify(file));
+    expect(parsed.modsByPreset.ok).toHaveLength(1);
+    expect(parsed.modsByPreset.ok[0].amount).toBe(1);
   });
 
   it("drops image layers whose asset is missing and clamps layer numbers", () => {

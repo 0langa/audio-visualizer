@@ -11,6 +11,7 @@ import { getAnalyzer, getEngine, getRenderer, initServices, remeasure } from "./
 import { analyzeTrack } from "../audio/analysis/trackAnalysis";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { KeyEstimate } from "../audio/analysis/keyDetect";
+import { newRouteId, type ModRoute, type ModSource } from "./modMatrix";
 import {
   bytesToDataUrl,
   downloadBlob,
@@ -52,6 +53,8 @@ import {
 import {
   loadStoredAspect,
   loadStoredBg,
+  loadStoredMods,
+  saveStoredMods,
   loadStoredOverlay,
   loadStoredPanelOpen,
   loadStoredParams,
@@ -121,6 +124,7 @@ interface DocumentSlice {
   overlayLayers: OverlayLayer[];
   assets: Record<string, OverlayAsset>;
   aspect: Aspect;
+  modsByPreset: Record<string, ModRoute[]>;
 }
 
 /** Session/UI state: ephemeral, never saved into projects. */
@@ -128,6 +132,8 @@ interface SessionSlice {
   /** Resolved params of the active preset (defaults + overrides). The frame
    * loop reads this via getState() every frame — keep it precomputed. */
   activeParams: ParamValues;
+  /** Routes of the active preset — same precompute reasoning. */
+  activeMods: ModRoute[];
   sync: SyncSettings;
   playback: PlaybackState;
   volume: number;
@@ -202,6 +208,9 @@ interface Actions {
   addAlbumArtLayer(): void;
   updateOverlayLayer(id: string, patch: Partial<TextLayer> | Partial<ImageLayer>): void;
   removeOverlayLayer(id: string): void;
+  addModRoute(source: ModSource, param: string): void;
+  updateModRoute(id: string, patch: Partial<ModRoute>): void;
+  removeModRoute(id: string): void;
   /** Re-rasterize the overlay at the live canvas size (debounced). */
   refreshOverlay(): void;
   /** Run the offline analysis pass (beat grid) on the loaded track. */
@@ -235,6 +244,7 @@ const initialPresetId = (() => {
 const initialParams = loadStoredParams();
 const initialSync = loadStoredSync();
 const initialOverlay = loadStoredOverlay();
+const initialMods = loadStoredMods();
 
 /** "Artist - Title.mp3" → meta; otherwise the basename becomes the title. */
 function metaFromFilename(name: string): OverlayMeta {
@@ -262,9 +272,11 @@ export const useVizStore = create<VizState>((set, get) => {
     overlayLayers: initialOverlay.layers,
     assets: initialOverlay.assets,
     aspect: loadStoredAspect(),
+    modsByPreset: initialMods,
 
     // --- session ---
     activeParams: resolveParams(initialPresetId, initialParams),
+    activeMods: initialMods[initialPresetId] ?? [],
     sync: initialSync[initialPresetId] ?? { ...DEFAULT_SYNC },
     playback: { playing: false, time: 0, duration: 0, trackName: null, loop: false },
     volume: loadStoredVolume(),
@@ -305,6 +317,7 @@ export const useVizStore = create<VizState>((set, get) => {
       const dispose = initServices(canvas, {
         getPreset: () => presetById(get().presetId),
         getParams: () => get().activeParams,
+        getMods: () => get().activeMods,
         getBackground: () => get().bg,
         getSync: () => get().sync,
         isSeeking: () => get().seeking,
@@ -331,7 +344,8 @@ export const useVizStore = create<VizState>((set, get) => {
       const state = get();
       const activeParams = resolveParams(next.id, state.paramsByPreset);
       const sync = state.syncByPreset[next.id] ?? { ...DEFAULT_SYNC };
-      set({ presetId: next.id, activeParams, sync });
+      const activeMods = state.modsByPreset[next.id] ?? [];
+      set({ presetId: next.id, activeParams, activeMods, sync });
       saveStoredPresetId(next.id);
       getRenderer()?.setPreset(next);
       getAnalyzer().setSync(sync);
@@ -566,6 +580,7 @@ export const useVizStore = create<VizState>((set, get) => {
           segment,
           loopCrossfadeSec: canvasMode ? 0.5 : undefined,
           beatGrid: get().beatGrid ?? undefined,
+          mods: get().activeMods,
           // Desktop: stream straight to the picked file (flat memory);
           // browser dev falls back to an in-memory blob + download.
           streamToPath: savePath ?? undefined,
@@ -613,6 +628,7 @@ export const useVizStore = create<VizState>((set, get) => {
         overlayLayers: s.overlayLayers,
         assets: s.assets,
         aspect: s.aspect,
+        modsByPreset: s.modsByPreset,
       };
       try {
         const saved = await saveTextFile(
@@ -656,7 +672,9 @@ export const useVizStore = create<VizState>((set, get) => {
         overlayLayers: doc.overlayLayers,
         assets: doc.assets,
         aspect: doc.aspect,
+        modsByPreset: doc.modsByPreset,
         activeParams,
+        activeMods: doc.modsByPreset[preset.id] ?? [],
         sync,
       });
       saveStoredPresetId(preset.id);
@@ -665,6 +683,7 @@ export const useVizStore = create<VizState>((set, get) => {
       saveStoredBg(doc.bg);
       saveStoredOverlay(doc.overlayLayers, doc.assets);
       saveStoredAspect(doc.aspect);
+      saveStoredMods(doc.modsByPreset);
       pruneBitmapCache(new Set(Object.keys(doc.assets)));
       getRenderer()?.setPreset(preset);
       getRenderer()?.setBackground(doc.bg);
@@ -814,6 +833,33 @@ export const useVizStore = create<VizState>((set, get) => {
         set({ beatGrid: grid, trackKey: key, analyzing: false });
         getAnalyzer().setBeatGrid(grid);
       });
+    },
+
+    addModRoute(source, param) {
+      const s = get();
+      const route: ModRoute = { id: newRouteId(), source, param, amount: 0.5 };
+      const activeMods = [...s.activeMods, route];
+      const modsByPreset = { ...s.modsByPreset, [s.presetId]: activeMods };
+      set({ activeMods, modsByPreset });
+      saveStoredMods(modsByPreset);
+    },
+
+    updateModRoute(id, patch) {
+      const s = get();
+      const activeMods = s.activeMods.map((r) => (r.id === id ? { ...r, ...patch } : r));
+      const modsByPreset = { ...s.modsByPreset, [s.presetId]: activeMods };
+      set({ activeMods, modsByPreset });
+      saveStoredMods(modsByPreset);
+    },
+
+    removeModRoute(id) {
+      const s = get();
+      const activeMods = s.activeMods.filter((r) => r.id !== id);
+      const modsByPreset = { ...s.modsByPreset };
+      if (activeMods.length > 0) modsByPreset[s.presetId] = activeMods;
+      else delete modsByPreset[s.presetId];
+      set({ activeMods, modsByPreset });
+      saveStoredMods(modsByPreset);
     },
 
     refreshOverlay() {

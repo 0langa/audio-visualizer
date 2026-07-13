@@ -5,6 +5,8 @@ import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, defaultParams } from "../render/ty
 import type { UserPreset } from "../state/userPresets";
 import { ASPECTS, type Aspect } from "../state/project";
 import type { ImageLayer, OverlayAsset, OverlayLayer, TextLayer } from "../render/overlay";
+import { MOD_SOURCES, type ModRoute, type ModSource } from "../state/modMatrix";
+import { allParams } from "../render/types";
 import { Slider } from "./Slider";
 import { LayersPanel } from "./LayersPanel";
 import { IconChevronRight, IconClose } from "./Icons";
@@ -137,6 +139,10 @@ export function ParamsPanel(props: {
   onAddAlbumArtLayer: () => void;
   onUpdateLayer: (id: string, patch: Partial<TextLayer> | Partial<ImageLayer>) => void;
   onRemoveLayer: (id: string) => void;
+  mods: ModRoute[];
+  onAddMod: (source: ModSource, param: string) => void;
+  onUpdateMod: (id: string, patch: Partial<ModRoute>) => void;
+  onRemoveMod: (id: string) => void;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(
     () => localStorage.getItem("viz.advancedOpen") === "1",
@@ -358,6 +364,71 @@ export function ParamsPanel(props: {
           <p className="section-hint">
             What this visual reacts to. Saved per mode; exports use it too.
           </p>
+        </section>
+
+        <section className="panel-section">
+          <div className="section-head">
+            <span className="section-title">Modulation</span>
+          </div>
+          {props.mods.length === 0 && (
+            <p className="section-hint">
+              Route any audio feature to any knob of this visual — kick pumps the zoom, hats flicker
+              the glow. Applied in exports identically.
+            </p>
+          )}
+          {props.mods.map((r) => (
+            <div key={r.id} className="mod-row">
+              <select
+                className="select mod-select"
+                value={r.source}
+                title="What drives this route"
+                onChange={(e) => props.onUpdateMod(r.id, { source: e.target.value as ModSource })}
+              >
+                {MOD_SOURCES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mod-arrow">→</span>
+              <select
+                className="select mod-select"
+                value={r.param}
+                title="Which knob it moves"
+                onChange={(e) => props.onUpdateMod(r.id, { param: e.target.value })}
+              >
+                {allParams(props.preset).map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <Slider
+                min={-1}
+                max={1}
+                step={0.01}
+                value={r.amount}
+                onChange={(amount) => props.onUpdateMod(r.id, { amount })}
+              />
+              <span className="row-value">{r.amount.toFixed(2)}</span>
+              <button
+                className="chip-x"
+                title="Remove route"
+                onClick={() => props.onRemoveMod(r.id)}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <div className="save-look-row">
+            <button
+              className="text-btn"
+              title="Add a feature-to-knob route"
+              onClick={() => props.onAddMod("kick", props.preset.params[0]?.key ?? "")}
+            >
+              + Route
+            </button>
+          </div>
         </section>
 
         <section className="panel-section">

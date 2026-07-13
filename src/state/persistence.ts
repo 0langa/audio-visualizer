@@ -3,6 +3,7 @@ import type { BgSettings, ParamValues } from "../render/types";
 import { BG_PRESET } from "../render/types";
 import type { OverlayAsset, OverlayLayer } from "../render/overlay";
 import { validAspect, validAssets, validLayers, type Aspect } from "./project";
+import { validModsByPreset, type ModRoute } from "./modMatrix";
 
 /**
  * localStorage persistence for the current session. Keys and formats are the
@@ -91,6 +92,15 @@ export function saveStoredOverlay(
 }
 
 const LS_ASPECT = "viz.aspect.v1";
+const LS_MODS = "viz.mods.v1";
+
+export function loadStoredMods(): Record<string, ModRoute[]> {
+  return validModsByPreset(readJson(LS_MODS, {}));
+}
+
+export function saveStoredMods(mods: Record<string, ModRoute[]>): void {
+  localStorage.setItem(LS_MODS, JSON.stringify(mods));
+}
 
 export function loadStoredAspect(): Aspect {
   return validAspect(localStorage.getItem(LS_ASPECT));

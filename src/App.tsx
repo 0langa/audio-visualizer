@@ -74,6 +74,7 @@ export default function App() {
   const lufs = useVizStore((s) => s.lufs);
   const beatGrid = useVizStore((s) => s.beatGrid);
   const trackKey = useVizStore((s) => s.trackKey);
+  const activeMods = useVizStore((s) => s.activeMods);
   const exportSettings = useVizStore((s) => s.exportSettings);
   const exporting = useVizStore((s) => s.exporting);
   const exportError = useVizStore((s) => s.exportError);
@@ -428,6 +429,10 @@ export default function App() {
           onAddAlbumArtLayer={() => store().addAlbumArtLayer()}
           onUpdateLayer={(id, patch) => store().updateOverlayLayer(id, patch)}
           onRemoveLayer={(id) => store().removeOverlayLayer(id)}
+          mods={activeMods}
+          onAddMod={(source, param) => store().addModRoute(source, param)}
+          onUpdateMod={(id, patch) => store().updateModRoute(id, patch)}
+          onRemoveMod={(id) => store().removeModRoute(id)}
         />
       )}
 

@@ -3,6 +3,7 @@ import { pcmFromAudioBuffer } from "../audio/offlineSource";
 import type { BgSettings, ParamValues } from "../render/types";
 import { runExportJob, type ExportCoreResult, type ExportJob } from "./exportCore";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
+import type { ModRoute } from "../state/modMatrix";
 
 /**
  * Main-thread export API. Spawns the export worker (UI stays fluid), falls
@@ -33,6 +34,8 @@ export interface ExportOptions {
   loopCrossfadeSec?: number;
   /** Beat grid in TRACK time; segment exports shift it automatically. */
   beatGrid?: BeatGrid;
+  /** Modulation routes for the active preset. */
+  mods?: ModRoute[];
   /** Desktop: stream the file here instead of building a Blob. */
   streamToPath?: string;
   onProgress?: (framesDone: number, framesTotal: number) => void;
@@ -130,6 +133,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     bg: o.bg,
     sync: o.sync,
     overlay: o.overlay,
+    mods: o.mods,
     loopCrossfadeSec: o.loopCrossfadeSec,
     beatGrid:
       o.beatGrid && o.segment

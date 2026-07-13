@@ -3,6 +3,7 @@ import { RealtimeAnalyzer } from "../audio/realtimeSource";
 import { Canvas2DRenderer } from "../render/canvas2dRenderer";
 import { WebGPURenderer } from "../render/webgpuRenderer";
 import type { BgSettings, ParamValues, PresetDef, Renderer } from "../render/types";
+import { applyMods, type ModRoute } from "./modMatrix";
 import type { PlaybackState, SyncSettings } from "../audio/types";
 
 /**
@@ -15,6 +16,8 @@ import type { PlaybackState, SyncSettings } from "../audio/types";
 export interface ServiceHooks {
   getPreset(): PresetDef;
   getParams(): ParamValues;
+  /** Modulation routes for the active preset (empty array = none). */
+  getMods(): ModRoute[];
   getBackground(): BgSettings;
   getSync(): SyncSettings;
   /** True while the user drags the seek bar — playback pushes pause then. */
@@ -125,7 +128,11 @@ export function initServices(canvas: HTMLCanvasElement, hooks: ServiceHooks): ()
       clearTimeout(fallback);
       const t = tMs / 1000;
       const features = ana.update(t);
-      renderer?.render(features, t, hooks.getParams());
+      renderer?.render(
+        features,
+        t,
+        applyMods(hooks.getPreset(), hooks.getParams(), hooks.getMods(), features),
+      );
       // E2E probe: lets tooling confirm the render loop is alive
       (window as unknown as { __vizFrames: number }).__vizFrames =
         ((window as unknown as { __vizFrames: number }).__vizFrames ?? 0) + 1;
