@@ -43,10 +43,7 @@ function h264Codec(width: number, height: number, fps: number): string {
   return "avc1.64002A"; // L4.2 (up to 1080p60)
 }
 
-export async function exportVideo(
-  audio: AudioBuffer,
-  o: ExportOptions,
-): Promise<ExportResult> {
+export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise<ExportResult> {
   const abort = () => {
     if (o.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
   };

@@ -6,7 +6,7 @@ visuals frame-perfectly synced to the music. Resolution/fps selectable
 
 ## Why offline rendering (not screen capture)
 
-`MediaRecorder` + `canvas.captureStream()` records the *live* canvas: dropped
+`MediaRecorder` + `canvas.captureStream()` records the _live_ canvas: dropped
 frames under load, VBR timing wobble, realtime-only speed. Sync is
 best-effort. Rejected.
 
@@ -29,7 +29,7 @@ decodeAudioData(track)                 ── one decoded AudioBuffer is the
 mp4-muxer (npm, pure TS) → File System Access API stream to disk
 ```
 
-Sync argument: video frame N is *defined* as t = N/fps of the decoded buffer;
+Sync argument: video frame N is _defined_ as t = N/fps of the decoded buffer;
 audio timestamps are sample-count arithmetic over the same buffer. Drift is
 structurally impossible — there is no clock, only indices.
 
@@ -63,6 +63,7 @@ code. MP4 carries no alpha: transparent mode renders over black; chroma
 green/magenta swatches cover editor keying.
 
 Still open (deliberately):
+
 - Worker + OffscreenCanvas move (UI stays responsive enough via per-frame
   GPU-completion yields for now; timers must NOT be used — throttled in
   hidden tabs).
@@ -74,18 +75,18 @@ Still open (deliberately):
 
 ## Quality defaults
 
-| Preset  | Resolution | fps | H.264 bitrate |
-| ------- | ---------- | --- | ------------- |
-| High    | 1920×1080  | 60  | 16 Mbps       |
-| Ultra   | 2560×1440  | 60  | 28 Mbps       |
-| Max     | 3840×2160  | 60  | 50 Mbps       |
+| Preset | Resolution | fps | H.264 bitrate |
+| ------ | ---------- | --- | ------------- |
+| High   | 1920×1080  | 60  | 16 Mbps       |
+| Ultra  | 2560×1440  | 60  | 28 Mbps       |
+| Max    | 3840×2160  | 60  | 50 Mbps       |
 
 Encode speed: GPU shader presets render far faster than realtime; H.264
 hardware encode ~100-300 fps at 1080p. A 3-minute track ≈ 1-2 min export.
 
 ## Sync precision budget
 
-Export: exact by construction (see above) — frame N *is* t = N/fps of the
+Export: exact by construction (see above) — frame N _is_ t = N/fps of the
 decoded buffer. No jitter, no drift, sample-accurate forever.
 
 Live playback: the analyser reads the samples currently entering the output

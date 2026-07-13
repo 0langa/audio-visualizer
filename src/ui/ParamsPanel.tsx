@@ -1,12 +1,6 @@
 import { useState } from "react";
 import type { SyncMode, SyncSettings } from "../audio/types";
-import type {
-  BgMode,
-  BgSettings,
-  ParamSpec,
-  ParamValues,
-  PresetDef,
-} from "../render/types";
+import type { BgMode, BgSettings, ParamSpec, ParamValues, PresetDef } from "../render/types";
 import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, defaultParams } from "../render/types";
 import { Slider } from "./Slider";
 import { IconChevronRight, IconClose } from "./Icons";
@@ -25,18 +19,46 @@ function rgbToHex([r, g, b]: [number, number, number]): string {
 }
 
 const SYNC_OPTIONS: Array<{ mode: SyncMode; label: string; hint: string }> = [
-  { mode: "kick", label: "Kicks", hint: "Follow the drums: pulses fire on kick/snare hits, motion glides with loudness" },
-  { mode: "energy", label: "Energy", hint: "Follow overall loudness — the smoothest, most forgiving option" },
-  { mode: "bass", label: "Bass", hint: "Follow the low end — basslines and subs drive the visuals" },
-  { mode: "melody", label: "Melody", hint: "Follow the mids (~150 Hz–2 kHz) where melodies and chords live" },
-  { mode: "voice", label: "Voice", hint: "Follow the vocal range (~300 Hz–3.4 kHz) — speech and singing" },
+  {
+    mode: "kick",
+    label: "Kicks",
+    hint: "Follow the drums: pulses fire on kick/snare hits, motion glides with loudness",
+  },
+  {
+    mode: "energy",
+    label: "Energy",
+    hint: "Follow overall loudness — the smoothest, most forgiving option",
+  },
+  {
+    mode: "bass",
+    label: "Bass",
+    hint: "Follow the low end — basslines and subs drive the visuals",
+  },
+  {
+    mode: "melody",
+    label: "Melody",
+    hint: "Follow the mids (~150 Hz–2 kHz) where melodies and chords live",
+  },
+  {
+    mode: "voice",
+    label: "Voice",
+    hint: "Follow the vocal range (~300 Hz–3.4 kHz) — speech and singing",
+  },
   { mode: "treble", label: "Treble", hint: "Follow hi-hats, cymbals and sparkle" },
 ];
 
 const BG_OPTIONS: Array<{ mode: BgMode; label: string; hint: string }> = [
   { mode: BG_PRESET, label: "Animated", hint: "The visual's own moving background" },
-  { mode: BG_SOLID, label: "Solid", hint: "Flat color behind the visual — pick any, or chroma green/magenta for keying" },
-  { mode: BG_TRANSPARENT, label: "Transparent", hint: "See-through background (checkerboard preview); MP4 exports render it black" },
+  {
+    mode: BG_SOLID,
+    label: "Solid",
+    hint: "Flat color behind the visual — pick any, or chroma green/magenta for keying",
+  },
+  {
+    mode: BG_TRANSPARENT,
+    label: "Transparent",
+    hint: "See-through background (checkerboard preview); MP4 exports render it black",
+  },
 ];
 
 function ParamRow(props: {
@@ -130,9 +152,7 @@ export function ParamsPanel(props: {
               Reset
             </button>
           </div>
-          {props.preset.description && (
-            <p className="preset-desc">{props.preset.description}</p>
-          )}
+          {props.preset.description && <p className="preset-desc">{props.preset.description}</p>}
 
           {(props.preset.styles?.length ?? 0) > 0 && (
             <div className="style-chips">
@@ -211,7 +231,9 @@ export function ParamsPanel(props: {
           <label
             className="row param-row"
             title="0 = punchy and instant, 1 = long smooth glides"
-            onPointerEnter={() => setHint("How smoothly the visuals follow the source — 0 = punchy, 1 = long glides")}
+            onPointerEnter={() =>
+              setHint("How smoothly the visuals follow the source — 0 = punchy, 1 = long glides")
+            }
             onPointerLeave={() => setHint(null)}
           >
             <span className="row-label">Smoothing</span>
@@ -253,9 +275,7 @@ export function ParamsPanel(props: {
                 type="color"
                 className="bg-color"
                 value={rgbToHex(props.bg.color)}
-                onChange={(e) =>
-                  props.onBg({ ...props.bg, color: hexToRgb(e.target.value) })
-                }
+                onChange={(e) => props.onBg({ ...props.bg, color: hexToRgb(e.target.value) })}
                 title="Custom background color"
               />
               {["#000000", "#ffffff", "#00b140", "#ff00ff"].map((hex) => (
@@ -263,7 +283,9 @@ export function ParamsPanel(props: {
                   key={hex}
                   className="swatch"
                   style={{ background: hex }}
-                  title={hex === "#00b140" ? "Chroma green" : hex === "#ff00ff" ? "Chroma magenta" : hex}
+                  title={
+                    hex === "#00b140" ? "Chroma green" : hex === "#ff00ff" ? "Chroma magenta" : hex
+                  }
                   onClick={() => props.onBg({ ...props.bg, color: hexToRgb(hex) })}
                 />
               ))}
@@ -271,9 +293,8 @@ export function ParamsPanel(props: {
           )}
           {props.bg.mode === BG_TRANSPARENT && (
             <p className="section-hint">
-              Preview shows a checkerboard. MP4 exports have no alpha channel —
-              transparent renders over black; use solid green/magenta for
-              editor keying.
+              Preview shows a checkerboard. MP4 exports have no alpha channel — transparent renders
+              over black; use solid green/magenta for editor keying.
             </p>
           )}
         </section>

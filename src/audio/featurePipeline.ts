@@ -81,8 +81,7 @@ export class FeaturePipeline {
 
     const nyquist = config.sampleRate / 2;
     const hzPerBin = nyquist / fftBins;
-    const toBin = (hz: number) =>
-      Math.max(0, Math.min(fftBins - 1, Math.round(hz / hzPerBin)));
+    const toBin = (hz: number) => Math.max(0, Math.min(fftBins - 1, Math.round(hz / hzPerBin)));
 
     // Geometric frequency edges -> FFT bin ranges, each at least 1 bin wide.
     this.ranges = [];
@@ -179,8 +178,7 @@ export class FeaturePipeline {
     }
     this.fluxHistory.push(flux);
     if (this.fluxHistory.length > FLUX_WINDOW) this.fluxHistory.shift();
-    const mean =
-      this.fluxHistory.reduce((a, b) => a + b, 0) / Math.max(1, this.fluxHistory.length);
+    const mean = this.fluxHistory.reduce((a, b) => a + b, 0) / Math.max(1, this.fluxHistory.length);
 
     f.beat = false;
     if (
@@ -270,8 +268,7 @@ export class FeaturePipeline {
     this.syncFluxHistory.push(flux);
     if (this.syncFluxHistory.length > FLUX_WINDOW) this.syncFluxHistory.shift();
     const mean =
-      this.syncFluxHistory.reduce((a, b) => a + b, 0) /
-      Math.max(1, this.syncFluxHistory.length);
+      this.syncFluxHistory.reduce((a, b) => a + b, 0) / Math.max(1, this.syncFluxHistory.length);
 
     if (
       this.syncFluxHistory.length >= 12 &&

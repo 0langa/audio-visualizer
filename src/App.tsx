@@ -502,8 +502,7 @@ export default function App() {
         bg: bgRef.current,
         sync: syncRef.current,
         signal: ac.signal,
-        onProgress: (done, total) =>
-          setExporting((p) => (p ? { ...p, done, total } : p)),
+        onProgress: (done, total) => setExporting((p) => (p ? { ...p, done, total } : p)),
       });
       const name = (engine.state.trackName ?? "visualization")
         .replace(/\.[a-z0-9]+$/i, "")
@@ -828,10 +827,9 @@ export default function App() {
             </div>
 
             <p className="section-hint">
-              Renders the current preset, parameters and background — what you
-              see live is what you get. Sync is sample-exact.
-              {bg.mode === BG_TRANSPARENT &&
-                " Transparent background becomes black in MP4."}
+              Renders the current preset, parameters and background — what you see live is what you
+              get. Sync is sample-exact.
+              {bg.mode === BG_TRANSPARENT && " Transparent background becomes black in MP4."}
             </p>
 
             {exporting ? (

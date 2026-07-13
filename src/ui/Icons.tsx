@@ -87,10 +87,7 @@ export const IconExport = ({ size }: IconProps) =>
   );
 
 export const IconFolder = ({ size }: IconProps) =>
-  svg(
-    size,
-    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-  );
+  svg(size, <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />);
 
 export const IconMusic = ({ size }: IconProps) =>
   svg(
@@ -113,11 +110,9 @@ export const IconFullscreen = ({ size }: IconProps) =>
     </>,
   );
 
-export const IconChevronLeft = ({ size }: IconProps) =>
-  svg(size, <path d="M15 18l-6-6 6-6" />);
+export const IconChevronLeft = ({ size }: IconProps) => svg(size, <path d="M15 18l-6-6 6-6" />);
 
-export const IconChevronRight = ({ size }: IconProps) =>
-  svg(size, <path d="M9 6l6 6-6 6" />);
+export const IconChevronRight = ({ size }: IconProps) => svg(size, <path d="M9 6l6 6-6 6" />);
 
 export const IconClose = ({ size }: IconProps) =>
   svg(

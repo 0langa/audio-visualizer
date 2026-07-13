@@ -187,9 +187,7 @@ export class WebGPURenderer implements Renderer {
   onDeviceLost: ((reason: string) => void) | null = null;
   private disposed = false;
 
-  static async create(
-    canvas: HTMLCanvasElement | OffscreenCanvas,
-  ): Promise<WebGPURenderer> {
+  static async create(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<WebGPURenderer> {
     if (!navigator.gpu) throw new Error("WebGPU not available");
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) throw new Error("No WebGPU adapter");

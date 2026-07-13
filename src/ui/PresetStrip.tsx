@@ -9,9 +9,7 @@ export function PresetStrip(props: {
 }) {
   const idx = props.presets.findIndex((p) => p.id === props.activeId);
   const step = (d: number) =>
-    props.onSwitch(
-      props.presets[(idx + d + props.presets.length) % props.presets.length].id,
-    );
+    props.onSwitch(props.presets[(idx + d + props.presets.length) % props.presets.length].id);
 
   return (
     <div className="chrome preset-strip">

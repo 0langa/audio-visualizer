@@ -1,14 +1,7 @@
 import { useRef, useState } from "react";
 import type { PlaybackState } from "../audio/types";
 import { Slider } from "./Slider";
-import {
-  IconLoop,
-  IconMusic,
-  IconMute,
-  IconPause,
-  IconPlay,
-  IconVolume,
-} from "./Icons";
+import { IconLoop, IconMusic, IconMute, IconPause, IconPlay, IconVolume } from "./Icons";
 
 function fmt(t: number): string {
   const m = Math.floor(t / 60);
@@ -107,9 +100,7 @@ export function PlayerBar(props: {
 
         <div className="player-track" title={playback.trackName ?? undefined}>
           <IconMusic size={14} />
-          <span className="track-name">
-            {playback.trackName ?? "No track loaded"}
-          </span>
+          <span className="track-name">{playback.trackName ?? "No track loaded"}</span>
         </div>
 
         <div className="player-right">
@@ -125,11 +116,7 @@ export function PlayerBar(props: {
             title={props.muted ? "Unmute (M)" : "Mute (M)"}
             onClick={props.onToggleMute}
           >
-            {props.muted || props.volume === 0 ? (
-              <IconMute size={18} />
-            ) : (
-              <IconVolume size={18} />
-            )}
+            {props.muted || props.volume === 0 ? <IconMute size={18} /> : <IconVolume size={18} />}
           </button>
           <Slider
             className="volume-slider"

@@ -1,0 +1,13 @@
+# Normalize all text to LF in repo and working tree (Prettier enforces LF)
+* text=auto eol=lf
+
+# Binaries
+*.png binary
+*.ico binary
+*.icns binary
+*.mp3 binary
+*.flac binary
+*.wav binary
+*.ogg binary
+*.m4a binary
+*.mp4 binary
