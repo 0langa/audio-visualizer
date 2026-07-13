@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 public/testdata/
+
+# private planning docs
+/ROADMAP.md
