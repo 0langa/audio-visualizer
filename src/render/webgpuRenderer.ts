@@ -1,12 +1,141 @@
 import type { AudioFeatures } from "../audio/types";
-import { allParams } from "./types";
-import type { BgSettings, ParamValues, PresetDef, Renderer, TransitionState } from "./types";
+import { allParams, DEFAULT_POST } from "./types";
+import type {
+  BgSettings,
+  ParamValues,
+  PostSettings,
+  PresetDef,
+  Renderer,
+  TransitionState,
+} from "./types";
 
 const MAX_PARAMS = 48;
 /** Downsampled waveform points exposed to shaders */
 const WAVE_POINTS = 512;
 /** Uniform struct size in bytes (scalars + vec4 bgColor + sync block) */
 const UNIFORM_SIZE = 112;
+/**
+ * The scene (preset + background + overlay + crossfade) renders into an HDR
+ * intermediate at this format; the post chain then tonemaps/blooms it to the
+ * swapchain. HDR lets bloom's bright-pass see values above 1.
+ */
+const SCENE_FORMAT: GPUTextureFormat = "rgba16float";
+/** Post uniform block: 8 f32 lanes = 32 bytes (16-byte aligned). */
+const POST_UNIFORM_SIZE = 32;
+
+/**
+ * Post-processing WGSL. One module, three entry points sharing a fullscreen
+ * triangle: bright-pass (HDR -> thresholded bloom seed), separable blur, and
+ * the final composite (scene + bloom -> exposure -> ACES -> chromatic ->
+ * vignette -> grain -> swapchain). All effects are pure functions of the
+ * scene texture + track time, so live and export match exactly.
+ */
+const POST_WGSL = /* wgsl */ `
+struct PostU {
+  bloom: f32,
+  bloomThreshold: f32,
+  exposure: f32,
+  tonemap: f32,
+  vignette: f32,
+  grain: f32,
+  chromatic: f32,
+  time: f32,
+}
+@group(0) @binding(0) var srcTex: texture_2d<f32>;
+@group(0) @binding(1) var srcSmp: sampler;
+@group(0) @binding(2) var<uniform> p: PostU;
+@group(0) @binding(3) var bloomTex: texture_2d<f32>;
+
+struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+  var pos = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var out: VSOut;
+  out.pos = vec4f(pos[vi], 0.0, 1.0);
+  out.uv = vec2f(pos[vi].x * 0.5 + 0.5, 1.0 - (pos[vi].y * 0.5 + 0.5));
+  return out;
+}
+
+fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
+
+// Bright-pass: keep the amount each pixel exceeds the threshold.
+@fragment
+fn fs_bright(in: VSOut) -> @location(0) vec4f {
+  let c = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0).rgb;
+  let l = luma(c);
+  let k = max(0.0, l - p.bloomThreshold);
+  let w = k / max(l, 1e-4);
+  return vec4f(c * w, 1.0);
+}
+
+// 9-tap separable Gaussian; horizontal and vertical are separate entry
+// points (fs_blur_h/fs_blur_v) so the direction is a compile-time constant.
+fn blur(in: VSOut, dir: vec2f) -> vec4f {
+  let dims = vec2f(textureDimensions(srcTex, 0));
+  let step = dir / dims;
+  let w = array<f32, 5>(0.227027, 0.194594, 0.121621, 0.054054, 0.016216);
+  var col = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0).rgb * w[0];
+  for (var i = 1; i < 5; i = i + 1) {
+    let o = step * f32(i);
+    col = col + textureSampleLevel(srcTex, srcSmp, in.uv + o, 0.0).rgb * w[i];
+    col = col + textureSampleLevel(srcTex, srcSmp, in.uv - o, 0.0).rgb * w[i];
+  }
+  return vec4f(col, 1.0);
+}
+@fragment
+fn fs_blur_h(in: VSOut) -> @location(0) vec4f { return blur(in, vec2f(1.0, 0.0)); }
+@fragment
+fn fs_blur_v(in: VSOut) -> @location(0) vec4f { return blur(in, vec2f(0.0, 1.0)); }
+
+// ACES filmic approximation (Narkowicz).
+fn aces(x: vec3f) -> vec3f {
+  let a = 2.51; let b = 0.03; let c = 2.43; let d = 0.59; let e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
+}
+fn hash(uv: vec2f) -> f32 {
+  return fract(sin(dot(uv, vec2f(12.9898, 78.233))) * 43758.5453);
+}
+
+@fragment
+fn fs_final(in: VSOut) -> @location(0) vec4f {
+  let center = vec2f(0.5, 0.5);
+  let toC = in.uv - center;
+  // Chromatic aberration: sample RGB along the radial, growing toward edges.
+  var col: vec3f;
+  var a: f32;
+  if (p.chromatic > 0.0) {
+    let off = toC * p.chromatic * 0.03 * dot(toC, toC) * 4.0;
+    let r = textureSampleLevel(srcTex, srcSmp, in.uv + off, 0.0);
+    let g = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0);
+    let bb = textureSampleLevel(srcTex, srcSmp, in.uv - off, 0.0);
+    col = vec3f(r.r, g.g, bb.b);
+    a = g.a;
+  } else {
+    let s = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0);
+    col = s.rgb;
+    a = s.a;
+  }
+  // Additive bloom.
+  if (p.bloom > 0.0) {
+    col = col + textureSampleLevel(bloomTex, srcSmp, in.uv, 0.0).rgb * p.bloom;
+  }
+  // Exposure + tonemap.
+  col = col * p.exposure;
+  if (p.tonemap > 0.5) { col = aces(col); }
+  // Vignette.
+  if (p.vignette > 0.0) {
+    let d = length(toC) * 1.4142;
+    col = col * (1.0 - p.vignette * smoothstep(0.4, 1.0, d));
+  }
+  // Deterministic film grain (track-time seeded, not Math.random).
+  if (p.grain > 0.0) {
+    let n = hash(in.uv + fract(p.time)) - 0.5;
+    col = col + n * p.grain;
+  }
+  return vec4f(col, a);
+}
+`;
 
 /**
  * WebGPU renderer. Fullscreen-triangle pass; the active preset supplies the
@@ -269,6 +398,29 @@ export class WebGPURenderer implements Renderer {
   private blendUniform: GPUBuffer;
   private blendBindGroup: GPUBindGroup | null = null;
 
+  // Render graph: preset draws into sceneTex (HDR); a post chain (bloom +
+  // final composite) reads it and writes the swapchain.
+  private post: PostSettings = { ...DEFAULT_POST };
+  private sceneTex: GPUTexture | null = null;
+  private bloomTexA: GPUTexture | null = null;
+  private bloomTexB: GPUTexture | null = null;
+  private graphSize: [number, number] = [0, 0];
+  private postUniform: GPUBuffer;
+  private postUniformData = new Float32Array(POST_UNIFORM_SIZE / 4);
+  private postSampler: GPUSampler;
+  private brightPipeline: GPURenderPipeline | null = null;
+  private blurHPipeline: GPURenderPipeline | null = null;
+  private blurVPipeline: GPURenderPipeline | null = null;
+  private finalPipeline: GPURenderPipeline | null = null;
+  private emptyBloom: GPUTexture;
+  private postBindLayout: GPUBindGroupLayout;
+  private postPipelineLayout: GPUPipelineLayout;
+  private brightBind: GPUBindGroup | null = null;
+  private blurHBind: GPUBindGroup | null = null;
+  private blurVBind: GPUBindGroup | null = null;
+  private finalBind: GPUBindGroup | null = null;
+  private finalBloomSource: GPUTexture | null = null;
+
   private preset: PresetDef | null = null;
   private uniformData = new ArrayBuffer(UNIFORM_SIZE);
   private uniformF32 = new Float32Array(this.uniformData);
@@ -351,6 +503,36 @@ export class WebGPURenderer implements Renderer {
       size: 16,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.postUniform = device.createBuffer({
+      size: POST_UNIFORM_SIZE,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.postSampler = device.createSampler({
+      magFilter: "linear",
+      minFilter: "linear",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
+    });
+    // 1x1 black stand-in bound as the bloom texture when bloom is off.
+    this.emptyBloom = device.createTexture({
+      size: [1, 1],
+      format: SCENE_FORMAT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    // One explicit layout for every post pass (0 src tex, 1 sampler, 2 uniform,
+    // 3 bloom tex) — an "auto" layout would strip the unused bloom binding
+    // from the bright/blur passes and give each pipeline a different layout.
+    this.postBindLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+      ],
+    });
+    this.postPipelineLayout = device.createPipelineLayout({
+      bindGroupLayouts: [this.postBindLayout],
+    });
     // Explicit layout: presets bind the full ABI even for buffers they don't
     // reference ("auto" layout would strip unused bindings and break the
     // shared bind group).
@@ -397,7 +579,7 @@ export class WebGPURenderer implements Renderer {
     this.transitionPipeline = this.device.createRenderPipeline({
       layout: this.pipelineLayout,
       vertex: { module, entryPoint: "vs_main" },
-      fragment: { module, entryPoint: "fs_main", targets: [{ format: this.format }] },
+      fragment: { module, entryPoint: "fs_main", targets: [{ format: SCENE_FORMAT }] },
       primitive: { topology: "triangle-list" },
     });
     this.transitionPipelineFor = preset.id;
@@ -413,7 +595,7 @@ export class WebGPURenderer implements Renderer {
     const make = () =>
       this.device.createTexture({
         size: [w, h],
-        format: this.format,
+        format: SCENE_FORMAT,
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });
     this.fadeTexA = make();
@@ -425,10 +607,111 @@ export class WebGPURenderer implements Renderer {
       this.blendPipeline = this.device.createRenderPipeline({
         layout: "auto",
         vertex: { module, entryPoint: "vs_main" },
-        fragment: { module, entryPoint: "fs_main", targets: [{ format: this.format }] },
+        fragment: { module, entryPoint: "fs_main", targets: [{ format: SCENE_FORMAT }] },
         primitive: { topology: "triangle-list" },
       });
     }
+  }
+
+  setPost(post: PostSettings): void {
+    this.post = post;
+  }
+
+  /** (Re)create the HDR scene target + half-res bloom targets + post pipelines. */
+  private ensureGraphTargets(): void {
+    const w = Math.max(1, this.canvas.width);
+    const h = Math.max(1, this.canvas.height);
+    if (this.sceneTex && this.graphSize[0] === w && this.graphSize[1] === h) return;
+    this.sceneTex?.destroy();
+    this.bloomTexA?.destroy();
+    this.bloomTexB?.destroy();
+    const tex = (tw: number, th: number) =>
+      this.device.createTexture({
+        size: [Math.max(1, tw), Math.max(1, th)],
+        format: SCENE_FORMAT,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      });
+    this.sceneTex = tex(w, h);
+    const bw = Math.max(1, w >> 1);
+    const bh = Math.max(1, h >> 1);
+    this.bloomTexA = tex(bw, bh);
+    this.bloomTexB = tex(bw, bh);
+    this.graphSize = [w, h];
+    this.brightBind = null;
+    this.blurHBind = null;
+    this.blurVBind = null;
+    this.finalBind = null;
+
+    if (!this.finalPipeline) {
+      const module = this.device.createShaderModule({ code: POST_WGSL });
+      const mk = (entry: string, format: GPUTextureFormat) =>
+        this.device.createRenderPipeline({
+          layout: this.postPipelineLayout,
+          vertex: { module, entryPoint: "vs" },
+          fragment: { module, entryPoint: entry, targets: [{ format }] },
+          primitive: { topology: "triangle-list" },
+        });
+      this.brightPipeline = mk("fs_bright", SCENE_FORMAT);
+      this.blurHPipeline = mk("fs_blur_h", SCENE_FORMAT);
+      this.blurVPipeline = mk("fs_blur_v", SCENE_FORMAT);
+      this.finalPipeline = mk("fs_final", this.format);
+    }
+  }
+
+  /** A post-pass bind group: src texture + optional bloom texture. */
+  private postBind(src: GPUTexture, bloom: GPUTexture): GPUBindGroup {
+    return this.device.createBindGroup({
+      layout: this.postBindLayout,
+      entries: [
+        { binding: 0, resource: src.createView() },
+        { binding: 1, resource: this.postSampler },
+        { binding: 2, resource: { buffer: this.postUniform } },
+        { binding: 3, resource: bloom.createView() },
+      ],
+    });
+  }
+
+  /** Run bloom (if enabled) + the final composite, appending to `encoder`. */
+  private runPost(encoder: GPUCommandEncoder, time: number, clearA: number): void {
+    const d = this.postUniformData;
+    d[0] = this.post.bloom;
+    d[1] = this.post.bloomThreshold;
+    d[2] = this.post.exposure;
+    d[3] = this.post.tonemap ? 1 : 0;
+    d[4] = this.post.vignette;
+    d[5] = this.post.grain;
+    d[6] = this.post.chromatic;
+    d[7] = time;
+    this.device.queue.writeBuffer(this.postUniform, 0, d);
+
+    const pass = (pipe: GPURenderPipeline, bind: GPUBindGroup, view: GPUTextureView) => {
+      const rp = encoder.beginRenderPass({
+        colorAttachments: [
+          { view, loadOp: "clear", clearValue: { r: 0, g: 0, b: 0, a: clearA }, storeOp: "store" },
+        ],
+      });
+      rp.setPipeline(pipe);
+      rp.setBindGroup(0, bind);
+      rp.draw(3);
+      rp.end();
+    };
+
+    let bloomSource = this.emptyBloom;
+    if (this.post.bloom > 0) {
+      // bright: scene -> bloomA; blurH: bloomA -> bloomB; blurV: bloomB -> bloomA
+      if (!this.brightBind) this.brightBind = this.postBind(this.sceneTex!, this.emptyBloom);
+      if (!this.blurHBind) this.blurHBind = this.postBind(this.bloomTexA!, this.emptyBloom);
+      if (!this.blurVBind) this.blurVBind = this.postBind(this.bloomTexB!, this.emptyBloom);
+      pass(this.brightPipeline!, this.brightBind, this.bloomTexA!.createView());
+      pass(this.blurHPipeline!, this.blurHBind, this.bloomTexB!.createView());
+      pass(this.blurVPipeline!, this.blurVBind, this.bloomTexA!.createView());
+      bloomSource = this.bloomTexA!;
+    }
+    if (!this.finalBind || this.finalBloomSource !== bloomSource) {
+      this.finalBind = this.postBind(this.sceneTex!, bloomSource);
+      this.finalBloomSource = bloomSource;
+    }
+    pass(this.finalPipeline!, this.finalBind, this.context.getCurrentTexture().createView());
   }
 
   setOverlay(source: ImageBitmap | null): void {
@@ -490,7 +773,7 @@ export class WebGPURenderer implements Renderer {
       fragment: {
         module,
         entryPoint: "fs_main",
-        targets: [{ format: this.format }],
+        targets: [{ format: SCENE_FORMAT }], // preset draws into the HDR scene target
       },
       primitive: { topology: "triangle-list" },
     });
@@ -574,6 +857,8 @@ export class WebGPURenderer implements Renderer {
       );
       this.ensureFadeTargets();
     }
+    this.ensureGraphTargets();
+    const scene = this.sceneTex!.createView();
 
     const encoder = this.device.createCommandEncoder();
     const drawPass = (
@@ -592,16 +877,12 @@ export class WebGPURenderer implements Renderer {
       pass.end();
     };
 
+    // Scene pass: preset (or crossfade blend) draws into the HDR scene target.
     if (!fading) {
-      drawPass(this.pipeline, this.getBindGroup(), this.context.getCurrentTexture().createView());
+      drawPass(this.pipeline, this.getBindGroup(), scene);
     } else {
-      // Incoming (active) → A, outgoing → B, then blend to the canvas
       drawPass(this.pipeline, this.getBindGroup(), this.fadeTexA!.createView());
-      drawPass(
-        this.transitionPipeline!,
-        this.getTransitionBindGroup(),
-        this.fadeTexB!.createView(),
-      );
+      drawPass(this.transitionPipeline!, this.getTransitionBindGroup(), this.fadeTexB!.createView());
       if (!this.blendBindGroup) {
         this.blendBindGroup = this.device.createBindGroup({
           layout: this.blendPipeline!.getBindGroupLayout(0),
@@ -613,21 +894,11 @@ export class WebGPURenderer implements Renderer {
           ],
         });
       }
-      const pass = encoder.beginRenderPass({
-        colorAttachments: [
-          {
-            view: this.context.getCurrentTexture().createView(),
-            loadOp: "clear",
-            clearValue: { r: 0, g: 0, b: 0, a: clearA },
-            storeOp: "store",
-          },
-        ],
-      });
-      pass.setPipeline(this.blendPipeline!);
-      pass.setBindGroup(0, this.blendBindGroup);
-      pass.draw(3);
-      pass.end();
+      drawPass(this.blendPipeline!, this.blendBindGroup, scene);
     }
+
+    // Post pass: bloom + tonemap/vignette/grain/chromatic -> swapchain.
+    this.runPost(encoder, time, clearA);
     this.device.queue.submit([encoder.finish()]);
   }
 
@@ -665,6 +936,11 @@ export class WebGPURenderer implements Renderer {
     this.blendUniform.destroy();
     this.fadeTexA?.destroy();
     this.fadeTexB?.destroy();
+    this.postUniform.destroy();
+    this.emptyBloom.destroy();
+    this.sceneTex?.destroy();
+    this.bloomTexA?.destroy();
+    this.bloomTexB?.destroy();
     this.device.destroy();
   }
 

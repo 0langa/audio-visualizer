@@ -15,6 +15,15 @@ function doc(marker: number): ProjectDocument {
     modsByPreset: {},
     smoothSpectrum: false,
     timeline: { enabled: false, scenes: [], lanes: [] },
+    post: {
+      bloom: 0,
+      bloomThreshold: 1,
+      exposure: 1,
+      tonemap: false,
+      vignette: 0,
+      grain: 0,
+      chromatic: 0,
+    },
   };
 }
 

@@ -73,6 +73,33 @@ export interface BgSettings {
   color: [number, number, number];
 }
 
+/** Post-processing settings — all-neutral defaults render identically to raw. */
+export interface PostSettings {
+  /** Bloom intensity 0..1 (0 = off). */
+  bloom: number;
+  /** Luma above this blooms (0.6..1.4). */
+  bloomThreshold: number;
+  /** Linear exposure multiply before tonemap (1 = neutral). */
+  exposure: number;
+  /** ACES filmic tonemap on/off. */
+  tonemap: boolean;
+  /** Corner darkening 0..1. */
+  vignette: number;
+  /** Film grain 0..~0.3 (deterministic — seeded from track time). */
+  grain: number;
+  /** Chromatic aberration 0..1 (RGB split toward the edges). */
+  chromatic: number;
+}
+export const DEFAULT_POST: PostSettings = {
+  bloom: 0,
+  bloomThreshold: 1,
+  exposure: 1,
+  tonemap: false,
+  vignette: 0,
+  grain: 0,
+  chromatic: 0,
+};
+
 /** Crossfade input: the outgoing setup's params and the 0..1 blend. */
 export interface TransitionState {
   params: ParamValues;
@@ -100,6 +127,8 @@ export interface Renderer {
   setOverlay(source: ImageBitmap | null): void;
   /** Global smooth-spectrum toggle: spline-connected bins, no hard corners. */
   setSmoothSpectrum(v: boolean): void;
+  /** Post-processing chain (bloom, tonemap, vignette, grain, chromatic). */
+  setPost(post: PostSettings): void;
   dispose(): void;
 }
 

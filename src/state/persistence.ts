@@ -11,6 +11,8 @@ import {
   type Aspect,
 } from "./project";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
+import { validPost } from "./project";
+import type { PostSettings } from "../render/types";
 import { validTimeline, type Timeline } from "./timeline";
 
 /**
@@ -102,6 +104,15 @@ export function saveStoredOverlay(
 }
 
 const LS_ASPECT = "viz.aspect.v1";
+const LS_POST = "viz.post.v1";
+
+export function loadStoredPost(): PostSettings {
+  return validPost(readJson(LS_POST, null));
+}
+
+export function saveStoredPost(post: PostSettings): void {
+  localStorage.setItem(LS_POST, JSON.stringify(post));
+}
 const LS_MODS = "viz.mods.v1";
 const LS_TIMELINE = "viz.timeline.v1";
 

@@ -5,6 +5,7 @@ import { runExportJob, type ExportCoreResult, type ExportJob } from "./exportCor
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
+import type { PostSettings } from "../render/types";
 
 /**
  * Main-thread export API. Spawns the export worker (UI stays fluid), falls
@@ -39,6 +40,8 @@ export interface ExportOptions {
   mods?: ModRoute[];
   /** Spline-connected spectrum sampling toggle. */
   smoothSpectrum?: boolean;
+  /** Post-processing chain. */
+  post?: PostSettings;
   /** Timeline in TRACK time; segment exports shift it automatically. */
   timeline?: Timeline;
   /** Per-preset param overrides for scene base resolution. */
@@ -147,6 +150,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     overlay: o.overlay,
     mods: o.mods,
     smoothSpectrum: o.smoothSpectrum,
+    post: o.post,
     paramsByPreset: o.paramsByPreset,
     modsByPreset: o.modsByPreset,
     timeline:

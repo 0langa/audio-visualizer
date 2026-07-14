@@ -1,6 +1,6 @@
 import type { SyncSettings } from "../audio/types";
-import type { BgSettings, ParamValues } from "../render/types";
-import { BG_PRESET, BG_SOLID, BG_TRANSPARENT } from "../render/types";
+import type { BgSettings, ParamValues, PostSettings } from "../render/types";
+import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, DEFAULT_POST } from "../render/types";
 import { presets } from "../render/presets";
 import type { OverlayAsset, OverlayLayer, OverlayAnchor } from "../render/overlay";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
@@ -15,10 +15,11 @@ import { validTimeline, type Timeline } from "./timeline";
  *    a file from a newer app with more presets still opens).
  *
  * History: v1 = preset/params/sync/bg · v2 (+) overlay layers + assets ·
- * v3 (+) modulation-matrix routes · v4 (+) timeline (scenes + automation)
+ * v3 (+) modulation-matrix routes · v4 (+) timeline (scenes + automation) ·
+ * v5 (+) post-processing (bloom/tonemap/vignette/grain/chromatic)
  */
 
-export const PROJECT_VERSION = 4;
+export const PROJECT_VERSION = 5;
 export const PROJECT_EXTENSION = "avproj";
 
 /** Frame aspect: "free" fills the window; fixed ratios letterbox the stage. */
@@ -42,6 +43,7 @@ export interface ProjectDocument {
   modsByPreset: Record<string, ModRoute[]>;
   smoothSpectrum: boolean;
   timeline: Timeline;
+  post: PostSettings;
 }
 
 export interface ProjectFile {
@@ -105,6 +107,22 @@ export function parseProject(json: string): ProjectDocument {
     modsByPreset: validModsByPreset(doc.modsByPreset),
     smoothSpectrum: doc.smoothSpectrum === true,
     timeline: validTimeline(doc.timeline),
+    post: validPost(doc.post),
+  };
+}
+
+export function validPost(v: unknown): PostSettings {
+  const p = (typeof v === "object" && v !== null ? v : {}) as Partial<PostSettings>;
+  const n = (x: unknown, def: number, lo: number, hi: number) =>
+    typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : def;
+  return {
+    bloom: n(p.bloom, DEFAULT_POST.bloom, 0, 1),
+    bloomThreshold: n(p.bloomThreshold, DEFAULT_POST.bloomThreshold, 0.4, 1.6),
+    exposure: n(p.exposure, DEFAULT_POST.exposure, 0.2, 3),
+    tonemap: p.tonemap === true,
+    vignette: n(p.vignette, DEFAULT_POST.vignette, 0, 1),
+    grain: n(p.grain, DEFAULT_POST.grain, 0, 0.5),
+    chromatic: n(p.chromatic, DEFAULT_POST.chromatic, 0, 1),
   };
 }
 

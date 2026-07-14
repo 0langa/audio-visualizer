@@ -42,6 +42,10 @@ export class Canvas2DRenderer implements Renderer {
     // Fallback renderer hard-cuts between scenes.
   }
 
+  setPost(): void {
+    // Fallback renderer has no post-processing chain.
+  }
+
   resize(width: number, height: number, dpr: number): void {
     const w = Math.max(1, Math.floor(width * dpr));
     const h = Math.max(1, Math.floor(height * dpr));

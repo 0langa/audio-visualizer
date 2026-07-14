@@ -79,6 +79,7 @@ export default function App() {
   const trackKey = useVizStore((s) => s.trackKey);
   const activeMods = useVizStore((s) => s.activeMods);
   const smoothSpectrum = useVizStore((s) => s.smoothSpectrum);
+  const post = useVizStore((s) => s.post);
   const sections = useVizStore((s) => s.sections);
   const timeline = useVizStore((s) => s.timeline);
   const showTimeline = useVizStore((s) => s.showTimeline);
@@ -210,6 +211,7 @@ export default function App() {
         fps: number;
         withOverlay: boolean;
         canvasLoop: { start: number; duration: number };
+        post: import("./render/types").PostSettings;
       }> = {},
     ) => {
       const buf = getEngine().audioBuffer;
@@ -246,6 +248,7 @@ export default function App() {
         beatGrid: s.beatGrid ?? undefined,
         mods: s.activeMods,
         smoothSpectrum: s.smoothSpectrum,
+        post: opts.post ?? s.post,
         timeline: s.timeline.enabled ? s.timeline : undefined,
         paramsByPreset: s.paramsByPreset,
         modsByPreset: s.modsByPreset,
@@ -456,6 +459,8 @@ export default function App() {
           onRemoveLayer={(id) => store().removeOverlayLayer(id)}
           smoothSpectrum={smoothSpectrum}
           onSmoothSpectrum={(v) => store().setSmoothSpectrum(v)}
+          post={post}
+          onPost={(patch) => store().setPost(patch)}
           mods={activeMods}
           onAddMod={(source, param) => store().addModRoute(source, param)}
           onUpdateMod={(id, patch) => store().updateModRoute(id, patch)}

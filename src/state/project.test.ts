@@ -62,6 +62,15 @@ const doc: ProjectDocument = {
       },
     ],
   },
+  post: {
+    bloom: 0.5,
+    bloomThreshold: 0.9,
+    exposure: 1.2,
+    tonemap: true,
+    vignette: 0.3,
+    grain: 0.05,
+    chromatic: 0.2,
+  },
 };
 
 describe("project files (.avproj)", () => {
@@ -73,7 +82,7 @@ describe("project files (.avproj)", () => {
   it("stamps metadata", () => {
     const file = JSON.parse(serializeProject(doc, "1.2.0"));
     expect(file.kind).toBe("avproj");
-    expect(file.schemaVersion).toBe(4);
+    expect(file.schemaVersion).toBe(5);
     expect(file.appVersion).toBe("1.2.0");
     expect(typeof file.savedAt).toBe("string");
   });
@@ -101,11 +110,14 @@ describe("project files (.avproj)", () => {
     delete file.document.aspect;
     delete file.document.modsByPreset;
     delete file.document.timeline;
+    delete file.document.post;
     const parsed = parseProject(JSON.stringify(file));
     expect(parsed.overlayLayers).toEqual([]);
     expect(parsed.assets).toEqual({});
     expect(parsed.aspect).toBe("free"); // v1 default
     expect(parsed.modsByPreset).toEqual({}); // pre-v3 default
+    expect(parsed.post.bloom).toBe(0); // pre-v5 default (neutral)
+    expect(parsed.post.exposure).toBe(1);
     expect(parsed.presetId).toBe(doc.presetId);
   });
 

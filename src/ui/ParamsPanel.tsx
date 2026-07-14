@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { SyncMode, SyncSettings } from "../audio/types";
-import type { BgMode, BgSettings, ParamSpec, ParamValues, PresetDef } from "../render/types";
-import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, defaultParams } from "../render/types";
+import type {
+  BgMode,
+  BgSettings,
+  ParamSpec,
+  ParamValues,
+  PostSettings,
+  PresetDef,
+} from "../render/types";
+import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, DEFAULT_POST, defaultParams } from "../render/types";
 import type { UserPreset } from "../state/userPresets";
 import { ASPECTS, type Aspect } from "../state/project";
 import type { ImageLayer, OverlayAsset, OverlayLayer, TextLayer } from "../render/overlay";
@@ -66,6 +73,65 @@ const BG_OPTIONS: Array<{ mode: BgMode; label: string; hint: string }> = [
     mode: BG_TRANSPARENT,
     label: "Transparent",
     hint: "See-through background (checkerboard preview); MP4 exports render it black",
+  },
+];
+
+type PostNumKey = "bloom" | "bloomThreshold" | "exposure" | "vignette" | "grain" | "chromatic";
+const POST_SLIDERS: Array<{
+  key: PostNumKey;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  hint: string;
+}> = [
+  {
+    key: "exposure",
+    label: "Exposure",
+    min: 0.2,
+    max: 3,
+    step: 0.01,
+    hint: "Overall brightness before tonemapping — 1 is neutral, higher lifts the whole image",
+  },
+  {
+    key: "bloom",
+    label: "Bloom",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hint: "Soft glow bleeding out of bright areas — the signature 'lit' look",
+  },
+  {
+    key: "bloomThreshold",
+    label: "Bloom threshold",
+    min: 0.4,
+    max: 1.6,
+    step: 0.01,
+    hint: "Only luma above this glows — lower catches more of the image, higher keeps it to highlights",
+  },
+  {
+    key: "vignette",
+    label: "Vignette",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hint: "Darkens the corners to draw the eye inward",
+  },
+  {
+    key: "chromatic",
+    label: "Chromatic",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hint: "RGB split toward the edges — a lens/analog fringe",
+  },
+  {
+    key: "grain",
+    label: "Film grain",
+    min: 0,
+    max: 0.5,
+    step: 0.01,
+    hint: "Deterministic film grain — identical in preview and export",
   },
 ];
 
@@ -141,6 +207,8 @@ export function ParamsPanel(props: {
   onRemoveLayer: (id: string) => void;
   smoothSpectrum: boolean;
   onSmoothSpectrum: (v: boolean) => void;
+  post: PostSettings;
+  onPost: (patch: Partial<PostSettings>) => void;
   mods: ModRoute[];
   onAddMod: (source: ModSource, param: string) => void;
   onUpdateMod: (id: string, patch: Partial<ModRoute>) => void;
@@ -158,6 +226,9 @@ export function ParamsPanel(props: {
       return !v;
     });
   };
+  const postChanged = (Object.keys(DEFAULT_POST) as Array<keyof PostSettings>).some(
+    (k) => props.post[k] !== DEFAULT_POST[k],
+  );
   const advanced = props.preset.advanced ?? [];
   const changedCount = advanced.filter(
     (p) => (props.params[p.key] ?? p.default) !== p.default,
@@ -520,6 +591,62 @@ export function ParamsPanel(props: {
               over black; use solid green/magenta for editor keying.
             </p>
           )}
+        </section>
+
+        <section className="panel-section">
+          <div className="section-head">
+            <span className="section-title">Post</span>
+            {postChanged && (
+              <button
+                className="text-btn"
+                title="Turn off all post-processing (neutral)"
+                onClick={() => props.onPost({ ...DEFAULT_POST })}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <label
+            className="row toggle-row"
+            title="ACES filmic tonemap — filmic contrast/rolloff on highlights"
+            onPointerEnter={() =>
+              setHint("Filmic (ACES) tonemap — cinematic contrast and highlight rolloff")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Filmic tonemap</span>
+            <button
+              className={`switch ${props.post.tonemap ? "on" : ""}`}
+              role="switch"
+              aria-checked={props.post.tonemap}
+              onClick={() => props.onPost({ tonemap: !props.post.tonemap })}
+            >
+              <span className="knob" />
+            </button>
+          </label>
+          {POST_SLIDERS.map((r) => (
+            <label
+              key={r.key}
+              className="row param-row"
+              title={r.hint}
+              onPointerEnter={() => setHint(r.hint)}
+              onPointerLeave={() => setHint(null)}
+            >
+              <span className="row-label">{r.label}</span>
+              <Slider
+                min={r.min}
+                max={r.max}
+                step={r.step}
+                value={props.post[r.key]}
+                onChange={(v) => props.onPost({ [r.key]: v })}
+              />
+              <span className="row-value">{props.post[r.key].toFixed(2)}</span>
+            </label>
+          ))}
+          <p className="section-hint">
+            Finishing pass applied to the whole frame — grain is deterministic, so preview and
+            export match exactly.
+          </p>
         </section>
 
         <LayersPanel
