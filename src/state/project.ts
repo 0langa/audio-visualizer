@@ -186,7 +186,14 @@ export function validSyncByPreset(v: unknown): Record<string, SyncSettings> {
       typeof s.smooth === "number" &&
       Number.isFinite(s.smooth)
     ) {
-      out[presetId] = { mode: s.mode, smooth: Math.min(1, Math.max(0, s.smooth)) };
+      const clamp01 = (x: unknown) =>
+        typeof x === "number" && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : undefined;
+      out[presetId] = {
+        mode: s.mode,
+        smooth: Math.min(1, Math.max(0, s.smooth)),
+        attack: clamp01(s.attack),
+        release: clamp01(s.release),
+      };
     }
   }
   return out;

@@ -291,6 +291,10 @@ export class FeaturePipeline {
 
   private updateSync(f: AudioFeatures, mag: Float32Array, dt: number, playing: boolean): void {
     const { mode, smooth } = this.sync;
+    // Attack/Release fall back to the overall smoothing macro when unset, so
+    // existing projects behave identically. Both are 0 (instant) .. 1 (slow).
+    const atkK = this.sync.attack ?? smooth;
+    const relK = this.sync.release ?? smooth;
 
     // Raw drive value for the selected source
     let raw: number;
@@ -320,9 +324,11 @@ export class FeaturePipeline {
         break;
     }
 
-    // Smoothing knob: 0 = snappy (fast attack/release), 1 = long glide
-    const attack = 1 - Math.exp(-dt * (30 - smooth * 26));
-    const release = 1 - Math.exp(-dt * (10 - smooth * 8.5));
+    // Smoothing: 0 = snappy, 1 = long glide. Attack (rise) and release (fall)
+    // can be tuned independently — e.g. fast attack + slow release for punchy
+    // hits that ease out.
+    const attack = 1 - Math.exp(-dt * (30 - atkK * 26));
+    const release = 1 - Math.exp(-dt * (10 - relK * 8.5));
     this.driveValue += (raw - this.driveValue) * (raw > this.driveValue ? attack : release);
     f.drive = this.driveValue;
 

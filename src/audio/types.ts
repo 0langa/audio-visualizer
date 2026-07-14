@@ -57,8 +57,13 @@ export type SyncMode =
 
 export interface SyncSettings {
   mode: SyncMode;
-  /** 0 = instant/punchy, 1 = very smooth */
+  /** Overall response macro: 0 = instant/punchy, 1 = very smooth. Also the
+   * fallback for attack/release when those are not set. */
   smooth: number;
+  /** How fast the reaction rises (0 = instant, 1 = slow). Falls back to smooth. */
+  attack?: number;
+  /** How fast the reaction falls (0 = instant, 1 = long glide). Falls back to smooth. */
+  release?: number;
 }
 
 export const DEFAULT_SYNC: SyncSettings = { mode: "kick", smooth: 0.5 };

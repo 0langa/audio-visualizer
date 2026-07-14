@@ -504,9 +504,11 @@ export function ParamsPanel(props: {
           </div>
           <label
             className="row param-row"
-            title="0 = punchy and instant, 1 = long smooth glides"
+            title="Overall smoothing — 0 = punchy and instant, 1 = long smooth glides. Sets both attack and release."
             onPointerEnter={() =>
-              setHint("How smoothly the visuals follow the source — 0 = punchy, 1 = long glides")
+              setHint(
+                "Overall response — 0 = punchy, 1 = long glides. Sets attack + release together",
+              )
             }
             onPointerLeave={() => setHint(null)}
           >
@@ -516,9 +518,49 @@ export function ParamsPanel(props: {
               max={1}
               step={0.01}
               value={props.sync.smooth}
-              onChange={(v) => props.onSync({ ...props.sync, smooth: v })}
+              onChange={(v) =>
+                props.onSync({ ...props.sync, smooth: v, attack: undefined, release: undefined })
+              }
             />
             <span className="row-value">{props.sync.smooth.toFixed(2)}</span>
+          </label>
+          <label
+            className="row param-row"
+            title="How fast the visuals rise on a hit — 0 = instant, 1 = slow swell"
+            onPointerEnter={() =>
+              setHint("Attack — how fast the reaction rises on a hit (0 = instant, 1 = slow)")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Attack</span>
+            <Slider
+              min={0}
+              max={1}
+              step={0.01}
+              value={props.sync.attack ?? props.sync.smooth}
+              onChange={(v) => props.onSync({ ...props.sync, attack: v })}
+            />
+            <span className="row-value">{(props.sync.attack ?? props.sync.smooth).toFixed(2)}</span>
+          </label>
+          <label
+            className="row param-row"
+            title="How slowly the visuals fall after a hit — 0 = instant, 1 = long glide out"
+            onPointerEnter={() =>
+              setHint("Release — how slowly the reaction falls after a hit (0 = instant, 1 = long)")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Release</span>
+            <Slider
+              min={0}
+              max={1}
+              step={0.01}
+              value={props.sync.release ?? props.sync.smooth}
+              onChange={(v) => props.onSync({ ...props.sync, release: v })}
+            />
+            <span className="row-value">
+              {(props.sync.release ?? props.sync.smooth).toFixed(2)}
+            </span>
           </label>
           <label
             className="row toggle-row"
