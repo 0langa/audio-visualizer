@@ -172,7 +172,7 @@ struct Uniforms {
   snare: f32,
   hat: f32,
   smoothBins: f32,
-  _pad4: f32,
+  feedbackOn: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> bins: array<f32>;
@@ -181,8 +181,17 @@ struct Uniforms {
 @group(0) @binding(4) var<storage, read> waveform: array<f32>;
 @group(0) @binding(5) var overlayTex: texture_2d<f32>;
 @group(0) @binding(6) var overlaySmp: sampler;
+@group(0) @binding(7) var feedbackTex: texture_2d<f32>;
 
 fn param(i: u32) -> f32 { return params[i]; }
+
+/** Previous frame's raw visual (HDR), for trails/feedback. A preset that
+ * calls this opts into the feedback path: its output is captured and fed back
+ * next frame. Off-screen samples clamp to the edge. Deterministic — same
+ * frame sequence in live and export yields the same trails. */
+fn feedbackSample(uv: vec2f) -> vec4f {
+  return textureSampleLevel(feedbackTex, overlaySmp, clamp(uv, vec2f(0.0), vec2f(1.0)), 0.0);
+}
 
 fn catmullRom(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
   let t2 = t * t;
@@ -306,13 +315,30 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
   out.uv = vec2f(pos[vi].x * 0.5 + 0.5, 1.0 - (pos[vi].y * 0.5 + 0.5));
   return out;
 }
+`;
 
+/** The preset scene entry point. Split out of HEADER because it references
+ * preset() — only preset modules (HEADER + COMPOSITE_BODY + FS_MAIN + preset)
+ * define preset(); the standalone composite module must NOT include it. */
+const FS_MAIN = /* wgsl */ `
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
-  var out = preset(in.uv);
-  // Central background compositing: presets author light-over-black
-  // (premultiplied form), so a luma-derived alpha lets us re-base them on
-  // any background or none — without touching preset code.
+  let out = preset(in.uv);
+  // Feedback path: emit the raw visual; a separate composite pass applies the
+  // background + overlay after the frame is captured for trails. Keeps the
+  // fed-back buffer free of background/overlay so trails don't accumulate them.
+  if (u.feedbackOn > 0.5) { return out; }
+  return composite(out, in.uv);
+}
+`;
+
+/** Background re-basing + overlay source-over. Shared by the inline path
+ * (fs_main, non-feedback) and the standalone composite pass (feedback path)
+ * so both produce identical pixels. Presets author light-over-black
+ * (premultiplied), so a luma-derived alpha re-bases them on any background. */
+const COMPOSITE_BODY = /* wgsl */ `
+fn composite(color: vec4f, uv: vec2f) -> vec4f {
+  var out = color;
   if (u.bgMode != 0u) {
     let a = clamp(max(out.r, max(out.g, out.b)), 0.0, 1.0);
     if (u.bgMode == 1u) {
@@ -321,11 +347,21 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
       out = vec4f(out.rgb, a); // premultiplied alpha
     }
   }
-  // Overlay (text/logo layers): premultiplied source-over on top of
-  // everything. The default is a 1x1 transparent texture — a no-op.
-  let ov = textureSampleLevel(overlayTex, overlaySmp, in.uv, 0.0);
+  let ov = textureSampleLevel(overlayTex, overlaySmp, uv, 0.0);
   out = vec4f(ov.rgb + out.rgb * (1.0 - ov.a), min(1.0, ov.a + out.a * (1.0 - ov.a)));
   return out;
+}
+`;
+
+/** Standalone composite pass (feedback path). Reuses the full preset ABI
+ * (HEADER + COMPOSITE_BODY) and pipeline layout: binding 7 (feedbackTex) is
+ * bound to the just-rendered raw visual for this pass, so `composite()`,
+ * `u`, and the overlay are all in scope with no extra bindings. */
+const COMPOSITE_WGSL = /* wgsl */ `
+@fragment
+fn fs_composite(in: VSOut) -> @location(0) vec4f {
+  let raw = textureSampleLevel(feedbackTex, overlaySmp, in.uv, 0.0);
+  return composite(raw, in.uv);
 }
 `;
 
@@ -357,6 +393,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
   return mix(a, b, bu.mixv);
 }
 `;
+
+/** A preset opts into the feedback/trails path by referencing the ABI helper. */
+function usesFeedback(preset: PresetDef): boolean {
+  return preset.wgsl.includes("feedbackSample");
+}
 
 export class WebGPURenderer implements Renderer {
   readonly kind = "webgpu" as const;
@@ -420,6 +461,20 @@ export class WebGPURenderer implements Renderer {
   private blurVBind: GPUBindGroup | null = null;
   private finalBind: GPUBindGroup | null = null;
   private finalBloomSource: GPUTexture | null = null;
+
+  // Feedback/trails: presets that call feedbackSample() render their raw
+  // visual into visTex; a composite pass finishes it into sceneTex, and the
+  // raw visual is copied into histTex to feed back next frame. Gated per
+  // preset (WGSL scan) so non-feedback presets keep the byte-identical inline
+  // composite path with zero extra passes.
+  private presetUsesFeedback = false;
+  private feedbackClearPending = false;
+  private visTex: GPUTexture | null = null;
+  private histTex: GPUTexture | null = null;
+  private feedbackSize: [number, number] = [0, 0];
+  private emptyFeedback: GPUTexture;
+  private compositePipeline: GPURenderPipeline | null = null;
+  private compositeBind: GPUBindGroup | null = null;
 
   private preset: PresetDef | null = null;
   private uniformData = new ArrayBuffer(UNIFORM_SIZE);
@@ -519,6 +574,13 @@ export class WebGPURenderer implements Renderer {
       format: SCENE_FORMAT,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
     });
+    // 1x1 black stand-in bound at binding 7 when the active preset has no
+    // feedback (keeps the shared bind layout satisfied without a history tex).
+    this.emptyFeedback = device.createTexture({
+      size: [1, 1],
+      format: SCENE_FORMAT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
     // One explicit layout for every post pass (0 src tex, 1 sampler, 2 uniform,
     // 3 bloom tex) — an "auto" layout would strip the unused bloom binding
     // from the bright/blur passes and give each pipeline a different layout.
@@ -546,6 +608,7 @@ export class WebGPURenderer implements Renderer {
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: storage },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
         { binding: 6, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
       ],
     });
     this.pipelineLayout = device.createPipelineLayout({
@@ -574,7 +637,7 @@ export class WebGPURenderer implements Renderer {
       .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
       .join("\n");
     const module = this.device.createShaderModule({
-      code: HEADER + accessors + "\n" + preset.wgsl,
+      code: HEADER + COMPOSITE_BODY + FS_MAIN + accessors + "\n" + preset.wgsl,
     });
     this.transitionPipeline = this.device.createRenderPipeline({
       layout: this.pipelineLayout,
@@ -658,6 +721,66 @@ export class WebGPURenderer implements Renderer {
     }
   }
 
+  /** (Re)create the feedback targets (raw visual + history) and the composite
+   * pipeline. visTex is the preset's raw output this frame; histTex holds the
+   * previous frame's raw visual for feedbackSample(). */
+  private ensureFeedbackTargets(): void {
+    const w = Math.max(1, this.canvas.width);
+    const h = Math.max(1, this.canvas.height);
+    if (!this.compositePipeline) {
+      const module = this.device.createShaderModule({
+        code: HEADER + COMPOSITE_BODY + COMPOSITE_WGSL,
+      });
+      this.compositePipeline = this.device.createRenderPipeline({
+        layout: this.pipelineLayout,
+        vertex: { module, entryPoint: "vs_main" },
+        fragment: { module, entryPoint: "fs_composite", targets: [{ format: SCENE_FORMAT }] },
+        primitive: { topology: "triangle-list" },
+      });
+    }
+    if (this.visTex && this.feedbackSize[0] === w && this.feedbackSize[1] === h) return;
+    this.visTex?.destroy();
+    this.histTex?.destroy();
+    const make = () =>
+      this.device.createTexture({
+        size: [w, h],
+        format: SCENE_FORMAT,
+        usage:
+          GPUTextureUsage.RENDER_ATTACHMENT |
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_SRC |
+          GPUTextureUsage.COPY_DST,
+      });
+    this.visTex = make();
+    this.histTex = make();
+    this.feedbackSize = [w, h];
+    this.feedbackClearPending = true; // fresh targets hold garbage
+    this.compositeBind = null;
+    this.bindGroup = null; // binding 7 (histTex view) changed
+    this.transitionBindGroup = null;
+  }
+
+  /** Composite-pass bind group: full ABI, but binding 7 = the freshly-rendered
+   * raw visual (visTex) instead of the history texture. */
+  private getCompositeBindGroup(): GPUBindGroup {
+    if (!this.compositeBind) {
+      this.compositeBind = this.device.createBindGroup({
+        layout: this.bindLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuf } },
+          { binding: 1, resource: { buffer: this.binsBuf! } },
+          { binding: 2, resource: { buffer: this.peaksBuf! } },
+          { binding: 3, resource: { buffer: this.paramsBuf } },
+          { binding: 4, resource: { buffer: this.waveBuf } },
+          { binding: 5, resource: (this.overlayTexture ?? this.emptyOverlay).createView() },
+          { binding: 6, resource: this.overlaySampler },
+          { binding: 7, resource: this.visTex!.createView() },
+        ],
+      });
+    }
+    return this.compositeBind;
+  }
+
   /** A post-pass bind group: src texture + optional bloom texture. */
   private postBind(src: GPUTexture, bloom: GPUTexture): GPUBindGroup {
     return this.device.createBindGroup({
@@ -738,6 +861,7 @@ export class WebGPURenderer implements Renderer {
     }
     this.bindGroup = null; // rebind with the new texture view
     this.transitionBindGroup = null;
+    this.compositeBind = null; // composite pass also samples the overlay
   }
 
   /** Resolves when all submitted GPU work has executed (export frame sync). */
@@ -747,6 +871,10 @@ export class WebGPURenderer implements Renderer {
 
   setPreset(preset: PresetDef): void {
     this.preset = preset;
+    // Feedback is opt-in per preset (WGSL references feedbackSample). A new
+    // preset must not inherit the previous one's trails, so clear the history.
+    this.presetUsesFeedback = usesFeedback(preset);
+    this.feedbackClearPending = true;
     // Generate named accessors (P_<key>) for every param in ABI order so
     // preset WGSL never touches raw indices.
     const specs = allParams(preset);
@@ -757,7 +885,7 @@ export class WebGPURenderer implements Renderer {
       .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
       .join("\n");
     const module = this.device.createShaderModule({
-      code: HEADER + accessors + "\n" + preset.wgsl,
+      code: HEADER + COMPOSITE_BODY + FS_MAIN + accessors + "\n" + preset.wgsl,
     });
     // Surface WGSL mistakes during preset development
     void module.getCompilationInfo().then((info) => {
@@ -820,6 +948,12 @@ export class WebGPURenderer implements Renderer {
     this.uniformF32[24] = f.snare;
     this.uniformF32[25] = f.hat;
     this.uniformF32[26] = this.smoothBins ? 1 : 0;
+    // Feedback path is active only when the preset opts in AND we're not
+    // mid-crossfade (feedback pauses during transitions). fs_main branches on
+    // this: 1 => emit raw visual for the composite pass, 0 => inline composite.
+    const fading = !!(transition && this.transitionPipeline && this.transitionPreset);
+    const useFeedback = this.presetUsesFeedback && !fading;
+    this.uniformF32[27] = useFeedback ? 1 : 0;
     this.device.queue.writeBuffer(this.uniformBuf, 0, this.uniformData);
     this.device.queue.writeBuffer(this.binsBuf!, 0, f.bins);
     this.device.queue.writeBuffer(this.peaksBuf!, 0, f.peaks);
@@ -842,7 +976,6 @@ export class WebGPURenderer implements Renderer {
     this.device.queue.writeBuffer(this.paramsBuf, 0, this.paramsData);
 
     const clearA = this.bg.mode === 2 ? 0 : 1;
-    const fading = !!(transition && this.transitionPipeline && this.transitionPreset);
     if (fading) {
       // Outgoing setup's params into the second storage buffer
       this.transitionParamsData.fill(0);
@@ -858,6 +991,7 @@ export class WebGPURenderer implements Renderer {
       this.ensureFadeTargets();
     }
     this.ensureGraphTargets();
+    if (useFeedback) this.ensureFeedbackTargets();
     const scene = this.sceneTex!.createView();
 
     const encoder = this.device.createCommandEncoder();
@@ -877,12 +1011,42 @@ export class WebGPURenderer implements Renderer {
       pass.end();
     };
 
-    // Scene pass: preset (or crossfade blend) draws into the HDR scene target.
-    if (!fading) {
+    if (useFeedback) {
+      // Fresh history holds garbage / a previous preset's trails — clear it
+      // before the first feedback frame so trails start from black.
+      if (this.feedbackClearPending) {
+        const clear = encoder.beginRenderPass({
+          colorAttachments: [
+            {
+              view: this.histTex!.createView(),
+              loadOp: "clear",
+              clearValue: { r: 0, g: 0, b: 0, a: 0 },
+              storeOp: "store",
+            },
+          ],
+        });
+        clear.end();
+        this.feedbackClearPending = false;
+      }
+      // 1) preset draws its raw visual (samples histTex) into visTex.
+      drawPass(this.pipeline, this.getBindGroup(), this.visTex!.createView());
+      // 2) composite pass finishes visTex -> sceneTex (bg + overlay).
+      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene);
+      // 3) capture this frame's raw visual as next frame's history.
+      encoder.copyTextureToTexture({ texture: this.visTex! }, { texture: this.histTex! }, [
+        this.feedbackSize[0],
+        this.feedbackSize[1],
+      ]);
+    } else if (!fading) {
+      // Non-feedback: preset composites inline straight into the scene target.
       drawPass(this.pipeline, this.getBindGroup(), scene);
     } else {
       drawPass(this.pipeline, this.getBindGroup(), this.fadeTexA!.createView());
-      drawPass(this.transitionPipeline!, this.getTransitionBindGroup(), this.fadeTexB!.createView());
+      drawPass(
+        this.transitionPipeline!,
+        this.getTransitionBindGroup(),
+        this.fadeTexB!.createView(),
+      );
       if (!this.blendBindGroup) {
         this.blendBindGroup = this.device.createBindGroup({
           layout: this.blendPipeline!.getBindGroupLayout(0),
@@ -917,6 +1081,9 @@ export class WebGPURenderer implements Renderer {
             resource: (this.overlayTexture ?? this.emptyOverlay).createView(),
           },
           { binding: 6, resource: this.overlaySampler },
+          // Feedback is paused during crossfades: bind the empty history so a
+          // transition preset's feedbackSample() reads black.
+          { binding: 7, resource: this.emptyFeedback.createView() },
         ],
       });
     }
@@ -941,6 +1108,9 @@ export class WebGPURenderer implements Renderer {
     this.sceneTex?.destroy();
     this.bloomTexA?.destroy();
     this.bloomTexB?.destroy();
+    this.emptyFeedback.destroy();
+    this.visTex?.destroy();
+    this.histTex?.destroy();
     this.device.destroy();
   }
 
@@ -977,6 +1147,13 @@ export class WebGPURenderer implements Renderer {
             resource: (this.overlayTexture ?? this.emptyOverlay).createView(),
           },
           { binding: 6, resource: this.overlaySampler },
+          {
+            binding: 7,
+            resource: (this.presetUsesFeedback && this.histTex
+              ? this.histTex
+              : this.emptyFeedback
+            ).createView(),
+          },
         ],
       });
     }
