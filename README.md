@@ -1,6 +1,14 @@
-# Audio Visualizer
+<p align="center">
+  <img src="brand/logo.svg" width="128" alt="Audio Visualizer">
+</p>
 
-Desktop music visualizer. Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core. v2.0.2.
+<h1 align="center">Audio Visualizer</h1>
+
+<p align="center">
+  Desktop music visualizer — WebGPU rendering, deterministic exports, local-first.
+</p>
+
+Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core.
 
 Free and open source. Built to become a professional-grade tool for producers and artists — local-first, no cloud rendering, no watermarks, no subscriptions.
 
@@ -8,10 +16,12 @@ Free and open source. Built to become a professional-grade tool for producers an
 
 - Local file playback (mp3/flac/wav/ogg/m4a) via Web Audio — drag & drop or file picker; gapless loop toggle
 - Log-spaced spectrum analysis, asymmetric smoothing, peak hold, band energies, spectral-flux beat detection, slow energy envelope, phase-locked waveform
-- **10 visual modes** (WebGPU shader presets): Spectrum Bars, Radial Burst,
-  Oscilloscope, Particles, Tunnel, Kaleido Nebula, Metaballs,
-  LED Matrix, Voice Orb (narration mode), and **Builder** — compose your own
-  from six toggleable layers
+- **16 visual modes** (WebGPU shader presets): Spectrum Bars, Radial Burst,
+  Oscilloscope, Particles, Tunnel, Kaleido Nebula, Metaballs, LED Matrix,
+  Voice Orb (narration mode), Echo Trails (feedback), Particle Flow (120k GPU
+  compute particles), Spectrum Scape (3D), Aurora, Synthwave,
+  **Bass Circle** (circular bass visualizer with album art), and **Builder** —
+  compose your own from six toggleable layers
 - Every mode: 4 factory **styles**, curated params + full **Advanced** section
   (~150 knobs app-wide), plain-language **hint** for every setting (tooltip +
   live hint bar), all persisted per mode
