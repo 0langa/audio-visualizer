@@ -152,7 +152,7 @@ fn preset(uv: vec2f) -> vec4f {
   let cx = (uv.x - 0.5) * u.aspect;
   let horizon = 0.5;
   let drive = clamp(u.drive, 0.0, 1.5);
-  let pulse = 1.0 + u.driveBeat * P_beatPulse();
+  let pulse = 1.0 + u.driveBeat * P_beatPulse() * u.pulse;
 
   if (uv.y > horizon) {
     // --- Floor: perspective grid receding to the horizon.

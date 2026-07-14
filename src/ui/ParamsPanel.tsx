@@ -3,12 +3,20 @@ import type { SyncMode, SyncSettings } from "../audio/types";
 import type {
   BgMode,
   BgSettings,
+  MotionSettings,
   ParamSpec,
   ParamValues,
   PostSettings,
   PresetDef,
 } from "../render/types";
-import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, DEFAULT_POST, defaultParams } from "../render/types";
+import {
+  BG_PRESET,
+  BG_SOLID,
+  BG_TRANSPARENT,
+  DEFAULT_MOTION,
+  DEFAULT_POST,
+  defaultParams,
+} from "../render/types";
 import type { UserPreset } from "../state/userPresets";
 import { ASPECTS, type Aspect } from "../state/project";
 import type { ImageLayer, OverlayAsset, OverlayLayer, TextLayer } from "../render/overlay";
@@ -209,6 +217,8 @@ export function ParamsPanel(props: {
   onSmoothSpectrum: (v: boolean) => void;
   post: PostSettings;
   onPost: (patch: Partial<PostSettings>) => void;
+  motion: MotionSettings;
+  onMotion: (patch: Partial<MotionSettings>) => void;
   mods: ModRoute[];
   onAddMod: (source: ModSource, param: string) => void;
   onUpdateMod: (id: string, patch: Partial<ModRoute>) => void;
@@ -228,6 +238,9 @@ export function ParamsPanel(props: {
   };
   const postChanged = (Object.keys(DEFAULT_POST) as Array<keyof PostSettings>).some(
     (k) => props.post[k] !== DEFAULT_POST[k],
+  );
+  const motionChanged = (Object.keys(DEFAULT_MOTION) as Array<keyof MotionSettings>).some(
+    (k) => props.motion[k] !== DEFAULT_MOTION[k],
   );
   const advanced = props.preset.advanced ?? [];
   const changedCount = advanced.filter(
@@ -396,6 +409,79 @@ export function ParamsPanel(props: {
               )}
             </>
           )}
+        </section>
+
+        <section className="panel-section">
+          <div className="section-head">
+            <span className="section-title">Motion</span>
+            {motionChanged && (
+              <button
+                className="text-btn"
+                title="Back to normal motion (100% everywhere)"
+                onClick={() => props.onMotion({ ...DEFAULT_MOTION })}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <label
+            className="row param-row"
+            title="Master rotation — 0% stops all spinning in every mode"
+            onPointerEnter={() =>
+              setHint("Global spin master — 0% stops all rotation, 100% = normal, up to 200%")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Rotation</span>
+            <Slider
+              min={0}
+              max={2}
+              step={0.05}
+              value={props.motion.rotation}
+              onChange={(v) => props.onMotion({ rotation: v })}
+            />
+            <span className="row-value">{Math.round(props.motion.rotation * 100)}%</span>
+          </label>
+          <label
+            className="row param-row"
+            title="Master pulse — 0% removes all beat pumping / zoom in every mode"
+            onPointerEnter={() =>
+              setHint("Global pulse master — 0% removes beat pumping, 100% = normal, up to 200%")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Pulse</span>
+            <Slider
+              min={0}
+              max={2}
+              step={0.05}
+              value={props.motion.pulse}
+              onChange={(v) => props.onMotion({ pulse: v })}
+            />
+            <span className="row-value">{Math.round(props.motion.pulse * 100)}%</span>
+          </label>
+          <label
+            className="row param-row"
+            title="How many bars / points / segments the visual draws, where the mode supports it"
+            onPointerEnter={() =>
+              setHint("Detail — number of bars/points/segments (modes that support it)")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Detail</span>
+            <Slider
+              min={0}
+              max={1}
+              step={0.02}
+              value={props.motion.detail}
+              onChange={(v) => props.onMotion({ detail: v })}
+            />
+            <span className="row-value">{Math.round(props.motion.detail * 100)}%</span>
+          </label>
+          <p className="section-hint">
+            Global motion — applies to every mode that spins, pulses or draws discrete elements.
+            Exports match.
+          </p>
         </section>
 
         <section className="panel-section">

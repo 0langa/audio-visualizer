@@ -24,6 +24,7 @@ function doc(marker: number): ProjectDocument {
       grain: 0,
       chromatic: 0,
     },
+    motion: { rotation: 1, pulse: 1, detail: 1 },
   };
 }
 

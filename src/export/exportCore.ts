@@ -3,7 +3,7 @@ import { OfflineAnalyzer } from "../audio/offlineSource";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { PcmData, SyncSettings } from "../audio/types";
 import { WebGPURenderer } from "../render/webgpuRenderer";
-import type { BgSettings, ParamValues, PostSettings } from "../render/types";
+import type { BgSettings, MotionSettings, ParamValues, PostSettings } from "../render/types";
 import { applyMods, type ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
 import { resolveActiveFrame } from "../state/frameResolve";
@@ -48,6 +48,8 @@ export interface ExportJob {
   smoothSpectrum?: boolean;
   /** Post-processing chain (bloom/tonemap/vignette/grain/chromatic). */
   post?: PostSettings;
+  /** Global motion masters (rotation/pulse/detail) — matches the live view. */
+  motion?: MotionSettings;
   /** Timeline (already shifted for segments) — scenes + automation. */
   timeline?: Timeline;
   /** Per-preset param overrides — scene switches resolve their own base. */
@@ -217,6 +219,7 @@ export async function runExportJob(
     renderer.setOverlay(job.overlay ?? null);
     renderer.setSmoothSpectrum(job.smoothSpectrum === true);
     if (job.post) renderer.setPost(job.post);
+    if (job.motion) renderer.setMotion(job.motion);
     renderer.resize(job.width, job.height, 1);
 
     // Loop mode: crossfade the tail into the head so sample/frame N-1

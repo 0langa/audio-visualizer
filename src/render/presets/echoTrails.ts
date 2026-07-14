@@ -154,8 +154,8 @@ fn preset(uv: vec2f) -> vec4f {
   // --- Feedback: inverse-warp the current coord back into the previous
   // frame (zoom + swirl), sample it and decay. zoom>1 pulls content from
   // nearer the center, so last frame's image grows outward = a tunnel. ---
-  let zoom = 1.0 + P_zoom() * 0.06 + u.driveBeat * P_beatZoom() * 0.12;
-  let swirl = P_swirl() * 0.15 + u.drive * P_flowSwirl() * 0.1;
+  let zoom = 1.0 + P_zoom() * 0.06 + u.driveBeat * P_beatZoom() * 0.12 * u.pulse;
+  let swirl = (P_swirl() * 0.15 + u.drive * P_flowSwirl() * 0.1) * u.spin;
   let w = rot2(swirl) * (c / zoom);
   let puv = vec2f(w.x / u.aspect + 0.5, w.y + 0.5);
   var col = feedbackSample(puv).rgb * P_decay();

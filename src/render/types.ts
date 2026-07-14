@@ -129,6 +129,21 @@ export const DEFAULT_POST: PostSettings = {
   chromatic: 0,
 };
 
+/**
+ * Global motion/detail masters — apply across every mode that uses them, so a
+ * user can dial rotation, pulsing and element count from one place. Defaults
+ * are all-neutral (1) so presets render exactly as authored.
+ */
+export interface MotionSettings {
+  /** Rotation strength: multiplies every preset's spin. 0 = perfectly still, 1 = as authored, up to 2. */
+  rotation: number;
+  /** Pulse strength: multiplies every beat/bass-driven scale + zoom. 0 = no pumping, 1 = as authored. */
+  pulse: number;
+  /** Element count (bars/points/segments): 0..1, mapped to each preset's own range; 1 = as authored. */
+  detail: number;
+}
+export const DEFAULT_MOTION: MotionSettings = { rotation: 1, pulse: 1, detail: 1 };
+
 /** Crossfade input: the outgoing setup's params and the 0..1 blend. */
 export interface TransitionState {
   params: ParamValues;
@@ -156,6 +171,8 @@ export interface Renderer {
   setOverlay(source: ImageBitmap | null): void;
   /** Global smooth-spectrum toggle: spline-connected bins, no hard corners. */
   setSmoothSpectrum(v: boolean): void;
+  /** Global motion masters (rotation / pulse / detail), applied across modes. */
+  setMotion(motion: MotionSettings): void;
   /** Post-processing chain (bloom, tonemap, vignette, grain, chromatic). */
   setPost(post: PostSettings): void;
   dispose(): void;

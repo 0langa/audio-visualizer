@@ -234,7 +234,7 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Speed rides the slow energy envelope; beats add a punchy kick
   let baseSpd = P_speed() * (0.35 + u.drive * P_energyDrive())
-              * (1.0 + u.driveBeat * P_beatDance() * 0.8);
+              * (1.0 + u.driveBeat * P_beatDance() * 0.8 * u.pulse);
   let ang = radians(P_direction());
   let dirv = vec2f(cos(ang), -sin(ang)); // screen y grows downward; flip so 90deg = up
 
@@ -267,7 +267,7 @@ fn preset(uv: vec2f) -> vec4f {
           cos(u.time * P_wanderSpeed() * (0.7 + h3) + ph * 1.7),
         ) * P_wander() * 0.25;
         let scat = normalize(vec2f(h2 - 0.5, h3 - 0.5) + 1e-4)
-                 * u.driveBeat * P_beatDance() * 0.4;
+                 * u.driveBeat * P_beatDance() * 0.4 * u.pulse;
         let d = f - (vec2f(0.5) + wob + scat);
         var band = u.bass;
         if (h3 < 0.3333) { band = u.mid; }
@@ -317,7 +317,7 @@ fn preset(uv: vec2f) -> vec4f {
 
         // Beat scatter: every particle kicks along its own direction
         let scatDir = normalize(vec2f(h2 - 0.5, h3 - 0.5) + 1e-4);
-        let scat = scatDir * u.driveBeat * P_beatDance() * 0.6;
+        let scat = scatDir * u.driveBeat * P_beatDance() * 0.6 * u.pulse;
 
         let pos = vec2f(f32(dx), f32(dy)) + 0.5 + wob + scat;
         let d = f - pos;

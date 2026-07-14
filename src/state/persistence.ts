@@ -11,8 +11,8 @@ import {
   type Aspect,
 } from "./project";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
-import { validPost } from "./project";
-import type { PostSettings } from "../render/types";
+import { validPost, validMotion } from "./project";
+import type { MotionSettings, PostSettings } from "../render/types";
 import { validTimeline, type Timeline } from "./timeline";
 
 /**
@@ -112,6 +112,15 @@ export function loadStoredPost(): PostSettings {
 
 export function saveStoredPost(post: PostSettings): void {
   localStorage.setItem(LS_POST, JSON.stringify(post));
+}
+const LS_MOTION = "viz.motion.v1";
+
+export function loadStoredMotion(): MotionSettings {
+  return validMotion(readJson(LS_MOTION, null));
+}
+
+export function saveStoredMotion(motion: MotionSettings): void {
+  localStorage.setItem(LS_MOTION, JSON.stringify(motion));
 }
 const LS_MODS = "viz.mods.v1";
 const LS_TIMELINE = "viz.timeline.v1";

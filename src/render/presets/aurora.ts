@@ -195,7 +195,7 @@ fn preset(uv: vec2f) -> vec4f {
   // Sync-reactive envelope + beat pulse: switching the sync source (bass /
   // treble / kicks / ...) visibly changes the drive here.
   let drive = clamp(u.drive, 0.0, 1.5);
-  let pulse = 1.0 + u.driveBeat * P_beatPulse();
+  let pulse = 1.0 + u.driveBeat * P_beatPulse() * u.pulse;
   let layers = i32(P_layers());
   for (var i = 0; i < 3; i++) {
     if (i >= layers) { break; }

@@ -1,8 +1,9 @@
 import type { AudioFeatures } from "../audio/types";
-import { allParams, DEFAULT_POST } from "./types";
+import { allParams, DEFAULT_MOTION, DEFAULT_POST } from "./types";
 import type {
   BgSettings,
   Mesh3DSpec,
+  MotionSettings,
   ParamValues,
   ParticleSpec,
   PostSettings,
@@ -14,8 +15,8 @@ import type {
 const MAX_PARAMS = 48;
 /** Downsampled waveform points exposed to shaders */
 const WAVE_POINTS = 512;
-/** Uniform struct size in bytes (scalars + vec4 bgColor + sync block) */
-const UNIFORM_SIZE = 112;
+/** Uniform struct size in bytes (scalars + vec4 bgColor + sync block + motion) */
+const UNIFORM_SIZE = 128;
 /**
  * The scene (preset + background + overlay + crossfade) renders into an HDR
  * intermediate at this format; the post chain then tonemaps/blooms it to the
@@ -184,6 +185,10 @@ struct Uniforms {
   hat: f32,
   smoothBins: f32,
   feedbackOn: f32,
+  spin: f32,
+  pulse: f32,
+  detail: f32,
+  _pad5: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> bins: array<f32>;
@@ -805,6 +810,7 @@ export class WebGPURenderer implements Renderer {
   private canvas: HTMLCanvasElement | OffscreenCanvas;
   private bg: BgSettings = { mode: 0, color: [0, 0, 0] };
   private smoothBins = false;
+  private motion: MotionSettings = { ...DEFAULT_MOTION };
 
   private pipeline: GPURenderPipeline | null = null;
   private bindGroup: GPUBindGroup | null = null;
@@ -1094,6 +1100,10 @@ export class WebGPURenderer implements Renderer {
 
   setSmoothSpectrum(v: boolean): void {
     this.smoothBins = v;
+  }
+
+  setMotion(motion: MotionSettings): void {
+    this.motion = motion;
   }
 
   setTransitionPreset(preset: PresetDef | null): void {
@@ -1386,6 +1396,9 @@ export class WebGPURenderer implements Renderer {
     PARTICLE_PARAM_KEYS.forEach((k, idx) => {
       F[8 + idx] = params[k] ?? 0;
     });
+    // Motion masters: swirl obeys Rotation, beat burst obeys Pulse.
+    F[8 + PARTICLE_PARAM_KEYS.indexOf("swirl")] *= this.motion.rotation;
+    F[8 + PARTICLE_PARAM_KEYS.indexOf("beatBurst")] *= this.motion.pulse;
     this.device.queue.writeBuffer(this.particleUniform, 0, this.particleData);
   }
 
@@ -1442,7 +1455,7 @@ export class WebGPURenderer implements Renderer {
         ],
       });
     }
-    const density = Math.min(1, Math.max(0, params["density"] ?? 1));
+    const density = Math.min(1, Math.max(0, (params["density"] ?? 1) * this.motion.detail));
     const drawCount = Math.max(1, Math.floor(count * density));
     const pass = encoder.beginRenderPass({
       colorAttachments: [
@@ -1509,7 +1522,8 @@ export class WebGPURenderer implements Renderer {
 
     const deg = Math.PI / 180;
     const g = (k: string, d: number) => params[k] ?? d;
-    const yaw = (g("camYaw", 30) + time * g("camSpin", 12)) * deg;
+    // Motion→Rotation scales the auto-orbit speed (0 = camera holds still).
+    const yaw = (g("camYaw", 30) + time * g("camSpin", 12) * this.motion.rotation) * deg;
     const pitch = g("camPitch", 32) * deg;
     const dist = g("camDist", 15);
     const fov = g("fov", 50) * deg;
@@ -1537,7 +1551,7 @@ export class WebGPURenderer implements Renderer {
     F[24] = f.bins.length;
     F[25] = time;
     F[26] = f.drive;
-    F[27] = f.driveBeat;
+    F[27] = f.driveBeat * this.motion.pulse; // beat pop obeys Pulse
     this.device.queue.writeBuffer(this.mesh3dUniform, 0, this.mesh3dData);
 
     if (!this.mesh3dBind) {
@@ -1693,6 +1707,12 @@ export class WebGPURenderer implements Renderer {
     this.uniformF32[24] = f.snare;
     this.uniformF32[25] = f.hat;
     this.uniformF32[26] = this.smoothBins ? 1 : 0;
+    // Global motion masters — presets read these to scale rotation, pulse and
+    // element count consistently. Defaults (1) leave every preset as authored.
+    this.uniformF32[28] = this.motion.rotation;
+    this.uniformF32[29] = this.motion.pulse;
+    this.uniformF32[30] = this.motion.detail;
+    this.uniformF32[31] = 0;
     // Feedback path is active only when the preset opts in AND we're not
     // mid-crossfade (feedback pauses during transitions). fs_main branches on
     // this: 1 => emit raw visual for the composite pass, 0 => inline composite.

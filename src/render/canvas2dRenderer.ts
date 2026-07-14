@@ -38,6 +38,10 @@ export class Canvas2DRenderer implements Renderer {
     this.smooth = v;
   }
 
+  setMotion(): void {
+    // Fallback renderer approximates spectrum-bars only; motion masters no-op.
+  }
+
   setTransitionPreset(_preset: PresetDef | null): void {
     // Fallback renderer hard-cuts between scenes.
   }

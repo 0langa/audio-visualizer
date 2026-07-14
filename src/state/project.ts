@@ -1,6 +1,6 @@
 import type { SyncSettings } from "../audio/types";
-import type { BgSettings, ParamValues, PostSettings } from "../render/types";
-import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, DEFAULT_POST } from "../render/types";
+import type { BgSettings, MotionSettings, ParamValues, PostSettings } from "../render/types";
+import { BG_PRESET, BG_SOLID, BG_TRANSPARENT, DEFAULT_MOTION, DEFAULT_POST } from "../render/types";
 import { presets } from "../render/presets";
 import type { OverlayAsset, OverlayLayer, OverlayAnchor } from "../render/overlay";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
@@ -16,10 +16,11 @@ import { validTimeline, type Timeline } from "./timeline";
  *
  * History: v1 = preset/params/sync/bg · v2 (+) overlay layers + assets ·
  * v3 (+) modulation-matrix routes · v4 (+) timeline (scenes + automation) ·
- * v5 (+) post-processing (bloom/tonemap/vignette/grain/chromatic)
+ * v5 (+) post-processing (bloom/tonemap/vignette/grain/chromatic) ·
+ * v6 (+) global motion masters (rotation/pulse/detail)
  */
 
-export const PROJECT_VERSION = 5;
+export const PROJECT_VERSION = 6;
 export const PROJECT_EXTENSION = "avproj";
 
 /** Frame aspect: "free" fills the window; fixed ratios letterbox the stage. */
@@ -44,6 +45,7 @@ export interface ProjectDocument {
   smoothSpectrum: boolean;
   timeline: Timeline;
   post: PostSettings;
+  motion: MotionSettings;
 }
 
 export interface ProjectFile {
@@ -108,6 +110,18 @@ export function parseProject(json: string): ProjectDocument {
     smoothSpectrum: doc.smoothSpectrum === true,
     timeline: validTimeline(doc.timeline),
     post: validPost(doc.post),
+    motion: validMotion(doc.motion),
+  };
+}
+
+export function validMotion(v: unknown): MotionSettings {
+  const m = (typeof v === "object" && v !== null ? v : {}) as Partial<MotionSettings>;
+  const n = (x: unknown, def: number, lo: number, hi: number) =>
+    typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : def;
+  return {
+    rotation: n(m.rotation, DEFAULT_MOTION.rotation, 0, 2),
+    pulse: n(m.pulse, DEFAULT_MOTION.pulse, 0, 2),
+    detail: n(m.detail, DEFAULT_MOTION.detail, 0, 1),
   };
 }
 

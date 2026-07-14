@@ -221,7 +221,7 @@ export const radialBurst: PresetDef = {
 fn preset(uv: vec2f) -> vec4f {
   let p = centered(uv);
   let r = length(p);
-  var a = atan2(p.y, p.x) + u.time * P_rotSpeed() * TAU * 0.1 + u.driveBeat * 0.12;
+  var a = atan2(p.y, p.x) + (u.time * P_rotSpeed() * TAU * 0.1 + u.driveBeat * 0.12) * u.spin;
 
   // Fold into symmetric segments, mirrored inside each for seamless wrap
   let sym = max(1.0, P_symmetry());
@@ -230,7 +230,7 @@ fn preset(uv: vec2f) -> vec4f {
   let v = binAt(xs);
   let pk = peakAt(xs);
 
-  let inner = P_innerRadius() * (1.0 + u.bass * P_ringBreathe() + u.driveBeat * 0.06);
+  let inner = P_innerRadius() * (1.0 + (u.bass * P_ringBreathe() + u.driveBeat * 0.06) * u.pulse);
   let len = v * P_barLen();
   let barHue = P_hue() + xs * P_hueSpread();
 
@@ -255,9 +255,9 @@ fn preset(uv: vec2f) -> vec4f {
   // Core disc: geometry rides only slow signals — fast bands jitter,
   // energy glides. One slow-rotating dominant mode; amplitude on the slow
   // envelope; hard clamp keeps the core inside the bar ring.
-  let pump = 1.0 + u.drive * P_corePump() + u.driveBeat * P_coreBeat();
+  let pump = 1.0 + (u.drive * P_corePump() + u.driveBeat * P_coreBeat()) * u.pulse;
   let coreR = inner * P_coreSize() * pump;
-  let spin = u.time * (P_spinBase() + u.drive * P_spinEnergy());
+  let spin = u.time * (P_spinBase() + u.drive * P_spinEnergy()) * u.spin;
   let amp = inner * (P_wobBase() + u.drive * P_wobAmp());
   var wob = sin(a * 3.0 + spin) * amp
           + sin(a * 6.0 - spin * 0.7 + 1.3) * amp * 0.35;

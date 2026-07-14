@@ -80,6 +80,7 @@ export default function App() {
   const activeMods = useVizStore((s) => s.activeMods);
   const smoothSpectrum = useVizStore((s) => s.smoothSpectrum);
   const post = useVizStore((s) => s.post);
+  const motion = useVizStore((s) => s.motion);
   const sections = useVizStore((s) => s.sections);
   const timeline = useVizStore((s) => s.timeline);
   const showTimeline = useVizStore((s) => s.showTimeline);
@@ -249,6 +250,7 @@ export default function App() {
         mods: s.activeMods,
         smoothSpectrum: s.smoothSpectrum,
         post: opts.post ?? s.post,
+        motion: s.motion,
         timeline: s.timeline.enabled ? s.timeline : undefined,
         paramsByPreset: s.paramsByPreset,
         modsByPreset: s.modsByPreset,
@@ -461,6 +463,8 @@ export default function App() {
           onSmoothSpectrum={(v) => store().setSmoothSpectrum(v)}
           post={post}
           onPost={(patch) => store().setPost(patch)}
+          motion={motion}
+          onMotion={(patch) => store().setMotion(patch)}
           mods={activeMods}
           onAddMod={(source, param) => store().addModRoute(source, param)}
           onUpdateMod={(id, patch) => store().updateModRoute(id, patch)}

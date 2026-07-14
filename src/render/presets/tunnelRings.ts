@@ -209,7 +209,7 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Depth: cruise on the slow envelope, brief kick on beats
   let spd = P_speed() * (P_cruiseFloor() + u.drive * P_cruiseEnergy())
-          * (1.0 + u.driveBeat * P_beatSpeed());
+          * (1.0 + u.driveBeat * P_beatSpeed() * u.pulse);
   let z = 0.30 / r + u.time * spd * 5.0;
 
   // Tile grid in (depth, angle)

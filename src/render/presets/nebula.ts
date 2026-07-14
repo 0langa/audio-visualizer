@@ -190,7 +190,7 @@ fn preset(uv: vec2f) -> vec4f {
   // Kaleidoscope fold
   if (P_kaleido() >= 2.0) {
     let r = length(p);
-    var ang = atan2(p.y, p.x) + u.time * P_flow() * 0.5;
+    var ang = atan2(p.y, p.x) + u.time * P_flow() * 0.5 * u.spin;
     let seg = TAU / P_kaleido();
     ang = abs(fract(ang / seg + 10.0) - 0.5) * seg;
     p = vec2f(cos(ang), sin(ang)) * r;

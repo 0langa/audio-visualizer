@@ -14,7 +14,7 @@ import type { KeyEstimate } from "../audio/analysis/keyDetect";
 import { newRouteId, type ModRoute, type ModSource } from "./modMatrix";
 import { clearHistory, historyDepths, popRedo, popUndo, pushHistory } from "./history";
 import type { Timeline } from "./timeline";
-import type { PostSettings } from "../render/types";
+import type { MotionSettings, PostSettings } from "../render/types";
 import {
   bytesToDataUrl,
   downloadBlob,
@@ -59,9 +59,11 @@ import {
   loadStoredBg,
   loadStoredMods,
   loadStoredPost,
+  loadStoredMotion,
   loadStoredTimeline,
   saveStoredMods,
   saveStoredPost,
+  saveStoredMotion,
   saveStoredTimeline,
   loadStoredOverlay,
   loadStoredPanelOpen,
@@ -137,6 +139,7 @@ interface DocumentSlice {
   smoothSpectrum: boolean;
   timeline: Timeline;
   post: PostSettings;
+  motion: MotionSettings;
 }
 
 /** Session/UI state: ephemeral, never saved into projects. */
@@ -200,6 +203,7 @@ interface Actions {
   setTimeline(timeline: Timeline): void;
   setShowTimeline(v: boolean): void;
   setPost(patch: Partial<PostSettings>): void;
+  setMotion(patch: Partial<MotionSettings>): void;
   setSync(sync: SyncSettings): void;
   loadFile(file: File): Promise<void>;
   loadDemo(id: string): Promise<void>;
@@ -302,6 +306,7 @@ export const useVizStore = create<VizState>((set, get) => {
     smoothSpectrum: s.smoothSpectrum,
     timeline: s.timeline,
     post: s.post,
+    motion: s.motion,
   });
 
   /** Record the current document before a mutation (gesture-grouped). */
@@ -335,6 +340,7 @@ export const useVizStore = create<VizState>((set, get) => {
     smoothSpectrum: localStorage.getItem("viz.smoothSpectrum") === "1",
     timeline: loadStoredTimeline(),
     post: loadStoredPost(),
+    motion: loadStoredMotion(),
 
     // --- session ---
     activeParams: resolveParams(initialPresetId, initialParams),
@@ -403,6 +409,7 @@ export const useVizStore = create<VizState>((set, get) => {
           set({ rendererKind: kind, error: warning });
           getRenderer()?.setSmoothSpectrum(get().smoothSpectrum);
           getRenderer()?.setPost(get().post);
+          getRenderer()?.setMotion(get().motion);
           get().refreshOverlay(); // new renderer starts without an overlay bound
         },
         onResize: () => get().refreshOverlay(),
@@ -498,6 +505,14 @@ export const useVizStore = create<VizState>((set, get) => {
       set({ post });
       saveStoredPost(post);
       getRenderer()?.setPost(post);
+    },
+
+    setMotion(patch) {
+      record("motion");
+      const motion = { ...get().motion, ...patch };
+      set({ motion });
+      saveStoredMotion(motion);
+      getRenderer()?.setMotion(motion);
     },
 
     setAspect(aspect) {
@@ -695,6 +710,7 @@ export const useVizStore = create<VizState>((set, get) => {
           mods: get().activeMods,
           smoothSpectrum: get().smoothSpectrum,
           post: get().post,
+          motion: get().motion,
           timeline: get().timeline.enabled ? get().timeline : undefined,
           paramsByPreset: get().paramsByPreset,
           modsByPreset: get().modsByPreset,
@@ -769,6 +785,7 @@ export const useVizStore = create<VizState>((set, get) => {
         smoothSpectrum: s.smoothSpectrum,
         timeline: s.timeline,
         post: s.post,
+        motion: s.motion,
       };
       try {
         const saved = await saveTextFile(
@@ -818,6 +835,7 @@ export const useVizStore = create<VizState>((set, get) => {
         smoothSpectrum: doc.smoothSpectrum,
         timeline: doc.timeline,
         post: doc.post,
+        motion: doc.motion,
         activeParams,
         activeMods: doc.modsByPreset[preset.id] ?? [],
         sync,
@@ -834,6 +852,8 @@ export const useVizStore = create<VizState>((set, get) => {
       getRenderer()?.setSmoothSpectrum(doc.smoothSpectrum);
       saveStoredPost(doc.post);
       getRenderer()?.setPost(doc.post);
+      saveStoredMotion(doc.motion);
+      getRenderer()?.setMotion(doc.motion);
       pruneBitmapCache(new Set(Object.keys(doc.assets)));
       getRenderer()?.setPreset(preset);
       getRenderer()?.setBackground(doc.bg);

@@ -179,19 +179,23 @@ export const spectrumBars: PresetDef = {
   ],
   wgsl: /* wgsl */ `
 fn preset(uvIn: vec2f) -> vec4f {
-  // Beat zoom: scale around center
-  var uv = (uvIn - 0.5) / (1.0 + u.driveBeat * P_beatZoom()) + 0.5;
+  // Beat zoom: scale around center (Motion→Pulse master scales it)
+  var uv = (uvIn - 0.5) / (1.0 + u.driveBeat * P_beatZoom() * u.pulse) + 0.5;
 
   // Optional mirror around center column
   var x = uv.x;
   if (P_mirror() > 0.5) { x = abs(uv.x - 0.5) * 2.0; }
 
-  let n = f32(u.binCount);
+  // Bar count: Motion→Detail scales from a coarse minimum up to the full bin
+  // count. Each bar resamples the spectrum at its center so fewer bars still
+  // span the whole range. detail=1 -> binCount, identical to raw bins.
+  let n = round(mix(8.0, f32(u.binCount), u.detail));
   let fi = clamp(x * n, 0.0, n - 0.001);
   let i = u32(fi);
   let inBar = fract(fi);
-  var v = bins[i];
-  var pk = peaks[i];
+  let barCenter = (f32(i) + 0.5) / n;
+  var v = binAt(barCenter);
+  var pk = peakAt(barCenter);
   if (u.smoothBins > 0.5) {
     // Smooth mode: continuous spline silhouette instead of discrete bars
     v = binAt(x);

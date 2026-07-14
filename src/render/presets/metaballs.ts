@@ -196,7 +196,7 @@ fn preset(uv: vec2f) -> vec4f {
     // Size = calm floor + smooth energy breathing (primary sync) + a gentle
     // per-band accent + a synchronized beat gulp across all blobs
     let rad = P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
-            + band * P_radiusBand() + u.driveBeat * P_beatSwell());
+            + band * P_radiusBand() + u.driveBeat * P_beatSwell() * u.pulse);
     let d2 = dot(p - pos, p - pos);
     let contrib = rad * rad / (d2 + 1e-5);
     field += contrib;
