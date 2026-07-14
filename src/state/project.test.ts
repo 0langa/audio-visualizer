@@ -71,7 +71,7 @@ const doc: ProjectDocument = {
     grain: 0.05,
     chromatic: 0.2,
   },
-  motion: { rotation: 0.5, pulse: 1.5, detail: 0.7 },
+  motion: { rotation: 0.5, pulse: 1.5, detail: 0.7, spectrumSmooth: 0.4 },
 };
 
 describe("project files (.avproj)", () => {
@@ -120,7 +120,7 @@ describe("project files (.avproj)", () => {
     expect(parsed.modsByPreset).toEqual({}); // pre-v3 default
     expect(parsed.post.bloom).toBe(0); // pre-v5 default (neutral)
     expect(parsed.post.exposure).toBe(1);
-    expect(parsed.motion).toEqual({ rotation: 1, pulse: 1, detail: 1 }); // pre-v6 default (neutral)
+    expect(parsed.motion).toEqual({ rotation: 1, pulse: 1, detail: 1, spectrumSmooth: 0 }); // pre-v6 default (neutral)
     expect(parsed.presetId).toBe(doc.presetId);
   });
 

@@ -122,6 +122,7 @@ export function validMotion(v: unknown): MotionSettings {
     rotation: n(m.rotation, DEFAULT_MOTION.rotation, 0, 2),
     pulse: n(m.pulse, DEFAULT_MOTION.pulse, 0, 2),
     detail: n(m.detail, DEFAULT_MOTION.detail, 0, 1),
+    spectrumSmooth: n(m.spectrumSmooth, DEFAULT_MOTION.spectrumSmooth, 0, 1),
   };
 }
 

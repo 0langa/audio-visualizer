@@ -188,7 +188,7 @@ struct Uniforms {
   spin: f32,
   pulse: f32,
   detail: f32,
-  _pad5: f32,
+  specSmooth: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> bins: array<f32>;
@@ -217,14 +217,18 @@ fn catmullRom(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
     + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3));
 }
 
-/** Spectrum sampled at x in 0..1. With the global smooth-spectrum toggle a
- * Catmull-Rom spline runs through the bins (no staircase corners);
- * otherwise nearest-bin, the classic look. */
+/** Amount of spatial spectrum smoothing: the "Smooth curve" toggle (full
+ * spline) OR the Motion "Spectrum smooth" amount, whichever is larger. */
+fn specAmt() -> f32 { return max(u.smoothBins, u.specSmooth); }
+
+/** Spectrum sampled at x in 0..1. Blends the raw nearest bin toward a
+ * Catmull-Rom spline by the smoothing amount (0 = hard bins / classic look,
+ * 1 = full curve). At amount 0 it returns the exact nearest bin. */
 fn binAt(x: f32) -> f32 {
   let n = f32(u.binCount);
-  if (u.smoothBins < 0.5) {
-    return bins[u32(clamp(x, 0.0, 0.999) * n)];
-  }
+  let nearest = bins[u32(clamp(x, 0.0, 0.999) * n)];
+  let amt = specAmt();
+  if (amt < 0.001) { return nearest; }
   let fi = clamp(x, 0.0, 0.999) * n - 0.5;
   let i = floor(fi);
   let t = fi - i;
@@ -232,14 +236,14 @@ fn binAt(x: f32) -> f32 {
   let i1 = u32(clamp(i, 0.0, n - 1.0));
   let i2 = u32(clamp(i + 1.0, 0.0, n - 1.0));
   let i3 = u32(clamp(i + 2.0, 0.0, n - 1.0));
-  return catmullRom(bins[i0], bins[i1], bins[i2], bins[i3], t);
+  return mix(nearest, catmullRom(bins[i0], bins[i1], bins[i2], bins[i3], t), amt);
 }
 
 fn peakAt(x: f32) -> f32 {
   let n = f32(u.binCount);
-  if (u.smoothBins < 0.5) {
-    return peaks[u32(clamp(x, 0.0, 0.999) * n)];
-  }
+  let nearest = peaks[u32(clamp(x, 0.0, 0.999) * n)];
+  let amt = specAmt();
+  if (amt < 0.001) { return nearest; }
   let fi = clamp(x, 0.0, 0.999) * n - 0.5;
   let i = floor(fi);
   let t = fi - i;
@@ -247,7 +251,7 @@ fn peakAt(x: f32) -> f32 {
   let i1 = u32(clamp(i, 0.0, n - 1.0));
   let i2 = u32(clamp(i + 1.0, 0.0, n - 1.0));
   let i3 = u32(clamp(i + 2.0, 0.0, n - 1.0));
-  return catmullRom(peaks[i0], peaks[i1], peaks[i2], peaks[i3], t);
+  return mix(nearest, catmullRom(peaks[i0], peaks[i1], peaks[i2], peaks[i3], t), amt);
 }
 
 /** Waveform sampled at x in 0..1, linear interpolation, -1..1 */
@@ -1712,7 +1716,7 @@ export class WebGPURenderer implements Renderer {
     this.uniformF32[28] = this.motion.rotation;
     this.uniformF32[29] = this.motion.pulse;
     this.uniformF32[30] = this.motion.detail;
-    this.uniformF32[31] = 0;
+    this.uniformF32[31] = this.motion.spectrumSmooth;
     // Feedback path is active only when the preset opts in AND we're not
     // mid-crossfade (feedback pauses during transitions). fs_main branches on
     // this: 1 => emit raw visual for the composite pass, 0 => inline composite.

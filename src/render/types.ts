@@ -141,8 +141,15 @@ export interface MotionSettings {
   pulse: number;
   /** Element count (bars/points/segments): 0..1, mapped to each preset's own range; 1 = as authored. */
   detail: number;
+  /** Spatial spectrum smoothing 0..1: blends the raw bins toward a spline (0 = hard bins, 1 = full curve). */
+  spectrumSmooth: number;
 }
-export const DEFAULT_MOTION: MotionSettings = { rotation: 1, pulse: 1, detail: 1 };
+export const DEFAULT_MOTION: MotionSettings = {
+  rotation: 1,
+  pulse: 1,
+  detail: 1,
+  spectrumSmooth: 0,
+};
 
 /** Crossfade input: the outgoing setup's params and the 0..1 blend. */
 export interface TransitionState {

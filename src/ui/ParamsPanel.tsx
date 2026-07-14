@@ -478,6 +478,24 @@ export function ParamsPanel(props: {
             />
             <span className="row-value">{Math.round(props.motion.detail * 100)}%</span>
           </label>
+          <label
+            className="row param-row"
+            title="Smooths the spectrum shape — 0% = hard bins, 100% = a flowing curve"
+            onPointerEnter={() =>
+              setHint("Spectrum smooth — rounds the spectrum from hard bins toward a flowing curve")
+            }
+            onPointerLeave={() => setHint(null)}
+          >
+            <span className="row-label">Spectrum smooth</span>
+            <Slider
+              min={0}
+              max={1}
+              step={0.02}
+              value={props.motion.spectrumSmooth}
+              onChange={(v) => props.onMotion({ spectrumSmooth: v })}
+            />
+            <span className="row-value">{Math.round(props.motion.spectrumSmooth * 100)}%</span>
+          </label>
           <p className="section-hint">
             Global motion — applies to every mode that spins, pulses or draws discrete elements.
             Exports match.
