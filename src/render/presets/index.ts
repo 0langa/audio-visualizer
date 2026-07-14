@@ -9,6 +9,7 @@ import { metaballs } from "./metaballs";
 import { ledMatrix } from "./ledMatrix";
 import { voiceOrb } from "./voiceOrb";
 import { echoTrails } from "./echoTrails";
+import { particleFlow } from "./particleFlow";
 import { builder } from "./builder";
 
 /** Registry: adding a preset = write the file, add it here. */
@@ -23,6 +24,7 @@ export const presets: PresetDef[] = [
   ledMatrix,
   voiceOrb,
   echoTrails,
+  particleFlow,
   builder,
 ];
 

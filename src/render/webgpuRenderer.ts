@@ -3,6 +3,7 @@ import { allParams, DEFAULT_POST } from "./types";
 import type {
   BgSettings,
   ParamValues,
+  ParticleSpec,
   PostSettings,
   PresetDef,
   Renderer,
@@ -22,6 +23,15 @@ const UNIFORM_SIZE = 112;
 const SCENE_FORMAT: GPUTextureFormat = "rgba16float";
 /** Post uniform block: 8 f32 lanes = 32 bytes (16-byte aligned). */
 const POST_UNIFORM_SIZE = 32;
+/** Particle uniform block: 24 scalar lanes = 96 bytes. */
+const PARTICLE_UNIFORM_SIZE = 96;
+/** Fixed particle simulation rate. Steps are keyed to track time
+ * (target = floor(time * SIM_FPS)) so the sim speed is frame-rate independent
+ * and exports are bit-reproducible regardless of output fps. */
+const SIM_FPS = 60;
+const PARTICLE_DT = 1 / SIM_FPS;
+/** Live-safety cap on catch-up steps per frame (never hit during export). */
+const MAX_SIM_CATCHUP = 8;
 
 /**
  * Post-processing WGSL. One module, three entry points sharing a fullscreen
@@ -394,6 +404,173 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 }
 `;
 
+/** Order of a particle preset's params (main + advanced) mapped into the
+ * particle uniform. The preset MUST declare these keys; the renderer copies
+ * each ParamValues[key] into the matching PU field. */
+const PARTICLE_PARAM_KEYS = [
+  "hue",
+  "flowScale",
+  "flowStrength",
+  "swirl",
+  "damping",
+  "gravity",
+  "size",
+  "sizePulse",
+  "brightness",
+  "beatBurst",
+  "hueSpread",
+  "speedColor",
+  "spawnRadius",
+  "density",
+  "audioFlow",
+  "sat",
+] as const;
+
+/**
+ * GPU compute-particle system: one storage buffer of {pos, vel}, advanced by a
+ * curl-noise flow field plus audio forces (bass-scaled flow, per-particle beat
+ * bursts), then drawn as additive round sprites (instanced quads). Everything
+ * is a pure function of the seeded state + the per-step uniform, so a fixed sim
+ * rate keyed to track time makes exports bit-reproducible.
+ *
+ * Split into two modules: the sim binds `parts` read_write (compute), the draw
+ * binds it read-only — a vertex stage may not touch a writable storage buffer.
+ */
+const PARTICLE_STRUCTS = /* wgsl */ `
+struct Particle { pos: vec2f, vel: vec2f }
+struct PU {
+  dt: f32, time: f32, aspect: f32, count: u32,
+  bass: f32, energy: f32, driveBeat: f32, kick: f32,
+  hue: f32, flowScale: f32, flowStrength: f32, swirl: f32,
+  damping: f32, gravity: f32, size: f32, sizePulse: f32,
+  brightness: f32, beatBurst: f32, hueSpread: f32, speedColor: f32,
+  spawnRadius: f32, density: f32, audioFlow: f32, sat: f32,
+}
+@group(0) @binding(0) var<uniform> pu: PU;
+fn h11(p: f32) -> f32 { return fract(sin(p * 127.1) * 43758.5453); }
+`;
+
+const PARTICLE_SIM_WGSL =
+  PARTICLE_STRUCTS +
+  /* wgsl */ `
+@group(0) @binding(1) var<storage, read_write> parts: array<Particle>;
+
+fn h21(p: vec2f) -> f32 {
+  var q = fract(p * vec2f(123.34, 345.45));
+  q += dot(q, q + 34.345);
+  return fract(q.x * q.y);
+}
+fn vnoise(p: vec2f) -> f32 {
+  let i = floor(p); let f = fract(p);
+  let s = f * f * (3.0 - 2.0 * f);
+  let a = h21(i); let b = h21(i + vec2f(1.0, 0.0));
+  let c = h21(i + vec2f(0.0, 1.0)); let d = h21(i + vec2f(1.0, 1.0));
+  return mix(mix(a, b, s.x), mix(c, d, s.x), s.y);
+}
+// Curl of a scalar noise field => divergence-free flow (no sources/sinks).
+fn curl(p: vec2f) -> vec2f {
+  let e = 0.02;
+  let dx = vnoise(p + vec2f(e, 0.0)) - vnoise(p - vec2f(e, 0.0));
+  let dy = vnoise(p + vec2f(0.0, e)) - vnoise(p - vec2f(0.0, e));
+  return vec2f(dy, -dx) / (2.0 * e);
+}
+
+@compute @workgroup_size(64)
+fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= pu.count) { return; }
+  var pos = parts[i].pos;
+  var vel = parts[i].vel;
+  let seed = h11(f32(i) * 0.61803 + 0.123);
+
+  // Curl-noise flow, drifting over time, amplified by bass. The fixed scale
+  // factors keep raw curl / positional terms in a sane velocity range so the
+  // exposed knobs read as intuitive 0..2 multipliers.
+  let fp = pos * pu.flowScale + vec2f(pu.time * 0.05, pu.time * 0.037);
+  var force = curl(fp) * pu.flowStrength * 0.04 * (1.0 + pu.bass * pu.audioFlow);
+  // Rotational swirl around center + gentle pull so the field stays framed.
+  force += vec2f(-pos.y, pos.x) * pu.swirl * 0.4;
+  force += -pos * pu.gravity * 0.3;
+  // Steady outward drift: with the center respawn this makes a fountain, so the
+  // curl field bends the outflow into visible radiating tendrils (a uniform
+  // fill would look like static under divergence-free flow). Loudness feeds it.
+  let outward = normalize(pos + vec2f(1e-5, 0.0));
+  force += outward * (0.03 + pu.energy * 0.05);
+  // Per-particle radial burst on kicks.
+  let bdir = normalize(vec2f(h11(seed * 3.3) - 0.5, h11(seed * 7.7) - 0.5) + vec2f(1e-4));
+  force += bdir * pu.kick * pu.beatBurst * 0.3;
+
+  vel = vel * pu.damping + force * pu.dt;
+  pos += vel * pu.dt;
+
+  // Respawn once a particle drifts out of the framed region.
+  if (abs(pos.x) > 1.15 || abs(pos.y) > 1.15) {
+    let a = h11(seed * 13.1 + pu.time) * 6.28318530718;
+    pos = vec2f(cos(a), sin(a)) * pu.spawnRadius * h11(seed * 5.5 + pu.time * 0.7);
+    vel = vec2f(0.0);
+  }
+  parts[i].pos = pos;
+  parts[i].vel = vel;
+}
+`;
+
+const PARTICLE_DRAW_WGSL =
+  PARTICLE_STRUCTS +
+  /* wgsl */ `
+@group(0) @binding(1) var<storage, read> parts: array<Particle>;
+
+fn hsl2rgb(h: f32, s: f32, l: f32) -> vec3f {
+  let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+  let hp = fract(h / 360.0) * 6.0;
+  let x = c * (1.0 - abs(hp % 2.0 - 1.0));
+  var rgb = vec3f(0.0);
+  if (hp < 1.0) { rgb = vec3f(c, x, 0.0); }
+  else if (hp < 2.0) { rgb = vec3f(x, c, 0.0); }
+  else if (hp < 3.0) { rgb = vec3f(0.0, c, x); }
+  else if (hp < 4.0) { rgb = vec3f(0.0, x, c); }
+  else if (hp < 5.0) { rgb = vec3f(x, 0.0, c); }
+  else { rgb = vec3f(c, 0.0, x); }
+  return rgb + vec3f(l - c * 0.5);
+}
+
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+  @location(1) shade: vec3f,
+}
+@vertex
+fn vs_draw(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var corners = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0),
+  );
+  let c = corners[vi];
+  let p = parts[ii];
+  let speed = length(p.vel);
+  let size = pu.size * (1.0 + speed * pu.sizePulse);
+  // pos is in NDC (-1..1 fills the frame); correct sprite x for aspect so
+  // dots stay round. y is flipped for clip space.
+  let clip = vec2f(p.pos.x + c.x * size / pu.aspect, -(p.pos.y + c.y * size));
+  let hue = pu.hue + seedHue(ii) * pu.hueSpread + speed * pu.speedColor * 400.0;
+  var out: VOut;
+  out.pos = vec4f(clip, 0.0, 1.0);
+  out.uv = c;
+  out.shade = hsl2rgb(hue, pu.sat, 0.6) * pu.brightness;
+  return out;
+}
+fn seedHue(ii: u32) -> f32 { return h11(f32(ii) * 0.61803 + 0.123) - 0.5; }
+
+@fragment
+fn fs_draw(in: VOut) -> @location(0) vec4f {
+  // Soft round sprite; additive so overlaps bloom into bright cores.
+  let d = length(in.uv);
+  let a = smoothstep(1.0, 0.0, d);
+  let core = smoothstep(0.5, 0.0, d);
+  let col = in.shade * (a + core * 1.5);
+  return vec4f(col, a);
+}
+`;
+
 /** A preset opts into the feedback/trails path by referencing the ABI helper. */
 function usesFeedback(preset: PresetDef): boolean {
   return preset.wgsl.includes("feedbackSample");
@@ -475,6 +652,25 @@ export class WebGPURenderer implements Renderer {
   private emptyFeedback: GPUTexture;
   private compositePipeline: GPURenderPipeline | null = null;
   private compositeBind: GPUBindGroup | null = null;
+
+  // Compute-particle system: a {pos,vel} storage buffer advanced by a compute
+  // pass at a fixed sim rate, drawn as additive sprites into visTex (then the
+  // shared composite + post). Only active for presets with a `particles` spec.
+  private particleSpec: ParticleSpec | null = null;
+  private particleBuf: GPUBuffer | null = null;
+  private particleCapacity = 0;
+  private particleUniform: GPUBuffer;
+  private particleData = new ArrayBuffer(PARTICLE_UNIFORM_SIZE);
+  private particleF32 = new Float32Array(this.particleData);
+  private particleU32 = new Uint32Array(this.particleData);
+  private particleSimPipeline: GPUComputePipeline | null = null;
+  private particleDrawPipeline: GPURenderPipeline | null = null;
+  private particleSimLayout: GPUBindGroupLayout;
+  private particleDrawLayout: GPUBindGroupLayout;
+  private particleSimBind: GPUBindGroup | null = null;
+  private particleDrawBind: GPUBindGroup | null = null;
+  private simStepsDone = 0;
+  private particleInitPending = false;
 
   private preset: PresetDef | null = null;
   private uniformData = new ArrayBuffer(UNIFORM_SIZE);
@@ -613,6 +809,28 @@ export class WebGPURenderer implements Renderer {
     });
     this.pipelineLayout = device.createPipelineLayout({
       bindGroupLayouts: [this.bindLayout],
+    });
+    // Particle pipelines: compute needs read_write on the state buffer, the
+    // draw pass reads it — two layouts over the same buffer.
+    this.particleUniform = device.createBuffer({
+      size: PARTICLE_UNIFORM_SIZE,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.particleSimLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+      ],
+    });
+    this.particleDrawLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "read-only-storage" },
+        },
+      ],
     });
   }
 
@@ -837,6 +1055,157 @@ export class WebGPURenderer implements Renderer {
     pass(this.finalPipeline!, this.finalBind, this.context.getCurrentTexture().createView());
   }
 
+  private ensureParticleBuffers(count: number): void {
+    if (this.particleBuf && count <= this.particleCapacity) return;
+    this.particleBuf?.destroy();
+    this.particleBuf = this.device.createBuffer({
+      size: count * 16, // pos.xy + vel.xy, all f32
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    this.particleCapacity = count;
+    this.particleSimBind = null;
+    this.particleDrawBind = null;
+  }
+
+  private ensureParticlePipelines(): void {
+    if (this.particleSimPipeline) return;
+    const simModule = this.device.createShaderModule({ code: PARTICLE_SIM_WGSL });
+    const drawModule = this.device.createShaderModule({ code: PARTICLE_DRAW_WGSL });
+    this.particleSimPipeline = this.device.createComputePipeline({
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.particleSimLayout] }),
+      compute: { module: simModule, entryPoint: "cs_sim" },
+    });
+    this.particleDrawPipeline = this.device.createRenderPipeline({
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.particleDrawLayout] }),
+      vertex: { module: drawModule, entryPoint: "vs_draw" },
+      fragment: {
+        module: drawModule,
+        entryPoint: "fs_draw",
+        targets: [
+          {
+            format: SCENE_FORMAT,
+            blend: {
+              color: { srcFactor: "one", dstFactor: "one", operation: "add" },
+              alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+            },
+          },
+        ],
+      },
+      primitive: { topology: "triangle-list" },
+    });
+  }
+
+  /** Deterministic seeded init: particles seeded across a central disc with a
+   * small outward velocity, so the curl field + outward drift form a radiating
+   * fountain (divergence-free flow keeps a uniform fill looking like static, so
+   * a center-weighted spawn is what gives visible streams). Runs on the CPU
+   * (setup, not per-pixel) so a plain hash is fine. */
+  private initParticles(count: number): void {
+    const data = new Float32Array(count * 4);
+    const h = (n: number) => {
+      const s = Math.sin(n) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    for (let i = 0; i < count; i++) {
+      // sqrt radius => uniform area density within the disc.
+      const r = Math.sqrt(h(i * 2.11 + 0.7)) * 0.9;
+      const a = h(i * 3.73 + 1.3) * Math.PI * 2;
+      data[i * 4] = Math.cos(a) * r;
+      data[i * 4 + 1] = Math.sin(a) * r;
+      data[i * 4 + 2] = 0;
+      data[i * 4 + 3] = 0;
+    }
+    this.device.queue.writeBuffer(this.particleBuf!, 0, data);
+    this.particleInitPending = false;
+  }
+
+  private writeParticleUniform(time: number, f: AudioFeatures, params: ParamValues): void {
+    const F = this.particleF32;
+    F[0] = PARTICLE_DT;
+    F[1] = time;
+    F[2] = this.canvas.width / Math.max(1, this.canvas.height);
+    this.particleU32[3] = this.particleSpec!.count;
+    F[4] = f.bass;
+    F[5] = f.energy;
+    F[6] = f.driveBeat;
+    F[7] = f.kick;
+    PARTICLE_PARAM_KEYS.forEach((k, idx) => {
+      F[8 + idx] = params[k] ?? 0;
+    });
+    this.device.queue.writeBuffer(this.particleUniform, 0, this.particleData);
+  }
+
+  /** Run the particle sim (fixed steps keyed to track time) and draw the
+   * particles additively into visTex. Returns after the draw; the caller
+   * composites visTex -> sceneTex and runs post. */
+  private renderParticles(
+    encoder: GPUCommandEncoder,
+    time: number,
+    f: AudioFeatures,
+    params: ParamValues,
+  ): void {
+    const count = this.particleSpec!.count;
+    this.ensureParticlePipelines();
+
+    // Advance the sim to floor(time * SIM_FPS) total steps. A backwards jump
+    // or a large gap (seek) re-seeds and snaps — export runs forward from 0 so
+    // this never triggers there, keeping exports bit-reproducible.
+    const target = Math.floor(time * SIM_FPS);
+    let steps = target - this.simStepsDone;
+    if (this.particleInitPending || steps < 0 || steps > MAX_SIM_CATCHUP * 4) {
+      this.initParticles(count);
+      this.simStepsDone = target;
+      steps = 0;
+    }
+    steps = Math.min(steps, MAX_SIM_CATCHUP);
+
+    this.writeParticleUniform(time, f, params);
+    if (!this.particleSimBind) {
+      this.particleSimBind = this.device.createBindGroup({
+        layout: this.particleSimLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.particleUniform } },
+          { binding: 1, resource: { buffer: this.particleBuf! } },
+        ],
+      });
+    }
+    const groups = Math.ceil(count / 64);
+    for (let k = 0; k < steps; k++) {
+      const cp = encoder.beginComputePass();
+      cp.setPipeline(this.particleSimPipeline!);
+      cp.setBindGroup(0, this.particleSimBind);
+      cp.dispatchWorkgroups(groups);
+      cp.end();
+    }
+    this.simStepsDone += steps;
+
+    if (!this.particleDrawBind) {
+      this.particleDrawBind = this.device.createBindGroup({
+        layout: this.particleDrawLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.particleUniform } },
+          { binding: 1, resource: { buffer: this.particleBuf! } },
+        ],
+      });
+    }
+    const density = Math.min(1, Math.max(0, params["density"] ?? 1));
+    const drawCount = Math.max(1, Math.floor(count * density));
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.visTex!.createView(),
+          loadOp: "clear",
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          storeOp: "store",
+        },
+      ],
+    });
+    pass.setPipeline(this.particleDrawPipeline!);
+    pass.setBindGroup(0, this.particleDrawBind);
+    pass.draw(6, drawCount);
+    pass.end();
+  }
+
   setOverlay(source: ImageBitmap | null): void {
     this.overlayTexture?.destroy();
     this.overlayTexture = null;
@@ -875,6 +1244,13 @@ export class WebGPURenderer implements Renderer {
     // preset must not inherit the previous one's trails, so clear the history.
     this.presetUsesFeedback = usesFeedback(preset);
     this.feedbackClearPending = true;
+    // Particle preset: (re)allocate state and re-seed on the next frame.
+    this.particleSpec = preset.particles ?? null;
+    if (this.particleSpec) {
+      this.ensureParticleBuffers(this.particleSpec.count);
+      this.particleInitPending = true;
+      this.simStepsDone = 0;
+    }
     // Generate named accessors (P_<key>) for every param in ABI order so
     // preset WGSL never touches raw indices.
     const specs = allParams(preset);
@@ -951,8 +1327,12 @@ export class WebGPURenderer implements Renderer {
     // Feedback path is active only when the preset opts in AND we're not
     // mid-crossfade (feedback pauses during transitions). fs_main branches on
     // this: 1 => emit raw visual for the composite pass, 0 => inline composite.
-    const fading = !!(transition && this.transitionPipeline && this.transitionPreset);
-    const useFeedback = this.presetUsesFeedback && !fading;
+    // Particle presets take a dedicated compute+draw path and ignore the
+    // fragment/feedback/crossfade machinery (they cut, not crossfade).
+    const particlesActive = !!this.particleSpec;
+    const fading =
+      !particlesActive && !!(transition && this.transitionPipeline && this.transitionPreset);
+    const useFeedback = !particlesActive && this.presetUsesFeedback && !fading;
     this.uniformF32[27] = useFeedback ? 1 : 0;
     this.device.queue.writeBuffer(this.uniformBuf, 0, this.uniformData);
     this.device.queue.writeBuffer(this.binsBuf!, 0, f.bins);
@@ -991,7 +1371,8 @@ export class WebGPURenderer implements Renderer {
       this.ensureFadeTargets();
     }
     this.ensureGraphTargets();
-    if (useFeedback) this.ensureFeedbackTargets();
+    // Particles + feedback both draw into visTex, then composite -> sceneTex.
+    if (useFeedback || particlesActive) this.ensureFeedbackTargets();
     const scene = this.sceneTex!.createView();
 
     const encoder = this.device.createCommandEncoder();
@@ -1011,7 +1392,11 @@ export class WebGPURenderer implements Renderer {
       pass.end();
     };
 
-    if (useFeedback) {
+    if (particlesActive) {
+      // Sim + additive draw into visTex, then the shared composite -> sceneTex.
+      this.renderParticles(encoder, time, f, params);
+      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene);
+    } else if (useFeedback) {
       // Fresh history holds garbage / a previous preset's trails — clear it
       // before the first feedback frame so trails start from black.
       if (this.feedbackClearPending) {
@@ -1111,6 +1496,8 @@ export class WebGPURenderer implements Renderer {
     this.emptyFeedback.destroy();
     this.visTex?.destroy();
     this.histTex?.destroy();
+    this.particleUniform.destroy();
+    this.particleBuf?.destroy();
     this.device.destroy();
   }
 

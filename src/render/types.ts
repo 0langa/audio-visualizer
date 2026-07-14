@@ -43,8 +43,25 @@ export interface PresetDef {
    * Each param spec (main + advanced) is exposed as a generated accessor
    * `P_<key>()` — use those, not raw indices.
    * Must define: fn preset(uv: vec2f) -> vec4f
+   *
+   * Particle presets (see `particles`) still declare `wgsl`, but it is unused —
+   * the renderer drives a built-in compute + instanced-draw path instead.
    */
   wgsl: string;
+  /**
+   * Marks a GPU compute-particle preset. The renderer runs a fixed-timestep
+   * particle simulation (curl-noise flow + audio forces) and draws the
+   * particles additively, bypassing the fragment `wgsl` path. Params (main +
+   * advanced) drive the sim in ABI order — see PARTICLE_PARAM_KEYS in the
+   * renderer. Deterministic: seeded init, fixed sim rate keyed to track time,
+   * no RNG — so exports are bit-reproducible and preview tracks them closely.
+   */
+  particles?: ParticleSpec;
+}
+
+export interface ParticleSpec {
+  /** Simulated + drawable particle count (GPU instances). */
+  count: number;
 }
 
 export type ParamValues = Record<string, number>;
