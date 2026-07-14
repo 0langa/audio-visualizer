@@ -11,6 +11,8 @@ import { voiceOrb } from "./voiceOrb";
 import { echoTrails } from "./echoTrails";
 import { particleFlow } from "./particleFlow";
 import { spectrumScape } from "./spectrumScape";
+import { aurora } from "./aurora";
+import { synthwave } from "./synthwave";
 import { builder } from "./builder";
 
 /** Registry: adding a preset = write the file, add it here. */
@@ -27,6 +29,8 @@ export const presets: PresetDef[] = [
   echoTrails,
   particleFlow,
   spectrumScape,
+  aurora,
+  synthwave,
   builder,
 ];
 
