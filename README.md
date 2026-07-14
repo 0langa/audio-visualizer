@@ -1,6 +1,6 @@
 # Audio Visualizer
 
-Desktop music visualizer. Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core. v2.0.0.
+Desktop music visualizer. Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core. v2.0.1.
 
 Free and open source. Built to become a professional-grade tool for producers and artists — local-first, no cloud rendering, no watermarks, no subscriptions.
 
