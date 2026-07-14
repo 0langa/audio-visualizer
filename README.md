@@ -66,6 +66,13 @@ Free and open source. Built to become a professional-grade tool for producers an
   live view and the export run the exact same FFT/windowing math, and sync
   is sample-exact. 720p→4K / 30/60 fps / auto or manual bitrate.
   Design: [docs/EXPORT-DESIGN.md](docs/EXPORT-DESIGN.md)
+- **PNG sequence export** with alpha — numbered frames into a folder, keeping
+  transparency for compositing in Premiere/Resolve/After Effects
+- **Loudness normalization** on export: match the audio to −14 LUFS (streaming),
+  −16 (podcast) or −23 (EBU R128), measured per ITU-R BS.1770-4 and held under a
+  −1 dBTP ceiling by a look-ahead true-peak limiter, so nothing clips when a
+  streaming service re-encodes it. Audio-only — a normalized export renders
+  frame-for-frame identically to the preview. Off by default
 - Product chrome: auto-hides while playing, keyboard shortcuts (press ?),
   hover-scrub seek bar, onboarding empty state, GPU-loss auto-recovery
 - Three synthesized demo tracks (120 BPM house / 174 BPM DnB / 70 BPM ambient)

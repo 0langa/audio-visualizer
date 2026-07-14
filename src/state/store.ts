@@ -124,7 +124,22 @@ export interface ExportSettings {
    * folder, keeping alpha when the background is Transparent (for editors).
    */
   format: "mp4" | "png";
+  /**
+   * Integrated-loudness target for the exported audio (LUFS), or null to leave
+   * the track at its own level. Off by default — silently changing someone's
+   * master is not a default. Audio-only; the visuals never move.
+   */
+  loudnessTarget: number | null;
+  /** True-peak ceiling the limiter holds when normalizing (dBTP). */
+  truePeakDb: number;
 }
+
+/** Loudness targets people actually deliver to. */
+export const LOUDNESS_PRESETS: { label: string; hint: string; lufs: number }[] = [
+  { label: "-14", hint: "Streaming (Spotify, YouTube, Apple Music)", lufs: -14 },
+  { label: "-16", hint: "Podcasts, spoken word", lufs: -16 },
+  { label: "-23", hint: "EBU R128 broadcast", lufs: -23 },
+];
 
 /**
  * Document state: everything that describes *the user's work* — serializable,
@@ -407,6 +422,8 @@ export const useVizStore = create<VizState>((set, get) => {
       canvasStart: 0,
       canvasDuration: 6,
       format: "mp4" as const,
+      loudnessTarget: null,
+      truePeakDb: -1,
     },
     exporting: null,
     exportError: null,
@@ -763,6 +780,11 @@ export const useVizStore = create<VizState>((set, get) => {
           // browser dev falls back to an in-memory blob + download.
           streamToPath: savePath ?? undefined,
           pngDir: pngDir ?? undefined,
+          // A PNG sequence carries no audio, so there is nothing to normalize.
+          loudness:
+            settings.loudnessTarget != null && settings.format !== "png"
+              ? { targetLufs: settings.loudnessTarget, truePeakDb: settings.truePeakDb }
+              : undefined,
           signal: ac.signal,
           onProgress: (done, total) => {
             const elapsed = (performance.now() - exportStartedAt) / 1000;

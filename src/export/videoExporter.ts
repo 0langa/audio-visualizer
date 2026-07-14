@@ -1,7 +1,13 @@
 import type { SyncSettings } from "../audio/types";
 import { pcmFromAudioBuffer } from "../audio/offlineSource";
 import type { BgSettings, ParamValues } from "../render/types";
-import { runExportJob, type ExportCoreResult, type ExportJob } from "./exportCore";
+import {
+  runExportJob,
+  type ExportCoreResult,
+  type ExportJob,
+  type LoudnessJob,
+  type LoudnessResult,
+} from "./exportCore";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
@@ -65,6 +71,12 @@ export interface ExportOptions {
    * for callers without desktop fs access. Setting either selects PNG mode.
    */
   onPngFrame?: (data: Uint8Array, index: number) => void;
+  /**
+   * Normalize the delivered audio to a loudness target with a true-peak
+   * ceiling. Audio-only: the visuals do not change, so a normalized export
+   * still matches the preview frame for frame. Omit to encode at source level.
+   */
+  loudness?: LoudnessJob;
   onProgress?: (framesDone: number, framesTotal: number) => void;
   signal?: AbortSignal;
 }
@@ -75,6 +87,8 @@ export interface ExportResult {
   bytes: number;
   seconds: number;
   audioCodec: "aac" | "opus";
+  /** What normalization actually did — present only when it ran. */
+  loudness?: LoudnessResult;
 }
 
 interface FileWriter {
@@ -174,6 +188,7 @@ function toResult(core: ExportCoreResult): ExportResult {
     bytes: core.bytes,
     seconds: core.seconds,
     audioCodec: core.audioCodec,
+    loudness: core.loudness,
   };
 }
 
@@ -231,6 +246,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
         ? { ...o.beatGrid, beatTimes: o.beatGrid.beatTimes.map((t) => t - o.segment!.start) }
         : o.beatGrid,
     mode: isPng ? "png" : o.streamToPath ? "stream" : "buffer",
+    loudness: o.loudness,
   });
 
   const writer = o.streamToPath && !isPng ? await createTauriWriter(o.streamToPath) : null;

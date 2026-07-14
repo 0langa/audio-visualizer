@@ -2,6 +2,8 @@ import { ArrayBufferTarget, Muxer, StreamTarget } from "mp4-muxer";
 import { OfflineAnalyzer } from "../audio/offlineSource";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { PcmData, SyncSettings } from "../audio/types";
+import { integratedLufs, normalizationGainDb } from "../audio/dsp/lufs";
+import { TruePeakLimiter } from "../audio/dsp/truepeak";
 import { WebGPURenderer } from "../render/webgpuRenderer";
 import type { BgSettings, MotionSettings, ParamValues, PostSettings } from "../render/types";
 import { applyMods, type ModRoute } from "../state/modMatrix";
@@ -71,6 +73,34 @@ export interface ExportJob {
    * it emits frames through hooks.onFrame.
    */
   mode: "buffer" | "stream" | "png";
+  /**
+   * Loudness normalization for the delivered audio. Undefined = off (the track
+   * is encoded at its own level).
+   *
+   * This deliberately touches the audio lane ONLY — the analyzer keeps reading
+   * the untouched buffer, so the visuals are byte-identical whether or not you
+   * normalize, and still match the live preview (which plays the original
+   * file). Normalization is a delivery step, not a creative one.
+   */
+  loudness?: LoudnessJob;
+}
+
+export interface LoudnessJob {
+  /** Integrated loudness to land on, LUFS (e.g. -14 for streaming). */
+  targetLufs: number;
+  /** True-peak ceiling the limiter enforces, dBTP (e.g. -1). */
+  truePeakDb: number;
+}
+
+export interface LoudnessResult {
+  /** Measured integrated loudness of the source, LUFS. */
+  inputLufs: number;
+  /** Makeup gain applied to reach the target, dB. */
+  gainDb: number;
+  /** Highest true peak after gain, before limiting, dBTP. */
+  peakInDb: number;
+  /** Deepest gain reduction the limiter applied, dB (<= 0). */
+  reductionDb: number;
 }
 
 export interface ExportCoreResult {
@@ -79,6 +109,8 @@ export interface ExportCoreResult {
   bytes: number;
   seconds: number;
   audioCodec: "aac" | "opus";
+  /** Present when loudness normalization ran. */
+  loudness?: LoudnessResult;
 }
 
 export interface ExportCoreHooks {
@@ -267,16 +299,54 @@ export async function runExportJob(
       }
     }
 
+    // --- Loudness normalization (audio lane only; the analyzer below reads the
+    // untouched pcm, so visuals are unaffected). Measured after the loop
+    // crossfade so we measure exactly what gets encoded.
+    let limiter: TruePeakLimiter | null = null;
+    let loudnessResult: LoudnessResult | undefined;
+    let normGainDb = 0;
+    let normInputLufs = 0;
+    if (audioEncoder && job.loudness) {
+      normInputLufs = integratedLufs(pcm.channels.slice(0, channels), sampleRate);
+      normGainDb = normalizationGainDb(normInputLufs, job.loudness.targetLufs);
+      limiter = new TruePeakLimiter(
+        sampleRate,
+        channels,
+        Math.pow(10, normGainDb / 20),
+        job.loudness.truePeakDb,
+      );
+    }
+
     // --- Audio lane: feed the whole buffer in planar chunks (MP4 only — a PNG
     // sequence carries no audio; the user keeps the original track).
     const CHUNK = 16384;
     const planar = new Float32Array(CHUNK * channels);
+    // The limiter delays by `lat` samples so it can duck ahead of a peak. Prime
+    // it with the first `lat` samples and then read `lat` ahead of what we
+    // emit, so its output stays sample-aligned with the video instead of
+    // sliding a couple of ms late.
+    const lat = limiter?.latency ?? 0;
+    if (limiter && lat > 0) {
+      const prime = new Float32Array(lat * channels);
+      for (let ch = 0; ch < channels; ch++) {
+        const src = pcm.channels[ch];
+        prime.set(src.subarray(0, Math.min(lat, src.length)), ch * lat);
+      }
+      limiter.process(prime, lat, channels);
+    }
     for (let pos = 0; audioEncoder && pos < pcm.length; pos += CHUNK) {
       abort();
       const frames = Math.min(CHUNK, pcm.length - pos);
       for (let ch = 0; ch < channels; ch++) {
-        planar.set(pcm.channels[ch].subarray(pos, pos + frames), ch * frames);
+        const src = pcm.channels[ch];
+        const off = ch * frames;
+        const from = pos + lat;
+        const n = Math.max(0, Math.min(frames, src.length - from));
+        if (n > 0) planar.set(src.subarray(from, from + n), off);
+        // Zero-pad past the end so the limiter can flush its look-ahead.
+        if (n < frames) planar.fill(0, off + n, off + frames);
       }
+      limiter?.process(planar, frames, channels);
       const data = new AudioData({
         format: "f32-planar",
         sampleRate,
@@ -291,6 +361,15 @@ export async function runExportJob(
       // synchronously ahead of the first video frame, and peak memory scales
       // with track length — the opposite of the flat-memory guarantee.
       if (audioEncoder.encodeQueueSize > QUEUE_MAX) await waitForDrain(audioEncoder);
+    }
+    if (limiter) {
+      const r = limiter.report;
+      loudnessResult = {
+        inputLufs: normInputLufs,
+        gainDb: normGainDb,
+        peakInDb: r.peakInDb,
+        reductionDb: r.reductionDb,
+      };
     }
 
     // --- Video lane: deterministic frame walk. Per-frame preset/params/mods/
@@ -402,9 +481,10 @@ export async function runExportJob(
         bytes: bufferTarget.buffer.byteLength,
         seconds: pcm.duration,
         audioCodec,
+        loudness: loudnessResult,
       };
     }
-    return { bytes: bytesOut, seconds: pcm.duration, audioCodec };
+    return { bytes: bytesOut, seconds: pcm.duration, audioCodec, loudness: loudnessResult };
   } finally {
     try {
       if (videoEncoder && videoEncoder.state !== "closed") videoEncoder.close();

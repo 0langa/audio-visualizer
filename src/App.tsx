@@ -6,7 +6,17 @@ import { exportVideo } from "./export/videoExporter";
 import { APP_VERSION } from "./version";
 import { getEngine } from "./state/services";
 import { rasterizeOverlay } from "./render/overlay";
-import { autoBitrateMbps, RESOLUTIONS, resolutionsForAspect, useVizStore } from "./state/store";
+// Used only by the dev-only E2E hooks below; both modules already ship as part
+// of the audio engine and exporter, so this costs the bundle nothing.
+import { integratedLufs } from "./audio/dsp/lufs";
+import { truePeakDbfs } from "./audio/dsp/truepeak";
+import {
+  autoBitrateMbps,
+  LOUDNESS_PRESETS,
+  RESOLUTIONS,
+  resolutionsForAspect,
+  useVizStore,
+} from "./state/store";
 import { PlayerBar } from "./ui/PlayerBar";
 import { TimelinePanel } from "./ui/TimelinePanel";
 import { PresetStrip } from "./ui/PresetStrip";
@@ -215,6 +225,14 @@ export default function App() {
         post: import("./render/types").PostSettings;
         /** Render a PNG sequence instead of MP4; frames are counted, not written. */
         png: boolean;
+        /** Normalize the exported audio (audio lane only). */
+        loudness: import("./export/exportCore").LoudnessJob;
+        /**
+         * Decode the finished MP4 and re-measure it, so normalization is
+         * verified end-to-end through the encoder rather than trusting the
+         * limiter's own arithmetic.
+         */
+        verifyAudio: boolean;
       }> = {},
     ) => {
       const buf = getEngine().audioBuffer;
@@ -272,12 +290,33 @@ export default function App() {
         timeline: s.timeline.enabled ? s.timeline : undefined,
         paramsByPreset: s.paramsByPreset,
         modsByPreset: s.modsByPreset,
+        loudness: opts.loudness,
       });
+      // Decode what we actually wrote and measure it. AAC is lossy, so this is
+      // the honest number a delivery target would see — not what we intended.
+      let measured: { lufs: number; truePeakDb: number } | undefined;
+      if (opts.verifyAudio && result.blob) {
+        const ac = new AudioContext();
+        try {
+          const decoded = await ac.decodeAudioData(await result.blob.arrayBuffer());
+          const chans = Array.from({ length: decoded.numberOfChannels }, (_, i) =>
+            decoded.getChannelData(i),
+          );
+          measured = {
+            lufs: integratedLufs(chans, decoded.sampleRate),
+            truePeakDb: truePeakDbfs(chans),
+          };
+        } finally {
+          await ac.close();
+        }
+      }
       const info = {
         bytes: result.bytes,
         ms: Math.round(performance.now() - t0),
         audioCodec: result.audioCodec,
         seconds: result.seconds,
+        ...(result.loudness ? { loudness: result.loudness } : {}),
+        ...(measured ? { measured } : {}),
         ...(opts.png ? { pngFrames: pngFrames.length, pngBytes: pngFrames } : {}),
       };
       (window as unknown as { __lastExport: unknown }).__lastExport = info;
@@ -608,6 +647,40 @@ export default function App() {
               <p className="section-hint">
                 Writes numbered PNG frames into a folder you pick — no audio track. Set Background
                 to <strong>Transparent</strong> to keep alpha for compositing.
+              </p>
+            )}
+
+            {exportSettings.format !== "png" && (
+              <label className="field">
+                <span>Loudness</span>
+                <select
+                  className="select"
+                  value={exportSettings.loudnessTarget ?? ""}
+                  disabled={!!exporting}
+                  title="Match the exported audio to a loudness standard. Affects audio only — the visuals stay exactly as previewed."
+                  onChange={(e) =>
+                    store().setExportSettings({
+                      loudnessTarget: e.target.value === "" ? null : Number(e.target.value),
+                    })
+                  }
+                >
+                  <option value="">Off — keep original level</option>
+                  {LOUDNESS_PRESETS.map((p) => (
+                    <option key={p.lufs} value={p.lufs}>
+                      {p.label} LUFS — {p.hint}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {exportSettings.format !== "png" && exportSettings.loudnessTarget != null && (
+              <p className="section-hint">
+                Measures the track and matches it to {exportSettings.loudnessTarget} LUFS, holding
+                peaks under {exportSettings.truePeakDb} dBTP so nothing clips when a streaming
+                service re-encodes it. Audio only — the visuals are unchanged. Already-loud tracks
+                can land a little under target: the peak ceiling wins, and holding it costs
+                loudness.
               </p>
             )}
 

@@ -78,6 +78,21 @@ class BiquadState {
 
 export const LUFS_FLOOR = -70;
 
+/** Widest makeup gain we'll apply, either way. Guards against absurd swings. */
+export const MAX_NORMALIZE_GAIN_DB = 30;
+
+/**
+ * Makeup gain (dB) that moves a track measuring `inputLufs` onto `targetLufs`.
+ * Loudness is a ratio, so the move is a plain difference — the clamp only
+ * exists to stop near-silent material from being amplified into noise.
+ * Returns 0 for material at or under the gate floor (nothing to normalize).
+ */
+export function normalizationGainDb(inputLufs: number, targetLufs: number): number {
+  if (!Number.isFinite(inputLufs) || inputLufs <= LUFS_FLOOR + 0.1) return 0;
+  const raw = targetLufs - inputLufs;
+  return Math.max(-MAX_NORMALIZE_GAIN_DB, Math.min(MAX_NORMALIZE_GAIN_DB, raw));
+}
+
 /**
  * Streaming momentary-loudness meter: feed contiguous samples per channel,
  * read `momentary` (400 ms window, LUFS). Live meter use.
@@ -135,23 +150,31 @@ export function integratedLufs(channels: Float32Array[], sampleRate: number): nu
   const length = channels[0]?.length ?? 0;
   if (length === 0) return LUFS_FLOOR;
   const [shelfC, hpC] = kWeighting(sampleRate);
-  const weighted = channels.map((data) => {
-    const shelf = new BiquadState(shelfC);
-    const hp = new BiquadState(hpC);
-    const out = new Float32Array(data.length);
-    for (let i = 0; i < data.length; i++) out[i] = hp.process(shelf.process(data[i]));
-    return out;
-  });
+  const filters = channels.map(() => [new BiquadState(shelfC), new BiquadState(hpC)]);
 
   const block = Math.round(sampleRate * 0.4);
   const hop = Math.round(sampleRate * 0.1);
+  // One block-long ring of channel-summed squared K-weighted samples. Filtering
+  // streams sample-by-sample rather than materialising a weighted copy of each
+  // channel: a 2 h stereo track would be ~2.8 GB of intermediate buffers, which
+  // alone would blow the whole export's memory budget.
+  const ring = new Float64Array(block);
   const blockPowers: number[] = [];
-  for (let start = 0; start + block <= length; start += hop) {
+  for (let i = 0; i < length; i++) {
     let z = 0;
-    for (const w of weighted) {
-      for (let i = start; i < start + block; i++) z += w[i] * w[i];
+    for (let ch = 0; ch < channels.length; ch++) {
+      const [shelf, hp] = filters[ch];
+      const w = hp.process(shelf.process(channels[ch][i] ?? 0));
+      z += w * w;
     }
-    blockPowers.push(z / block);
+    ring[i % block] = z;
+    // Emit once the ring first fills, then every `hop` samples — the spec's
+    // 400 ms blocks at 75% overlap, covering samples [i-block+1, i].
+    if (i >= block - 1 && (i - block + 1) % hop === 0) {
+      let sum = 0;
+      for (let k = 0; k < block; k++) sum += ring[k];
+      blockPowers.push(sum / block);
+    }
   }
   if (blockPowers.length === 0) return LUFS_FLOOR;
 
