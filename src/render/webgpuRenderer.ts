@@ -441,7 +441,7 @@ const PARTICLE_STRUCTS = /* wgsl */ `
 struct Particle { pos: vec2f, vel: vec2f }
 struct PU {
   dt: f32, time: f32, aspect: f32, count: u32,
-  bass: f32, energy: f32, driveBeat: f32, kick: f32,
+  bass: f32, drive: f32, driveBeat: f32, kick: f32,
   hue: f32, flowScale: f32, flowStrength: f32, swirl: f32,
   damping: f32, gravity: f32, size: f32, sizePulse: f32,
   brightness: f32, beatBurst: f32, hueSpread: f32, speedColor: f32,
@@ -488,7 +488,10 @@ fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
   // factors keep raw curl / positional terms in a sane velocity range so the
   // exposed knobs read as intuitive 0..2 multipliers.
   let fp = pos * pu.flowScale + vec2f(pu.time * 0.05, pu.time * 0.037);
-  var force = curl(fp) * pu.flowStrength * 0.04 * (1.0 + pu.bass * pu.audioFlow);
+  // Flow rides both the bass and the selected sync source, so the Sync panel
+  // visibly changes how the field surges.
+  var force = curl(fp) * pu.flowStrength * 0.04
+            * (1.0 + pu.bass * pu.audioFlow * 0.4 + pu.drive * pu.audioFlow);
   // Rotational swirl around center + gentle pull so the field stays framed.
   force += vec2f(-pos.y, pos.x) * pu.swirl * 0.4;
   force += -pos * pu.gravity * 0.3;
@@ -496,10 +499,11 @@ fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
   // curl field bends the outflow into visible radiating tendrils (a uniform
   // fill would look like static under divergence-free flow). Loudness feeds it.
   let outward = normalize(pos + vec2f(1e-5, 0.0));
-  force += outward * (0.03 + pu.energy * 0.05);
+  force += outward * (0.03 + pu.drive * 0.05);
   // Per-particle radial burst on kicks.
   let bdir = normalize(vec2f(h11(seed * 3.3) - 0.5, h11(seed * 7.7) - 0.5) + vec2f(1e-4));
-  force += bdir * pu.kick * pu.beatBurst * 0.3;
+  // Burst on the selected sync source's beats (falls back to kicks in Kick mode).
+  force += bdir * max(pu.driveBeat, pu.kick * 0.5) * pu.beatBurst * 0.3;
 
   vel = vel * pu.damping + force * pu.dt;
   pos += vel * pu.dt;
@@ -587,7 +591,7 @@ struct M3U {
   viewProj: mat4x4f,
   grid: f32, spacing: f32, barWidth: f32, heightScale: f32,
   hue: f32, hueRange: f32, light: f32, emissive: f32,
-  binCount: f32, time: f32, bass: f32, floorLevel: f32,
+  binCount: f32, time: f32, drive: f32, driveBeat: f32,
 }
 @group(0) @binding(0) var<uniform> m: M3U;
 @group(0) @binding(1) var<storage, read> bins: array<f32>;
@@ -628,11 +632,12 @@ fn vs_mesh(
   // Radial index into the spectrum -> concentric rings pulse with frequency.
   let r = length(vec2f(dx, dz)) / max(m.grid * 0.5, 1.0);
   let bi = u32(clamp(r, 0.0, 0.999) * m.binCount);
-  let h = bins[bi] * m.heightScale + 0.03;
+  // Overall height rides the selected sync source so the Sync panel matters.
+  let h = bins[bi] * m.heightScale * (0.7 + m.drive * 0.7) + 0.03;
   // Axis-only scale + translate => axis-aligned normals pass through.
   let world = vec3f(
     inPos.x * m.barWidth + dx * m.spacing,
-    inPos.y * h + m.floorLevel,
+    inPos.y * h,
     inPos.z * m.barWidth + dz * m.spacing,
   );
   var out: VOut;
@@ -650,7 +655,7 @@ fn fs_mesh(in: VOut) -> @location(0) vec4f {
   let diff = max(dot(n, lightDir), 0.0);
   let lit = in.shade * (0.25 + diff * m.light);
   // Emissive rises with height so tall bars glow (bloom picks them up).
-  let emis = in.shade * clamp(in.height, 0.0, 3.0) * m.emissive;
+  let emis = in.shade * clamp(in.height, 0.0, 3.0) * m.emissive * (0.7 + m.drive * 0.6 + m.driveBeat * 0.5);
   return vec4f(lit + emis, 1.0);
 }
 `;
@@ -1375,7 +1380,7 @@ export class WebGPURenderer implements Renderer {
     F[2] = this.canvas.width / Math.max(1, this.canvas.height);
     this.particleU32[3] = this.particleSpec!.count;
     F[4] = f.bass;
-    F[5] = f.energy;
+    F[5] = f.drive;
     F[6] = f.driveBeat;
     F[7] = f.kick;
     PARTICLE_PARAM_KEYS.forEach((k, idx) => {
@@ -1531,8 +1536,8 @@ export class WebGPURenderer implements Renderer {
     F[23] = g("emissive", 0.5);
     F[24] = f.bins.length;
     F[25] = time;
-    F[26] = f.bass;
-    F[27] = 0;
+    F[26] = f.drive;
+    F[27] = f.driveBeat;
     this.device.queue.writeBuffer(this.mesh3dUniform, 0, this.mesh3dData);
 
     if (!this.mesh3dBind) {
