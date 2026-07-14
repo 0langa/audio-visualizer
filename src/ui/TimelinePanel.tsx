@@ -181,10 +181,36 @@ export function TimelinePanel(props: {
     }
   };
 
+  // Pointer capture on the (stable) scroll container keeps a drag alive even
+  // when the cursor leaves the element or outruns it — matching the seek bar.
+  const beginDrag = (e: React.PointerEvent, d: NonNullable<typeof drag>) => {
+    scrollRef.current?.setPointerCapture(e.pointerId);
+    setDrag(d);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Keyframes are moved IN PLACE during the drag (so drag.index stays valid
+    // even when a keyframe crosses a neighbor in time); sort once on release.
+    if (drag?.kind === "key") {
+      const lane = timeline.lanes[drag.lane];
+      if (lane) {
+        setLane(drag.lane, { ...lane, keyframes: [...lane.keyframes].sort((a, b) => a.t - b.t) });
+      }
+    }
+    try {
+      scrollRef.current?.releasePointerCapture(e.pointerId);
+    } catch {
+      // capture may already be gone
+    }
+    setDrag(null);
+  };
+
   const moveDragged = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag) return;
+    // .tl-lanes rect.left already reflects the scroll offset (it is the
+    // scrolled content inside the overflow container) — do NOT add scrollLeft.
     const rect = scrollRef.current!.querySelector(".tl-lanes")!.getBoundingClientRect();
-    const t = snap(tOf(e.clientX - rect.left + scrollRef.current!.scrollLeft));
+    const t = snap(tOf(e.clientX - rect.left));
     if (drag.kind === "scene") {
       update({
         scenes: timeline.scenes.map((s) => (s.id === drag.id ? { ...s, start: t } : s)),
@@ -195,9 +221,9 @@ export function TimelinePanel(props: {
       const rowRect = (row as HTMLElement).getBoundingClientRect();
       const f = 1 - Math.min(1, Math.max(0, (e.clientY - rowRect.top) / rowRect.height));
       const value = drag.spec.min + f * (drag.spec.max - drag.spec.min);
-      const keyframes = lane.keyframes
-        .map((k, i) => (i === drag.index ? { ...k, t, value } : k))
-        .sort((a, b) => a.t - b.t);
+      // In place: no re-sort while dragging, so drag.index keeps pointing at
+      // the same keyframe. The array is re-sorted on pointer release.
+      const keyframes = lane.keyframes.map((k, i) => (i === drag.index ? { ...k, t, value } : k));
       setLane(drag.lane, { ...lane, keyframes });
     }
   };
@@ -277,8 +303,8 @@ export function TimelinePanel(props: {
         className="tl-scroll"
         ref={scrollRef}
         onPointerMove={moveDragged}
-        onPointerUp={() => setDrag(null)}
-        onPointerLeave={() => setDrag(null)}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <div className="tl-lanes" style={{ width }}>
           {/* Ruler */}
@@ -321,7 +347,7 @@ export function TimelinePanel(props: {
                   onPointerDown={(e) => {
                     e.preventDefault();
                     setSelectedScene(s.id);
-                    setDrag({ kind: "scene", id: s.id });
+                    beginDrag(e, { kind: "scene", id: s.id });
                   }}
                 >
                   <span className="tl-scene-name">{s.name}</span>
@@ -356,7 +382,7 @@ export function TimelinePanel(props: {
                         onPointerDown={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setDrag({ kind: "key", lane: li, index: ki, spec });
+                          beginDrag(e, { kind: "key", lane: li, index: ki, spec });
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
