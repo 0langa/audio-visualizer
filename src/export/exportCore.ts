@@ -10,6 +10,7 @@ import { applyMods, type ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
 import { resolveActiveFrame } from "../state/frameResolve";
 import { presetById } from "../render/presets";
+import { codecConfigExtras, codecString, MUXER_CODEC, type VideoCodecId } from "./codecProbe";
 
 /**
  * Offline MP4 export — the design in docs/EXPORT-DESIGN.md, realized.
@@ -35,6 +36,8 @@ export interface ExportJob {
   fps: number;
   /** Video bitrate, bits/second */
   bitrate: number;
+  /** Video codec (default "h264"). Encode lane only — pixels are identical. */
+  codec?: VideoCodecId;
   presetId: string;
   params: ParamValues;
   bg: BgSettings;
@@ -122,13 +125,7 @@ export interface ExportCoreHooks {
   signal?: AbortSignal;
 }
 
-function h264Codec(width: number, height: number, fps: number): string {
-  // High profile; level by throughput (macroblocks/s approximated by pixels*fps)
-  const px = width * height * fps;
-  if (px > 260_000_000) return "avc1.640034"; // L5.2 (4K60)
-  if (px > 130_000_000) return "avc1.640033"; // L5.1 (4K30 / 1440p60)
-  return "avc1.64002A"; // L4.2 (up to 1080p60)
-}
+const CODEC_NAMES: Record<VideoCodecId, string> = { h264: "H.264", hevc: "HEVC", av1: "AV1" };
 
 export async function runExportJob(
   job: ExportJob,
@@ -193,18 +190,22 @@ export async function runExportJob(
       throw new Error("No supported audio encoder (tried AAC, Opus)");
     }
 
-    const videoConfig: VideoEncoderConfig = {
-      codec: h264Codec(job.width, job.height, job.fps),
+    const codec: VideoCodecId = job.codec ?? "h264";
+    const videoConfig = {
+      codec: codecString(codec, job.width, job.height, job.fps),
       width: job.width,
       height: job.height,
       bitrate: job.bitrate,
       framerate: job.fps,
       latencyMode: "quality",
-      avc: { format: "avc" },
-    };
+      ...codecConfigExtras(codec),
+    } as VideoEncoderConfig;
     const vSupport = await VideoEncoder.isConfigSupported(videoConfig);
     if (!vSupport.supported) {
-      throw new Error(`H.264 encode not supported for ${job.width}x${job.height}@${job.fps}`);
+      throw new Error(
+        `${CODEC_NAMES[codec]} encode not supported for ${job.width}x${job.height}@${job.fps}` +
+          (codec !== "h264" ? " on this machine — switch Codec back to H.264" : ""),
+      );
     }
 
     bufferTarget = job.mode === "buffer" ? new ArrayBufferTarget() : null;
@@ -218,7 +219,7 @@ export async function runExportJob(
             hooks.onChunk?.(data, position);
           },
         }),
-      video: { codec: "avc", width: job.width, height: job.height },
+      video: { codec: MUXER_CODEC[codec], width: job.width, height: job.height },
       audio: { codec: audioCodec, sampleRate, numberOfChannels: channels },
       // Streaming writes fragmented MP4: strictly forward, memory stays flat.
       fastStart: bufferTarget ? "in-memory" : "fragmented",

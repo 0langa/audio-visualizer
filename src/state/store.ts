@@ -15,6 +15,7 @@ import {
 } from "./batch";
 import { runBatch } from "./batchRunner";
 import type { FormatPreset } from "../export/buildExportOptions";
+import { probeCodecs, type CodecSupport, type VideoCodecId } from "../export/codecProbe";
 import { demos } from "../audio/demoTrack";
 import type { BgSettings, ParamValues } from "../render/types";
 import { defaultParams } from "../render/types";
@@ -139,6 +140,8 @@ export interface ExportSettings {
   fps: number;
   autoRate: boolean;
   manualMbps: number;
+  /** Video codec — offered only when the hardware probe confirms support. */
+  codec: VideoCodecId;
   /** "video" = whole track; "canvas" = 3-8 s seamless loop (Spotify Canvas). */
   mode: "video" | "canvas";
   canvasStart: number;
@@ -233,6 +236,8 @@ interface SessionSlice {
   exporting: ExportProgress | null;
   exportError: string | null;
   exportDone: string | null;
+  /** What the hardware can encode; null until the probe runs (panel open). */
+  codecSupport: CodecSupport | null;
   /** Batch render: setup + in-flight run. Null until the panel is opened. */
   batch: BatchRun | null;
   batchStatus: "idle" | "running" | "done";
@@ -479,6 +484,7 @@ export const useVizStore = create<VizState>((set, get) => {
       // The aspect persists across launches; the resolution must match it or
       // the export select renders blank and exports the wrong shape.
       resIdx: reconciledResIdx(loadStoredAspect(), 1),
+      codec: "h264" as const,
       fps: 60,
       autoRate: true,
       manualMbps: 12,
@@ -492,6 +498,7 @@ export const useVizStore = create<VizState>((set, get) => {
     batch: null,
     batchStatus: "idle" as const,
     batchScanning: 0,
+    codecSupport: null,
     showBatch: false,
     exporting: null,
     exportError: null,
@@ -756,6 +763,18 @@ export const useVizStore = create<VizState>((set, get) => {
 
     setShowExport(showExport) {
       set({ showExport });
+      // Probe codec support the first time the panel opens — the result is
+      // hardware-fixed for the session, and the select renders from it.
+      if (showExport && !get().codecSupport) {
+        void probeCodecs().then((codecSupport) => {
+          set({ codecSupport });
+          // A previously chosen codec can be unsupported (settings survive
+          // the probe in dev hot-reload scenarios) — snap back to H.264.
+          if (!codecSupport[get().exportSettings.codec]) {
+            get().setExportSettings({ codec: "h264" });
+          }
+        });
+      }
     },
 
     setExportSettings(patch) {
@@ -853,6 +872,9 @@ export const useVizStore = create<VizState>((set, get) => {
               fps,
               mbps,
               format: "mp4",
+              // Canvas loops stay H.264 — they are for upload to platforms
+              // whose ingest is pickiest about codecs.
+              codec: canvasMode ? "h264" : settings.codec,
             },
             {
               name: engine.state.trackName ?? "visualization",
@@ -1003,6 +1025,7 @@ export const useVizStore = create<VizState>((set, get) => {
         fps: settings.fps,
         mbps: settings.autoRate ? autoBitrateMbps(res.w, res.h, settings.fps) : settings.manualMbps,
         format: "mp4",
+        codec: settings.codec,
       };
 
       // Re-read after the folder dialog: a tag scan (addBatchTracks) may have

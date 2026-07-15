@@ -3,7 +3,10 @@ import { demos } from "./audio/demoTrack";
 import { BG_TRANSPARENT, DEFAULT_POST } from "./render/types";
 import { presets, presetById } from "./render/presets";
 import { exportVideo } from "./export/videoExporter";
+import { CODEC_LABELS, type VideoCodecId } from "./export/codecProbe";
 import { APP_VERSION } from "./version";
+
+const CODEC_IDS: readonly VideoCodecId[] = ["h264", "hevc", "av1"];
 import { getEngine } from "./state/services";
 import { rasterizeOverlay } from "./render/overlay";
 import { BatchPanel } from "./ui/BatchPanel";
@@ -107,6 +110,8 @@ export default function App() {
   const batch = useVizStore((s) => s.batch);
   const batchStatus = useVizStore((s) => s.batchStatus);
   const batchScanning = useVizStore((s) => s.batchScanning);
+  const codecSupport = useVizStore((s) => s.codecSupport);
+  const codecChoices = CODEC_IDS.filter((c) => codecSupport?.[c]);
   const showBatch = useVizStore((s) => s.showBatch);
 
   const store = useVizStore.getState; // stable accessor for actions/handlers
@@ -240,6 +245,8 @@ export default function App() {
         withOverlay: boolean;
         canvasLoop: { start: number; duration: number };
         post: import("./render/types").PostSettings;
+        /** Video codec — mirrors store.runExport's ExportSettings.codec. */
+        codec: VideoCodecId;
         /** Render a PNG sequence instead of MP4; frames are counted, not written. */
         png: boolean;
         /** Normalize the exported audio (audio lane only). */
@@ -291,6 +298,7 @@ export default function App() {
         height: h,
         fps: opts.fps ?? 30,
         bitrate: 1_000_000,
+        codec: opts.codec,
         presetId: s.presetId,
         params: s.activeParams,
         bg: s.bg,
@@ -844,6 +852,27 @@ export default function App() {
                   {resolutionsForAspect(aspect).map((i) => (
                     <option key={RESOLUTIONS[i].label} value={i}>
                       {RESOLUTIONS[i].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {!canvasMode && exportSettings.format !== "png" && codecChoices.length > 1 && (
+              <label className="field">
+                <span>Codec</span>
+                <select
+                  className="select"
+                  value={exportSettings.codec}
+                  disabled={!!exporting}
+                  title="Encode format. Pixels are identical — this only changes file size and player compatibility."
+                  onChange={(e) =>
+                    store().setExportSettings({ codec: e.target.value as VideoCodecId })
+                  }
+                >
+                  {codecChoices.map((c) => (
+                    <option key={c} value={c}>
+                      {CODEC_LABELS[c]}
                     </option>
                   ))}
                 </select>

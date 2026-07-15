@@ -35,6 +35,11 @@ function doc(over: Partial<ProjectDocument> = {}): ProjectDocument {
 const track = { name: "t.mp3", meta: { title: "T", artist: "A" }, coverArt: null, beatGrid: null };
 
 describe("buildExportOptions", () => {
+  it("passes the format's codec through (frozen batch runs keep encoding it)", () => {
+    const o = buildExportOptions(doc(), { ...FMT, codec: "hevc" }, track, undefined, {});
+    expect(o.codec).toBe("hevc");
+  });
+
   it("carries every field the export pipeline reads", () => {
     // A dropped optional field would not fail typecheck and would silently
     // change the render — so assert the full surface, not a sample.
@@ -46,6 +51,7 @@ describe("buildExportOptions", () => {
     expect(o.height).toBe(1080);
     expect(o.fps).toBe(60);
     expect(o.bitrate).toBe(12e6);
+    expect(o.codec).toBe("h264"); // omitted on the format -> default
     expect(o.presetId).toBe("spectrum-bars");
     expect(o.params).toEqual(resolveDocParams("spectrum-bars", {}));
     expect(o.bg).toBeDefined();

@@ -6,6 +6,7 @@ import type { OverlayMeta } from "../render/overlay";
 import type { ProjectDocument } from "../state/project";
 import type { ExportOptions } from "./videoExporter";
 import type { LoudnessJob } from "./exportCore";
+import type { VideoCodecId } from "./codecProbe";
 
 /**
  * The single place a ProjectDocument becomes an ExportOptions.
@@ -35,6 +36,9 @@ export interface FormatPreset {
   fps: number;
   mbps: number;
   format: "mp4";
+  /** Video codec; omitted = "h264". Frozen with the format so a saved batch
+   * run keeps encoding what it started with. */
+  codec?: VideoCodecId;
 }
 
 /** Everything about the track being rendered, independent of the document. */
@@ -78,6 +82,7 @@ export function buildExportOptions(
     height: fmt.h,
     fps: fmt.fps,
     bitrate: fmt.mbps * 1e6,
+    codec: fmt.codec ?? "h264",
     presetId: doc.presetId,
     params: resolveDocParams(doc.presetId, doc.paramsByPreset),
     bg: doc.bg,

@@ -9,6 +9,7 @@ import {
   type LoudnessResult,
 } from "./exportCore";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
+import type { VideoCodecId } from "./codecProbe";
 import type { ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
 import type { MotionSettings, PostSettings } from "../render/types";
@@ -29,6 +30,8 @@ export interface ExportOptions {
   fps: number;
   /** Video bitrate, bits/second */
   bitrate: number;
+  /** Video codec (default "h264"). Encode lane only — pixels are identical. */
+  codec?: VideoCodecId;
   presetId: string;
   params: ParamValues;
   bg: BgSettings;
@@ -221,6 +224,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     height: o.height,
     fps: o.fps,
     bitrate: o.bitrate,
+    codec: o.codec,
     presetId: o.presetId,
     params: o.params,
     bg: o.bg,
