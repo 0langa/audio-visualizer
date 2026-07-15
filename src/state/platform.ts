@@ -75,6 +75,30 @@ export async function writeBinaryToPath(path: string, data: Blob): Promise<void>
   await writeFile(path, new Uint8Array(await data.arrayBuffer()));
 }
 
+/** Tauri only: read a file's bytes (library playback — path came from a scan
+ * under a dialog-picked folder, which grants the runtime read scope). */
+export async function readBinaryFromPath(path: string): Promise<Uint8Array> {
+  const { readFile } = await import("@tauri-apps/plugin-fs");
+  return readFile(path);
+}
+
+/** One entry from the Rust library scanner (lofty-tagged audio file). */
+export interface LibraryTrack {
+  path: string;
+  fileName: string;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  durationSec: number | null;
+}
+
+/** Tauri only: recursively scan a folder for audio files + tags (Rust side —
+ * walkdir + lofty; broken files degrade to filename-only entries). */
+export async function scanAudioLibrary(dir: string): Promise<LibraryTrack[]> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<LibraryTrack[]>("scan_audio_library", { dir });
+}
+
 /** Open a text file via dialog. Returns {name, contents}, null on cancel. */
 export async function openTextFile(
   filters: FileFilter[],

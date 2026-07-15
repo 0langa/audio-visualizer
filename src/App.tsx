@@ -24,6 +24,8 @@ import {
   useVizStore,
 } from "./state/store";
 import { PlayerBar } from "./ui/PlayerBar";
+import { LibraryPanel } from "./ui/LibraryPanel";
+import { isTauri } from "./state/platform";
 import { TimelinePanel } from "./ui/TimelinePanel";
 import { PresetStrip } from "./ui/PresetStrip";
 import { ParamsPanel } from "./ui/ParamsPanel";
@@ -54,6 +56,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Ctrl+Z / Ctrl+Y", "Undo / redo"],
   ["T", "Timeline panel"],
   ["B", "Batch render"],
+  ["Q", "Music library"],
 ];
 
 function toggleFullscreen(): void {
@@ -112,6 +115,11 @@ export default function App() {
   const batchScanning = useVizStore((s) => s.batchScanning);
   const codecSupport = useVizStore((s) => s.codecSupport);
   const codecChoices = CODEC_IDS.filter((c) => codecSupport?.[c]);
+  const showLibrary = useVizStore((s) => s.showLibrary);
+  const library = useVizStore((s) => s.library);
+  const libraryScanning = useVizStore((s) => s.libraryScanning);
+  const libraryActivePath = useVizStore((s) => s.libraryActivePath);
+  const libraryAutoAdvance = useVizStore((s) => s.libraryAutoAdvance);
   const showBatch = useVizStore((s) => s.showBatch);
 
   const store = useVizStore.getState; // stable accessor for actions/handlers
@@ -199,6 +207,10 @@ export default function App() {
           // Same guard the ✕, Escape and the backdrop enforce: a running queue
           // must not be dismissable behind the user's back.
           if (!(s.showBatch && s.batchStatus === "running")) s.setShowBatch(!s.showBatch);
+          break;
+        case "q":
+        case "Q":
+          s.setShowLibrary(!s.showLibrary);
           break;
         case "Escape":
           s.setShowHelp(false);
@@ -584,6 +596,13 @@ export default function App() {
             <IconBatch size={18} />
           </button>
           <button
+            className={`icon-btn ${showLibrary ? "active" : ""}`}
+            title="Music library (Q)"
+            onClick={() => store().setShowLibrary(!showLibrary)}
+          >
+            <IconMusic size={18} />
+          </button>
+          <button
             className={`icon-btn ${showPanel ? "active" : ""}`}
             title="Visual settings (G)"
             onClick={() => store().setShowPanel((v) => !v)}
@@ -608,6 +627,20 @@ export default function App() {
         activeId={presetId}
         onSwitch={(id) => store().switchPreset(id)}
       />
+
+      {showLibrary && (
+        <LibraryPanel
+          library={library}
+          scanning={libraryScanning}
+          activePath={libraryActivePath}
+          autoAdvance={libraryAutoAdvance}
+          desktop={isTauri()}
+          onPickFolder={() => void store().pickLibraryFolder()}
+          onPlay={(path) => void store().playLibraryTrack(path)}
+          onAutoAdvance={(v) => store().setLibraryAutoAdvance(v)}
+          onClose={() => store().setShowLibrary(false)}
+        />
+      )}
 
       {showPanel && (
         <ParamsPanel

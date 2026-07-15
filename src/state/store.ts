@@ -37,8 +37,11 @@ import {
   openTextFile,
   pickFolder,
   pickSavePath,
+  readBinaryFromPath,
   saveTextFile,
+  scanAudioLibrary,
   writeAutosave,
+  type LibraryTrack,
 } from "./platform";
 import {
   defaultImageLayer,
@@ -245,6 +248,15 @@ interface SessionSlice {
    * scan takes seconds per file and the panel must not look dead meanwhile. */
   batchScanning: number;
   showBatch: boolean;
+  // --- music library sidebar (desktop) ---
+  showLibrary: boolean;
+  /** Scanned folder + its tracks. Null until a folder is picked. */
+  library: { dir: string; tracks: LibraryTrack[] } | null;
+  libraryScanning: boolean;
+  /** Path of the library track currently loaded (null = loaded another way). */
+  libraryActivePath: string | null;
+  /** Play the next library track when the current one ends. */
+  libraryAutoAdvance: boolean;
 }
 
 interface Actions {
@@ -264,6 +276,12 @@ interface Actions {
   setSync(sync: SyncSettings): void;
   loadFile(file: File): Promise<void>;
   loadDemo(id: string): Promise<void>;
+  setShowLibrary(open: boolean): void;
+  pickLibraryFolder(): Promise<void>;
+  playLibraryTrack(path: string): Promise<void>;
+  /** Auto-advance hook — called by the engine's natural-end callback. */
+  advanceLibrary(): Promise<void>;
+  setLibraryAutoAdvance(v: boolean): void;
   togglePlay(): Promise<void>;
   seekStart(): void;
   seekEnd(time: number): void;
@@ -330,6 +348,9 @@ let exportStartedAt = 0;
 /** Monotonic track-load counter: a slow decode/tag-scan must not write its
  * metadata (or trigger analysis) over a newer load's. */
 let trackLoadGen = 0;
+/** Next library track, read + decoded ahead of time while the current one
+ * plays, so auto-advance is near-gapless instead of paying disk + decode. */
+let libraryPrefetch: { path: string; file: File; buffer: AudioBuffer } | null = null;
 /** Live canvas — overlay rasters at its pixel size. Set by initApp. */
 let liveCanvas: HTMLCanvasElement | null = null;
 let overlayTimer: ReturnType<typeof setTimeout> | undefined;
@@ -426,6 +447,34 @@ export const useVizStore = create<VizState>((set, get) => {
       });
   };
 
+  /** Read + decode the NEXT library track while the current one plays, so
+   * auto-advance swaps buffers instead of paying disk + decode at the gap.
+   * Decodes on the engine's own context — a fresh OfflineAudioContext would
+   * resample and shift every FFT bin (the batch learned this the hard way). */
+  const prefetchNextLibraryTrack = async () => {
+    const s = get();
+    if (!s.library || !s.libraryActivePath) return;
+    const i = s.library.tracks.findIndex((t) => t.path === s.libraryActivePath);
+    if (i < 0 || i + 1 >= s.library.tracks.length) {
+      libraryPrefetch = null;
+      return;
+    }
+    const next = s.library.tracks[i + 1];
+    if (libraryPrefetch?.path === next.path) return;
+    libraryPrefetch = null;
+    try {
+      const bytes = await readBinaryFromPath(next.path);
+      const file = new File([bytes as BlobPart], next.fileName);
+      const buffer = await getEngine().ctx.decodeAudioData(await file.arrayBuffer());
+      // Only keep it if the user is still on the track we prefetched FOR.
+      if (get().library?.tracks[i + 1]?.path === next.path) {
+        libraryPrefetch = { path: next.path, file, buffer };
+      }
+    } catch {
+      libraryPrefetch = null; // advance falls back to the plain load path
+    }
+  };
+
   /** Crash-safe project autosave (desktop), debounced past edit bursts. */
   const scheduleAutosave = () => {
     clearTimeout(autosaveTimer);
@@ -499,6 +548,11 @@ export const useVizStore = create<VizState>((set, get) => {
     batchStatus: "idle" as const,
     batchScanning: 0,
     codecSupport: null,
+    showLibrary: false,
+    library: null,
+    libraryScanning: false,
+    libraryActivePath: null,
+    libraryAutoAdvance: true,
     showBatch: false,
     exporting: null,
     exportError: null,
@@ -537,6 +591,9 @@ export const useVizStore = create<VizState>((set, get) => {
         onMeter: (lufs, stereoWidth) => set({ lufs, stereoWidth }),
       });
       getEngine().setVolume(get().muted ? 0 : get().volume);
+      // Library auto-advance: when a library track finishes naturally, play
+      // the next one (the action checks the toggle + current-track membership).
+      getEngine().onEnded = () => void get().advanceLibrary();
       get().pokeChrome();
       return () => {
         clearTimeout(idleTimer);
@@ -668,7 +725,9 @@ export const useVizStore = create<VizState>((set, get) => {
       // cover art and beat grid (baked into exports). Only the newest wins.
       const gen = ++trackLoadGen;
       try {
-        set({ error: null });
+        // A direct load (drop, file picker) leaves the library: clear the
+        // active marker so auto-advance stops. playLibraryTrack re-sets it.
+        set({ error: null, libraryActivePath: null });
         await getEngine().loadFile(file);
         if (gen !== trackLoadGen) return;
         await getEngine().play();
@@ -711,6 +770,79 @@ export const useVizStore = create<VizState>((set, get) => {
       const engine = getEngine();
       if (engine.playing) engine.pause();
       else await engine.play();
+    },
+
+    setShowLibrary(open) {
+      set({ showLibrary: open });
+    },
+
+    async pickLibraryFolder() {
+      if (!isTauri()) {
+        set({ error: "The music library needs the desktop app (it scans a folder)" });
+        return;
+      }
+      const dir = await pickFolder("Choose your music folder");
+      if (!dir) return;
+      set({ libraryScanning: true });
+      try {
+        const tracks = await scanAudioLibrary(dir);
+        set({ library: { dir, tracks } });
+        libraryPrefetch = null;
+        if (tracks.length === 0) flashNotice("No audio files found in that folder");
+      } catch (e) {
+        set({ error: `Library scan failed: ${(e as Error).message}` });
+      } finally {
+        set({ libraryScanning: false });
+      }
+    },
+
+    async playLibraryTrack(path) {
+      const entry = get().library?.tracks.find((t) => t.path === path);
+      if (!entry) return;
+      try {
+        // Bytes -> File -> the ordinary loadFile path: decode, tags, cover
+        // art, beat-grid analysis and generation guards all come for free.
+        const bytes = await readBinaryFromPath(path);
+        const file = new File([bytes as BlobPart], entry.fileName);
+        await get().loadFile(file);
+        // Mark active only if this load actually won (loadFile is
+        // generation-guarded and returns silently when superseded).
+        if (getEngine().state.trackName === entry.fileName) {
+          set({ libraryActivePath: path });
+          void prefetchNextLibraryTrack();
+        }
+      } catch (e) {
+        set({ error: `Could not read "${entry.fileName}" (${(e as Error).message})` });
+      }
+    },
+
+    async advanceLibrary() {
+      const s = get();
+      if (!s.libraryAutoAdvance || !s.library || !s.libraryActivePath) return;
+      const i = s.library.tracks.findIndex((t) => t.path === s.libraryActivePath);
+      if (i < 0 || i + 1 >= s.library.tracks.length) return; // end: stop
+      const next = s.library.tracks[i + 1];
+      const pre = libraryPrefetch;
+      if (pre && pre.path === next.path) {
+        // Near-gapless: disk read + decode already happened during playback.
+        const gen = ++trackLoadGen;
+        const engine = getEngine();
+        engine.loadBuffer(pre.buffer, pre.file.name);
+        await engine.play();
+        const { meta, coverArt } = await readTrackMeta(pre.file, pre.file.name);
+        if (gen !== trackLoadGen) return;
+        set({ trackMeta: meta, coverArt, libraryActivePath: next.path, error: null });
+        applyCoverArt();
+        get().refreshOverlay();
+        get().analyzeCurrentTrack();
+        void prefetchNextLibraryTrack();
+      } else {
+        await get().playLibraryTrack(next.path);
+      }
+    },
+
+    setLibraryAutoAdvance(v) {
+      set({ libraryAutoAdvance: v });
     },
 
     seekStart() {
