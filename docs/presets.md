@@ -4,7 +4,7 @@ A preset is one TypeScript file exporting a `PresetDef`, plus a registry
 line in `src/render/presets/index.ts`. The UI generates all controls from
 your parameter schema; the export pipeline runs your code unchanged. Full
 contribution workflow:
-[CONTRIBUTING.md](https://github.com/0langa/audio-visualizer/blob/main/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/0langa/beatform/blob/main/CONTRIBUTING.md).
 
 ## The two laws
 

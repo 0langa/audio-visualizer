@@ -1,21 +1,21 @@
 <p align="center">
-  <img src="brand/logo.svg" width="128" alt="Audio Visualizer">
+  <img src="brand/logo.svg" width="128" alt="Beatform">
 </p>
 
-<h1 align="center">Audio Visualizer</h1>
+<h1 align="center">Beatform</h1>
 
 <p align="center">
   Desktop music visualizer — WebGPU rendering, deterministic exports, local-first.
 </p>
 
 <p align="center">
-  <a href="https://github.com/0langa/audio-visualizer/releases/latest"><b>Download</b></a>
+  <a href="https://github.com/0langa/beatform/releases/latest"><b>Download</b></a>
   ·
-  <a href="https://0langa.github.io/audio-visualizer/"><b>Docs</b></a>
+  <a href="https://0langa.github.io/beatform/"><b>Docs</b></a>
   ·
-  <a href="https://0langa.github.io/audio-visualizer/presets"><b>Add a visual mode</b></a>
+  <a href="https://0langa.github.io/beatform/presets"><b>Add a visual mode</b></a>
   ·
-  <a href="https://0langa.github.io/audio-visualizer/templates"><b>Templates</b></a>
+  <a href="https://0langa.github.io/beatform/templates"><b>Templates</b></a>
 </p>
 
 Tauri 2 + React + TypeScript, WebGPU rendering (Canvas2D fallback), Rust core.
@@ -32,7 +32,7 @@ Free and open source. Built to become a professional-grade tool for producers an
   compute particles), Spectrum Scape (3D), Aurora, Synthwave,
   **Bass Circle** (circular bass visualizer with album art), and **Builder** —
   compose your own from six toggleable layers
-- Every mode: 4 factory **styles**, curated params + full **Advanced** section
+- Every mode: 5-7 curated factory **styles**, curated params + full **Advanced** section
   (~150 knobs app-wide), plain-language **hint** for every setting (tooltip +
   live hint bar), all persisted per mode
 - **User looks**: save your own named looks per visual mode, share them as

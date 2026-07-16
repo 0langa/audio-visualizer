@@ -45,10 +45,10 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist-release
-          cp "src-tauri/target/release/bundle/nsis/Audio Visualizer_${VERSION}_x64-setup.exe" \
-             "dist-release/AudioVisualizer_${VERSION}_x64-setup.exe"
-          cp "src-tauri/target/release/bundle/msi/Audio Visualizer_${VERSION}_x64_en-US.msi" \
-             "dist-release/AudioVisualizer_${VERSION}_x64_en-US.msi"
+          cp "src-tauri/target/release/bundle/nsis/Beatform_${VERSION}_x64-setup.exe" \
+             "dist-release/Beatform_${VERSION}_x64-setup.exe"
+          cp "src-tauri/target/release/bundle/msi/Beatform_${VERSION}_x64_en-US.msi" \
+             "dist-release/Beatform_${VERSION}_x64_en-US.msi"
           (cd dist-release && sha256sum *.exe *.msi > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Attach to the GitHub release (create draft if missing, skip existing assets)

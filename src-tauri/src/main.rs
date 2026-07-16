@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    audio_visualizer_lib::run()
+    beatform_lib::run()
 }

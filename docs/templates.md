@@ -9,7 +9,7 @@ Templates contain **no code**. A template can only select and parameterize
 the app's built-in visuals, so importing one is exactly as safe as clicking
 around the UI. Share them anywhere — a GitHub discussion, Discord, a zip.
 Community templates live in
-[Discussions](https://github.com/0langa/audio-visualizer/discussions).
+[Discussions](https://github.com/0langa/beatform/discussions).
 
 ## File layout
 

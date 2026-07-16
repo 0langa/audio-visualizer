@@ -1,10 +1,10 @@
-# Audio Visualizer
+# Beatform
 
-Free, open-source music visualizer for Windows. Drop a track in, get a
+Beatform is a free, open-source music visualizer for Windows. Drop a track in, get a
 beat-locked video out — live preview and exported file are the same render,
 by construction.
 
-**[Download the latest release](https://github.com/0langa/audio-visualizer/releases/latest)**
+**[Download the latest release](https://github.com/0langa/beatform/releases/latest)**
 (NSIS installer or MSI + SHA256 checksums). No account, no cloud, no telemetry;
 GitHub is the only channel and everything is free forever.
 
@@ -32,7 +32,7 @@ GitHub is the only channel and everything is free forever.
 - **[Templates (.avtheme)](templates)** — share a complete look as one file
 - **[Preset SDK](presets)** — add a visual mode with one WGSL file
 - **[Export design](EXPORT-DESIGN)** — why preview and file can't drift
-- **[Contributing](https://github.com/0langa/audio-visualizer/blob/main/CONTRIBUTING.md)**
+- **[Contributing](https://github.com/0langa/beatform/blob/main/CONTRIBUTING.md)**
 
 ## Highlights
 

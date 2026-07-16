@@ -769,7 +769,7 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div className="about-line">Audio Visualizer v{APP_VERSION}</div>
+            <div className="about-line">Beatform v{APP_VERSION}</div>
           </div>
         </div>
       )}

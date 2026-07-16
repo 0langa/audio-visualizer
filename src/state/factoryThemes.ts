@@ -40,7 +40,7 @@ function doc(
   };
 }
 
-const BY = "Audio Visualizer factory pack";
+const BY = "Beatform factory pack";
 const LICENSE = "CC0-1.0";
 
 export const FACTORY_THEMES: FactoryTheme[] = [

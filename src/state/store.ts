@@ -944,7 +944,7 @@ export const useVizStore = create<VizState>((set, get) => {
         const path = await saveTextFile(
           `${safeName(meta.name)}.avtheme`,
           serializeTheme(docOf(get()), meta, APP_VERSION),
-          [{ name: "Audio Visualizer template", extensions: ["avtheme"] }],
+          [{ name: "Beatform template", extensions: ["avtheme"] }],
         );
         if (path) flashNotice(`Template "${meta.name}" saved — share the file anywhere`);
       } catch (e) {
@@ -1477,7 +1477,7 @@ export const useVizStore = create<VizState>((set, get) => {
         const saved = await saveTextFile(
           `visualization.${PROJECT_EXTENSION}`,
           serializeProject(doc, APP_VERSION),
-          [{ name: "Audio Visualizer project", extensions: [PROJECT_EXTENSION] }],
+          [{ name: "Beatform project", extensions: [PROJECT_EXTENSION] }],
         );
         if (saved) flashNotice(`Project saved${isTauri() ? ` to ${saved}` : ""}`);
       } catch (e) {
@@ -1488,7 +1488,7 @@ export const useVizStore = create<VizState>((set, get) => {
     async openProject() {
       try {
         const picked = await openTextFile([
-          { name: "Audio Visualizer project", extensions: [PROJECT_EXTENSION] },
+          { name: "Beatform project", extensions: [PROJECT_EXTENSION] },
         ]);
         if (!picked) return;
         // Parse BEFORE clearing history: a corrupt file must not cost the
@@ -1611,7 +1611,7 @@ export const useVizStore = create<VizState>((set, get) => {
         const saved = await saveTextFile(
           `${safe}.${USER_PRESET_EXTENSION}`,
           serializeUserPreset(preset),
-          [{ name: "Audio Visualizer look", extensions: [USER_PRESET_EXTENSION] }],
+          [{ name: "Beatform look", extensions: [USER_PRESET_EXTENSION] }],
         );
         if (saved) flashNotice(`Look exported${isTauri() ? ` to ${saved}` : ""}`);
       } catch (e) {
@@ -1790,7 +1790,7 @@ export const useVizStore = create<VizState>((set, get) => {
     async importUserPreset() {
       try {
         const picked = await openTextFile([
-          { name: "Audio Visualizer look", extensions: [USER_PRESET_EXTENSION] },
+          { name: "Beatform look", extensions: [USER_PRESET_EXTENSION] },
         ]);
         if (!picked) return;
         const preset = parseUserPreset(picked.contents);
