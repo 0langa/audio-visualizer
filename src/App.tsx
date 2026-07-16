@@ -37,6 +37,7 @@ import {
   IconFolder,
   IconFullscreen,
   IconHelp,
+  IconBroadcast,
   IconMusic,
   IconSettings,
 } from "./ui/Icons";
@@ -120,6 +121,7 @@ export default function App() {
   const libraryScanning = useVizStore((s) => s.libraryScanning);
   const libraryActivePath = useVizStore((s) => s.libraryActivePath);
   const libraryAutoAdvance = useVizStore((s) => s.libraryAutoAdvance);
+  const liveInputActive = useVizStore((s) => s.liveInputActive);
   const showBatch = useVizStore((s) => s.showBatch);
 
   const store = useVizStore.getState; // stable accessor for actions/handlers
@@ -239,6 +241,9 @@ export default function App() {
     if (!import.meta.env.DEV) return;
     // The app's store instance (HMR-safe), for state assertions in E2E runs
     (window as unknown as { __store: unknown }).__store = useVizStore;
+    // The live audio engine, for E2E probes (module import from the console
+    // would get a DIFFERENT instance — "services not initialized").
+    (window as unknown as { __engine: unknown }).__engine = getEngine();
     (window as unknown as { __loadFile: unknown }).__loadFile = async (
       url: string,
       name: string,
@@ -601,6 +606,18 @@ export default function App() {
             onClick={() => store().setShowLibrary(!showLibrary)}
           >
             <IconMusic size={18} />
+          </button>
+          <button
+            className={`icon-btn ${liveInputActive ? "active live-pulse" : ""}`}
+            title={
+              liveInputActive
+                ? "Stop listening to system audio"
+                : "Visualize system audio — whatever this PC is playing"
+            }
+            disabled={!!exporting || batchStatus === "running"}
+            onClick={() => void store().toggleLiveInput()}
+          >
+            <IconBroadcast size={18} />
           </button>
           <button
             className={`icon-btn ${showPanel ? "active" : ""}`}

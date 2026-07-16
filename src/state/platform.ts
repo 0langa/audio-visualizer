@@ -99,6 +99,41 @@ export async function scanAudioLibrary(dir: string): Promise<LibraryTrack[]> {
   return invoke<LibraryTrack[]>("scan_audio_library", { dir });
 }
 
+export interface LoopbackInfo {
+  sampleRate: number;
+  channels: number;
+  device: string;
+}
+
+/**
+ * Tauri only: start WASAPI loopback capture of the default output device.
+ * `onChunk` receives interleaved STEREO f32 little-endian sample buffers.
+ * Raw channel payloads normally arrive as ArrayBuffer; the other shapes are
+ * handled defensively (IPC encodings have varied across Tauri versions).
+ */
+export async function startLoopback(
+  onChunk: (chunk: ArrayBuffer) => void,
+): Promise<LoopbackInfo> {
+  const { invoke, Channel } = await import("@tauri-apps/api/core");
+  const ch = new Channel<ArrayBuffer | Uint8Array | number[]>();
+  ch.onmessage = (data) => {
+    if (data instanceof ArrayBuffer) {
+      onChunk(data);
+    } else if (data instanceof Uint8Array) {
+      onChunk(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+    } else if (Array.isArray(data)) {
+      onChunk(new Uint8Array(data).buffer);
+    }
+  };
+  return invoke<LoopbackInfo>("start_loopback", { onSamples: ch });
+}
+
+/** Tauri only: stop loopback capture (idempotent). */
+export async function stopLoopback(): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("stop_loopback");
+}
+
 /** Open a text file via dialog. Returns {name, contents}, null on cancel. */
 export async function openTextFile(
   filters: FileFilter[],

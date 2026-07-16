@@ -121,6 +121,17 @@ export const IconBatch = ({ size }: IconProps) =>
     </>,
   );
 
+/** Speaker with radiating waves — live system-audio capture. */
+export const IconBroadcast = ({ size }: IconProps) =>
+  svg(
+    size,
+    <>
+      <path d="M11 5L6 9H3v6h3l5 4z" fill="currentColor" stroke="none" />
+      <path d="M15 9a4.5 4.5 0 0 1 0 6" />
+      <path d="M18 6.5a9 9 0 0 1 0 11" />
+    </>,
+  );
+
 export const IconChevronLeft = ({ size }: IconProps) => svg(size, <path d="M15 18l-6-6 6-6" />);
 
 export const IconChevronRight = ({ size }: IconProps) => svg(size, <path d="M9 6l6 6-6 6" />);

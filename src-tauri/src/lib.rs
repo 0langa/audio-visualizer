@@ -1,3 +1,5 @@
+mod loopback;
+
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::tag::Accessor;
 use serde::Serialize;
@@ -79,7 +81,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![scan_audio_library])
+        .manage(loopback::LoopbackCtl::default())
+        .invoke_handler(tauri::generate_handler![
+            scan_audio_library,
+            loopback::start_loopback,
+            loopback::stop_loopback
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

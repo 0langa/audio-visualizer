@@ -64,8 +64,9 @@ Free and open source. Built to become a professional-grade tool for producers an
   freezes. On desktop, exports **stream straight to disk** (fragmented MP4,
   flat memory — hour-long renders are fine). WYSIWYG by construction: the
   live view and the export run the exact same FFT/windowing math, and sync
-  is sample-exact. 720p→4K / 30/60 fps / auto or manual bitrate.
-  Design: [docs/EXPORT-DESIGN.md](docs/EXPORT-DESIGN.md)
+  is sample-exact. 720p→4K / 30/60 fps / auto or manual bitrate. **HEVC and
+  AV1** where the hardware supports them (probed, smaller files, identical
+  pixels). Design: [docs/EXPORT-DESIGN.md](docs/EXPORT-DESIGN.md)
 - **PNG sequence export** with alpha — numbered frames into a folder, keeping
   transparency for compositing in Premiere/Resolve/After Effects
 - **Batch render**: drop in 20 tracks, get 20 titled videos — one per track,
@@ -79,6 +80,13 @@ Free and open source. Built to become a professional-grade tool for producers an
   −1 dBTP ceiling by a look-ahead true-peak limiter, so nothing clips when a
   streaming service re-encodes it. Audio-only — a normalized export renders
   frame-for-frame identically to the preview. Off by default
+- **Music library** (desktop): pick your music folder once — every track
+  listed with its real tags (title/artist/duration via lofty), one click to
+  play, and finished tracks flow into the next near-gaplessly (the next file
+  is read and decoded while the current one plays)
+- **Listen to the system** (desktop): WASAPI loopback visualizes whatever the
+  PC is playing — Spotify, a browser, a DAW — live, without touching a file.
+  Analysis-only tap; nothing is re-emitted to the speakers
 - Product chrome: auto-hides while playing, keyboard shortcuts (press ?),
   hover-scrub seek bar, onboarding empty state, GPU-loss auto-recovery
 - Three synthesized demo tracks (120 BPM house / 174 BPM DnB / 70 BPM ambient)
@@ -114,8 +122,8 @@ src/
     persistence.ts     localStorage cache (last session)
   App.tsx              view layer over the store
 docs/EXPORT-DESIGN.md  offline-rendered, frame-perfect MP4 export design
-src-tauri/             Rust shell — dialog + fs plugins; more native
-                       capabilities land here (library scan, WASAPI loopback)
+src-tauri/             Rust shell — dialog/fs plugins, library scan
+                       (walkdir + lofty), WASAPI loopback capture (cpal)
 ```
 
 Design rules: renderers consume only `AudioFeatures`; presets declare params
@@ -142,7 +150,8 @@ CI runs typecheck, lint, format check, tests and build on every push/PR.
 
 - Producer basics, remaining: video/image backgrounds, preset thumbnails
 - Musical sync, remaining: stem import as additional sync sources
-- Visual ceiling: multi-pass render graph, real bloom/post stack, compute
-  particles, 3D camera scenes, custom WGSL preset SDK
-- Delivery: PNG sequences + alpha, more codecs, batch render queue,
-  system-audio loopback (WASAPI), library sidebar
+- Visual ceiling, remaining: custom WGSL preset SDK (in-app editor)
+- Delivery, remaining: ProRes 4444 via ffmpeg sidecar (editorial alpha
+  round-trip)
+- Ecosystem (v3.0): .avtheme templates + gallery, CI-built installers,
+  docs site

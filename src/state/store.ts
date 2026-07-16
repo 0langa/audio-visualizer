@@ -40,6 +40,8 @@ import {
   readBinaryFromPath,
   saveTextFile,
   scanAudioLibrary,
+  startLoopback,
+  stopLoopback,
   writeAutosave,
   type LibraryTrack,
 } from "./platform";
@@ -257,6 +259,8 @@ interface SessionSlice {
   libraryActivePath: string | null;
   /** Play the next library track when the current one ends. */
   libraryAutoAdvance: boolean;
+  /** Analysers fed by live system audio (WASAPI loopback) instead of a track. */
+  liveInputActive: boolean;
 }
 
 interface Actions {
@@ -277,6 +281,7 @@ interface Actions {
   loadFile(file: File): Promise<void>;
   loadDemo(id: string): Promise<void>;
   setShowLibrary(open: boolean): void;
+  toggleLiveInput(): Promise<void>;
   pickLibraryFolder(): Promise<void>;
   playLibraryTrack(path: string): Promise<void>;
   /** Auto-advance hook — called by the engine's natural-end callback. */
@@ -553,6 +558,7 @@ export const useVizStore = create<VizState>((set, get) => {
     libraryScanning: false,
     libraryActivePath: null,
     libraryAutoAdvance: true,
+    liveInputActive: false,
     showBatch: false,
     exporting: null,
     exportError: null,
@@ -720,6 +726,9 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     async loadFile(file) {
+      // Loading a track leaves live mode (and stops the Rust-side capture —
+      // the engine alone cannot, so this MUST route through the toggle).
+      if (get().liveInputActive) await get().toggleLiveInput();
       // Guard BOTH ends: decode + tag scan take seconds, and a second drop in
       // that window used to let whichever finished LAST own the metadata,
       // cover art and beat grid (baked into exports). Only the newest wins.
@@ -746,6 +755,7 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     async loadDemo(id) {
+      if (get().liveInputActive) await get().toggleLiveInput();
       const gen = ++trackLoadGen;
       try {
         set({ error: null });
@@ -767,9 +777,57 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     async togglePlay() {
+      // In live mode, "pause" means "stop listening to system audio".
+      if (get().liveInputActive) {
+        await get().toggleLiveInput();
+        return;
+      }
       const engine = getEngine();
       if (engine.playing) engine.pause();
       else await engine.play();
+    },
+
+    async toggleLiveInput() {
+      const engine = getEngine();
+      if (get().liveInputActive) {
+        await stopLoopback().catch(() => undefined);
+        engine.stopLiveInput();
+        set({ liveInputActive: false });
+        return;
+      }
+      if (!isTauri()) {
+        set({ error: "System-audio capture needs the desktop app" });
+        return;
+      }
+      try {
+        const push = await engine.startLiveInput();
+        const info = await startLoopback(push);
+        if (info.sampleRate !== engine.ctx.sampleRate) {
+          // Same default device on both ends makes this near-impossible, but
+          // feeding mismatched rates would pitch-shift every feature.
+          await stopLoopback().catch(() => undefined);
+          engine.stopLiveInput();
+          set({
+            error: `System audio runs at ${info.sampleRate} Hz, the visualizer at ${engine.ctx.sampleRate} Hz — match them in Windows sound settings`,
+          });
+          return;
+        }
+        // The previous track's beat grid must not pulse over live audio;
+        // presets fall back to onset pulses without one.
+        getAnalyzer().setBeatGrid(null);
+        set({
+          liveInputActive: true,
+          beatGrid: null,
+          trackKey: null,
+          sections: [],
+          libraryActivePath: null,
+          error: null,
+        });
+        flashNotice(`Listening to ${info.device}`);
+      } catch (e) {
+        engine.stopLiveInput();
+        set({ error: `System-audio capture failed: ${(e as Error).message}` });
+      }
     },
 
     setShowLibrary(open) {

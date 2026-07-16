@@ -1,6 +1,58 @@
 import type { PlaybackState } from "./types";
 
 /**
+ * AudioWorklet that turns pushed sample chunks into a live audio-graph
+ * source. Ring-buffered per channel; underruns emit silence; if the writer
+ * runs more than ~250 ms ahead of playback it jumps forward so live visuals
+ * never drift behind what the user hears. Input is interleaved stereo f32
+ * (the loopback capture's wire format), at the context's own sample rate.
+ */
+const LOOPBACK_WORKLET = /* js */ `
+class LoopbackFeed extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.cap = sampleRate * 2;
+    this.l = new Float32Array(this.cap);
+    this.r = new Float32Array(this.cap);
+    this.w = 0; // absolute frames written
+    this.rd = 0; // absolute frames read
+    this.port.onmessage = (e) => {
+      const d = e.data;
+      if (!(d instanceof ArrayBuffer)) return;
+      const s = new Float32Array(d);
+      const frames = s.length >> 1;
+      for (let i = 0; i < frames; i++) {
+        const idx = this.w % this.cap;
+        this.l[idx] = s[i * 2];
+        this.r[idx] = s[i * 2 + 1];
+        this.w++;
+      }
+      const maxLag = (sampleRate * 0.25) | 0;
+      if (this.w - this.rd > maxLag) this.rd = this.w - (maxLag >> 1);
+    };
+  }
+  process(_inputs, outputs) {
+    const out = outputs[0];
+    const L = out[0];
+    const R = out[1] ?? out[0];
+    for (let i = 0; i < L.length; i++) {
+      if (this.rd < this.w) {
+        const idx = this.rd % this.cap;
+        L[i] = this.l[idx];
+        R[i] = this.r[idx];
+        this.rd++;
+      } else {
+        L[i] = 0;
+        R[i] = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor("loopback-feed", LoopbackFeed);
+`;
+
+/**
  * AudioEngine owns the AudioContext graph:
  *
  *   AudioBufferSourceNode -> GainNode -> destination
@@ -18,10 +70,18 @@ export class AudioEngine {
   readonly analyserL: AnalyserNode;
   readonly analyserR: AnalyserNode;
   private gain: GainNode;
+  private splitter: ChannelSplitterNode;
   private source: AudioBufferSourceNode | null = null;
   private buffer: AudioBuffer | null = null;
   /** Monotonic load counter: a slow decode must not clobber a newer load. */
   private loadGen = 0;
+  // Live system-audio input (WASAPI loopback): a worklet source connected to
+  // the ANALYSERS ONLY — routing it to the destination would feed the system
+  // output back into itself.
+  private liveNode: AudioWorkletNode | null = null;
+  private liveStartAt = 0;
+  private nameBeforeLive: string | null = null;
+  private workletReady = false;
 
   /** ctx.currentTime at which playback of current segment began */
   private startedAt = 0;
@@ -47,10 +107,61 @@ export class AudioEngine {
     this.gain = this.ctx.createGain();
     this.gain.connect(this.ctx.destination);
     this.gain.connect(this.analyser);
-    const splitter = this.ctx.createChannelSplitter(2);
-    this.gain.connect(splitter);
-    splitter.connect(this.analyserL, 0);
-    splitter.connect(this.analyserR, 1);
+    this.splitter = this.ctx.createChannelSplitter(2);
+    this.gain.connect(this.splitter);
+    this.splitter.connect(this.analyserL, 0);
+    this.splitter.connect(this.analyserR, 1);
+  }
+
+  /** True while the analysers are fed by live system audio, not a track. */
+  get liveInput(): boolean {
+    return this.liveNode !== null;
+  }
+
+  /**
+   * Switch the analysis graph to live system audio. Returns the push
+   * function the loopback capture feeds (interleaved stereo f32 chunks at
+   * the context's sample rate — the caller verifies rates match). Playback
+   * of the loaded track stops; the track itself stays loaded.
+   */
+  async startLiveInput(): Promise<(chunk: ArrayBuffer) => void> {
+    if (this.liveNode) throw new Error("Live input already active");
+    this.stopSource();
+    this._playing = false;
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    if (!this.workletReady) {
+      const url = URL.createObjectURL(new Blob([LOOPBACK_WORKLET], { type: "text/javascript" }));
+      try {
+        await this.ctx.audioWorklet.addModule(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      this.workletReady = true;
+    }
+    const node = new AudioWorkletNode(this.ctx, "loopback-feed", {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+    node.connect(this.analyser);
+    node.connect(this.splitter);
+    this.liveNode = node;
+    this.liveStartAt = this.ctx.currentTime;
+    this.nameBeforeLive = this._trackName;
+    this._trackName = "System audio";
+    this.emit();
+    return (chunk) => node.port.postMessage(chunk, [chunk]);
+  }
+
+  /** Back to track mode. Safe to call when live input is not active. */
+  stopLiveInput(): void {
+    if (!this.liveNode) return;
+    this.liveNode.port.close();
+    this.liveNode.disconnect();
+    this.liveNode = null;
+    this._trackName = this.nameBeforeLive;
+    this.nameBeforeLive = null;
+    this.emit();
   }
 
   async loadFile(file: File): Promise<void> {
@@ -85,6 +196,7 @@ export class AudioEngine {
   }
 
   async play(): Promise<void> {
+    if (this.liveNode) return; // live mode: the store toggles it off instead
     if (!this.buffer || this._playing) return;
     if (this.ctx.state === "suspended") await this.ctx.resume();
     if (this.offset >= this.buffer.duration) this.offset = 0;
@@ -92,6 +204,7 @@ export class AudioEngine {
   }
 
   pause(): void {
+    if (this.liveNode) return;
     if (!this._playing) return;
     this.offset = this.currentTime;
     this.stopSource();
@@ -100,6 +213,7 @@ export class AudioEngine {
   }
 
   seek(time: number): void {
+    if (this.liveNode) return; // nothing to seek in a live stream
     if (!this.buffer) return;
     const clamped = Math.max(0, Math.min(time, this.buffer.duration));
     if (this._playing) {
@@ -116,7 +230,9 @@ export class AudioEngine {
   }
 
   get playing(): boolean {
-    return this._playing;
+    // Live input counts as "playing": beat detectors gate on it, and the
+    // frame loop's latency compensation should apply.
+    return this._playing || this.liveNode !== null;
   }
 
   get loop(): boolean {
@@ -131,6 +247,9 @@ export class AudioEngine {
   }
 
   get duration(): number {
+    // Live mode reports 0: the seek bar disables itself and progress-driven
+    // features stay quiet (progress guards divide-by-zero already).
+    if (this.liveNode) return 0;
     return this.buffer?.duration ?? 0;
   }
 
@@ -150,6 +269,9 @@ export class AudioEngine {
   }
 
   get currentTime(): number {
+    // Live mode: a monotonic clock from capture start. The origin is
+    // arbitrary (no track), it just has to advance smoothly for u.time.
+    if (this.liveNode) return this.ctx.currentTime - this.liveStartAt;
     if (!this.buffer) return 0;
     if (!this._playing) return this.offset;
     const raw = this.offset + (this.ctx.currentTime - this.startedAt);
@@ -210,6 +332,7 @@ export class AudioEngine {
 
   /** Stop playback and release the AudioContext (unmount cleanup). */
   dispose(): void {
+    this.stopLiveInput();
     this.stopSource();
     this._playing = false;
     void this.ctx.close().catch(() => undefined);
