@@ -17,7 +17,15 @@ export const metaballs: PresetDef = {
     {
       id: "abyss",
       name: "Abyss",
-      values: { hue: 228, count: 4, speed: 0.15, glow: 0.7, hueField: 10, bgLevel: 0.015, vignette: 0.7 },
+      values: {
+        hue: 228,
+        count: 4,
+        speed: 0.15,
+        glow: 0.7,
+        hueField: 10,
+        bgLevel: 0.015,
+        vignette: 0.7,
+      },
     },
     {
       id: "swarm",

@@ -1,0 +1,73 @@
+name: Release installers
+
+# Every tagged release gets CI-built Windows installers. Idempotent by
+# design: assets that already exist on the release (e.g. hand-uploaded from
+# a local build) are left alone, so this can coexist with local releasing.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # The ProRes sidecar (~110 MB, gitignored) — tauri build fails without it
+      - run: node scripts/fetch-ffmpeg.mjs
+
+      # Fast gates; the full lint/format matrix already runs in ci.yml
+      - run: npm run typecheck
+      - run: npm test
+      - run: cargo test --lib
+        working-directory: src-tauri
+
+      - run: npm run tauri build
+
+      - name: Stage assets with clean names
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist-release
+          cp "src-tauri/target/release/bundle/nsis/Audio Visualizer_${VERSION}_x64-setup.exe" \
+             "dist-release/AudioVisualizer_${VERSION}_x64-setup.exe"
+          cp "src-tauri/target/release/bundle/msi/Audio Visualizer_${VERSION}_x64_en-US.msi" \
+             "dist-release/AudioVisualizer_${VERSION}_x64_en-US.msi"
+          (cd dist-release && sha256sum *.exe *.msi > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Attach to the GitHub release (create draft if missing, skip existing assets)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if ! gh release view "$TAG" --json name >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --generate-notes --title "$TAG"
+          fi
+          EXISTING=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for f in dist-release/*; do
+            name=$(basename "$f")
+            if grep -qxF "$name" <<<"$EXISTING"; then
+              echo "skip (exists): $name"
+            else
+              gh release upload "$TAG" "$f"
+              echo "uploaded: $name"
+            fi
+          done

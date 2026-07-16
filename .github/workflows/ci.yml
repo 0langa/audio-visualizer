@@ -21,3 +21,23 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+
+  rust:
+    # The Rust shell has real logic now (library scan, loopback capture,
+    # ProRes sidecar manager) — test it on the actual target platform.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # tauri's build script wants the frontend dist to exist
+      - run: npm run build
+      - run: cargo test --lib
+        working-directory: src-tauri

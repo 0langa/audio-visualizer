@@ -111,9 +111,7 @@ export interface LoopbackInfo {
  * Raw channel payloads normally arrive as ArrayBuffer; the other shapes are
  * handled defensively (IPC encodings have varied across Tauri versions).
  */
-export async function startLoopback(
-  onChunk: (chunk: ArrayBuffer) => void,
-): Promise<LoopbackInfo> {
+export async function startLoopback(onChunk: (chunk: ArrayBuffer) => void): Promise<LoopbackInfo> {
   const { invoke, Channel } = await import("@tauri-apps/api/core");
   const ch = new Channel<ArrayBuffer | Uint8Array | number[]>();
   ch.onmessage = (data) => {

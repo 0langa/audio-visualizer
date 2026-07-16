@@ -22,7 +22,14 @@ export const radialBurst: PresetDef = {
     {
       id: "arctic",
       name: "Arctic Halo",
-      values: { hue: 195, hueSpread: 45, symmetry: 4, rotSpeed: 0.06, glow: 0.4, innerRadius: 0.14 },
+      values: {
+        hue: 195,
+        hueSpread: 45,
+        symmetry: 4,
+        rotSpeed: 0.06,
+        glow: 0.4,
+        innerRadius: 0.14,
+      },
     },
   ],
   params: [

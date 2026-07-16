@@ -868,9 +868,9 @@ export default function App() {
 
             {exportSettings.format === "prores" && (
               <p className="section-hint">
-                ProRes 4444 (.mov) with alpha + untouched PCM audio — the editorial mezzanine.
-                Set Background to <strong>Transparent</strong> to keep alpha. Encoded by the
-                bundled ffmpeg (LGPL). Files are large by design.
+                ProRes 4444 (.mov) with alpha + untouched PCM audio — the editorial mezzanine. Set
+                Background to <strong>Transparent</strong> to keep alpha. Encoded by the bundled
+                ffmpeg (LGPL). Files are large by design.
               </p>
             )}
 

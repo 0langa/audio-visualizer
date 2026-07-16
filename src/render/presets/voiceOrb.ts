@@ -20,7 +20,14 @@ export const voiceOrb: PresetDef = {
     {
       id: "broadcast",
       name: "Broadcast",
-      values: { hue: 0, sparkle: 0.25, wobble: 0.35, voiceFocus: 0.9, response: 0.75, rmsBlend: 0.5 },
+      values: {
+        hue: 0,
+        sparkle: 0.25,
+        wobble: 0.35,
+        voiceFocus: 0.9,
+        response: 0.75,
+        rmsBlend: 0.5,
+      },
     },
     {
       id: "forest",
