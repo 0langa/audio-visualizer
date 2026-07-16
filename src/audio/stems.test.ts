@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { analyzeStem, STEM_TRACK_KEYS, stemValuesAt, type StemEntry } from "./stems";
+import {
+  analyzeStem,
+  shiftStemAnalysis,
+  STEM_TRACK_KEYS,
+  stemValuesAt,
+  type StemEntry,
+} from "./stems";
 import { validModRoutes } from "../state/modMatrix";
 import type { PcmData } from "./types";
 
@@ -55,6 +61,39 @@ describe("stemValuesAt", () => {
   it("reads 0 past the end and returns undefined with no stems", () => {
     expect(stemValuesAt([entry], 99)!["stem1:kick"]).toBe(0);
     expect(stemValuesAt([], 1)).toBeUndefined();
+  });
+});
+
+describe("shiftStemAnalysis (segment exports)", () => {
+  const ramp: StemEntry["analysis"] = {
+    name: "r",
+    rate: 30,
+    frames: 90, // 3 s
+    tracks: Object.fromEntries(
+      STEM_TRACK_KEYS.map((k) => [k, Float32Array.from({ length: 90 }, (_, i) => i / 90)]),
+    ) as StemEntry["analysis"]["tracks"],
+  };
+
+  it("offset 0 is the identity (same object, no copy)", () => {
+    expect(shiftStemAnalysis(ramp, 0)).toBe(ramp);
+  });
+
+  it("sampling the shifted copy at t equals sampling the original at t+offset", () => {
+    const off = 1.25; // deliberately NOT frame-aligned (1.25 s * 30 = 37.5)
+    const shifted: StemEntry = { slot: "stem1", analysis: shiftStemAnalysis(ramp, off) };
+    const original: StemEntry = { slot: "stem1", analysis: ramp };
+    // On a linear ramp the double-lerp is exact everywhere, so compare tightly.
+    for (const t of [0, 0.5, 1, 1.4]) {
+      expect(stemValuesAt([shifted], t)!["stem1:kick"]).toBeCloseTo(
+        stemValuesAt([original], t + off)!["stem1:kick"],
+        6,
+      );
+    }
+  });
+
+  it("reads 0 where the shift runs past the end", () => {
+    const shifted: StemEntry = { slot: "stem1", analysis: shiftStemAnalysis(ramp, 2.5) };
+    expect(stemValuesAt([shifted], 1)!["stem1:kick"]).toBe(0); // 2.5+1 > 3 s
   });
 });
 

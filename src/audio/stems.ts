@@ -61,6 +61,36 @@ export async function analyzeStem(pcm: PcmData, name: string): Promise<StemAnaly
  * interpolation between envelope frames; past the end (stem shorter than the
  * master) everything reads 0.
  */
+/**
+ * A copy of the analysis whose t=0 lands `offsetSec` into the original —
+ * segment exports (Canvas loops) shift their stems with this so envelopes
+ * stay aligned with the sliced audio, exactly like the beat grid and
+ * timeline are shifted. Each new frame is the runtime lerp evaluated at
+ * (frame + offset) — exact wherever the export samples on the envelope
+ * grid (30 fps exports on the 30/s envelopes, i.e. every Canvas loop);
+ * elsewhere the residue is one lerp segment, not a time shift.
+ */
+export function shiftStemAnalysis(analysis: StemAnalysis, offsetSec: number): StemAnalysis {
+  if (offsetSec <= 0) return analysis;
+  const off = offsetSec * analysis.rate;
+  const last = analysis.frames - 1;
+  const tracks = {} as Record<StemTrackKey, Float32Array>;
+  for (const k of STEM_TRACK_KEYS) {
+    const src = analysis.tracks[k];
+    const dst = new Float32Array(analysis.frames);
+    for (let n = 0; n < analysis.frames; n++) {
+      const fi = n + off;
+      const i = Math.floor(fi);
+      if (i < 0 || i > last) continue; // past the end reads 0, like the lerp
+      const a = src[i];
+      const b = src[Math.min(i + 1, last)];
+      dst[n] = a + (b - a) * (fi - i);
+    }
+    tracks[k] = dst;
+  }
+  return { ...analysis, tracks };
+}
+
 export function stemValuesAt(stems: StemEntry[], t: number): Record<string, number> | undefined {
   if (stems.length === 0) return undefined;
   const out: Record<string, number> = {};

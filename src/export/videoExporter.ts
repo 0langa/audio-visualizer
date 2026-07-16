@@ -10,7 +10,7 @@ import {
 } from "./exportCore";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { VideoCodecId } from "./codecProbe";
-import type { StemEntry } from "../audio/stems";
+import { shiftStemAnalysis, type StemEntry } from "../audio/stems";
 import type { PresetDef as PresetDefLike } from "../render/types";
 import type { ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
@@ -246,7 +246,16 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     motion: o.motion,
     coverArt: o.coverArt,
     bgImage: o.bgImage,
-    stems: o.stems,
+    // Segment exports (Canvas loops) slice the audio, so the stems' t=0 must
+    // move with it — same treatment as beatGrid/timeline below. Unshifted
+    // stems would modulate the loop with envelopes from the track's start.
+    stems:
+      o.stems && o.segment
+        ? o.stems.map((s) => ({
+            ...s,
+            analysis: shiftStemAnalysis(s.analysis, o.segment!.start),
+          }))
+        : o.stems,
     customPresets: o.customPresets,
     paramsByPreset: o.paramsByPreset,
     modsByPreset: o.modsByPreset,

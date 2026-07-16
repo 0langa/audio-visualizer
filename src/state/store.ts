@@ -430,6 +430,10 @@ let overlayTimer: ReturnType<typeof setTimeout> | undefined;
 let overlayToken = 0;
 /** Latest analysis job id — stale results are dropped. */
 let analysisId = 0;
+/** toggleLiveInput spans two real awaits (worklet + Rust spawn); this stops a
+ * second click from running a second start path whose failure cleanup would
+ * tear down the first click's worklet. */
+let liveToggling = false;
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 function resolveParams(presetId: string, overrides: Record<string, ParamValues>): ParamValues {
@@ -903,7 +907,10 @@ export const useVizStore = create<VizState>((set, get) => {
         // playback, so no duration scan here. Shared with the batch queue.
         const { meta, coverArt } = await readTrackMeta(file, file.name);
         if (gen !== trackLoadGen) return;
-        set({ trackMeta: meta, coverArt });
+        // Stems are per-track: envelopes analyzed against the old track have
+        // no time relationship to the new one, so carrying them over would
+        // modulate the new track with the old track's rhythm.
+        set({ trackMeta: meta, coverArt, stems: [] });
         applyCoverArt();
         get().refreshOverlay();
         get().analyzeCurrentTrack();
@@ -925,7 +932,7 @@ export const useVizStore = create<VizState>((set, get) => {
         if (gen !== trackLoadGen) return;
         engine.loadBuffer(buf, `Demo: ${demo.name}`);
         await engine.play();
-        set({ trackMeta: { title: demo.name, artist: "" }, coverArt: null });
+        set({ trackMeta: { title: demo.name, artist: "" }, coverArt: null, stems: [] });
         applyCoverArt();
         get().refreshOverlay();
         get().analyzeCurrentTrack();
@@ -947,45 +954,59 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     async toggleLiveInput() {
-      const engine = getEngine();
-      if (get().liveInputActive) {
-        await stopLoopback().catch(() => undefined);
-        engine.stopLiveInput();
-        set({ liveInputActive: false });
-        return;
-      }
-      if (!isTauri()) {
-        set({ error: "System-audio capture needs the desktop app" });
-        return;
-      }
+      if (liveToggling) return;
+      liveToggling = true;
       try {
-        const push = await engine.startLiveInput();
-        const info = await startLoopback(push);
-        if (info.sampleRate !== engine.ctx.sampleRate) {
-          // Same default device on both ends makes this near-impossible, but
-          // feeding mismatched rates would pitch-shift every feature.
+        const engine = getEngine();
+        if (get().liveInputActive) {
           await stopLoopback().catch(() => undefined);
           engine.stopLiveInput();
-          set({
-            error: `System audio runs at ${info.sampleRate} Hz, the visualizer at ${engine.ctx.sampleRate} Hz — match them in Windows sound settings`,
-          });
+          set({ liveInputActive: false });
           return;
         }
-        // The previous track's beat grid must not pulse over live audio;
-        // presets fall back to onset pulses without one.
-        getAnalyzer().setBeatGrid(null);
-        set({
-          liveInputActive: true,
-          beatGrid: null,
-          trackKey: null,
-          sections: [],
-          libraryActivePath: null,
-          error: null,
-        });
-        flashNotice(`Listening to ${info.device}`);
-      } catch (e) {
-        engine.stopLiveInput();
-        set({ error: `System-audio capture failed: ${(e as Error).message}` });
+        if (!isTauri()) {
+          set({ error: "System-audio capture needs the desktop app" });
+          return;
+        }
+        try {
+          const push = await engine.startLiveInput();
+          const info = await startLoopback(push);
+          if (info.sampleRate !== engine.ctx.sampleRate) {
+            // Same default device on both ends makes this near-impossible, but
+            // feeding mismatched rates would pitch-shift every feature.
+            await stopLoopback().catch(() => undefined);
+            engine.stopLiveInput();
+            set({
+              error: `System audio runs at ${info.sampleRate} Hz, the visualizer at ${engine.ctx.sampleRate} Hz — match them in Windows sound settings`,
+            });
+            return;
+          }
+          // The previous track's beat grid must not pulse over live audio;
+          // presets fall back to onset pulses without one. Superseding
+          // analysisId also cancels an IN-FLIGHT analysis — without that, a
+          // grid computed for the dead track lands a few seconds into live
+          // mode and pulses over unrelated audio.
+          analysisId++;
+          getAnalyzer().setBeatGrid(null);
+          set({
+            liveInputActive: true,
+            beatGrid: null,
+            trackKey: null,
+            sections: [],
+            analyzing: false,
+            libraryActivePath: null,
+            error: null,
+          });
+          flashNotice(`Listening to ${info.device}`);
+        } catch (e) {
+          // Clear the Rust side too: a half-started (or orphaned) capture
+          // would wedge every future toggle on "already running".
+          await stopLoopback().catch(() => undefined);
+          engine.stopLiveInput();
+          set({ error: `System-audio capture failed: ${(e as Error).message}` });
+        }
+      } finally {
+        liveToggling = false;
       }
     },
 
@@ -1010,11 +1031,16 @@ export const useVizStore = create<VizState>((set, get) => {
       const slot = STEM_SLOTS.find((sl) => !s.stems.some((e) => e.slot === sl));
       if (!slot) return;
       set({ stemAnalyzing: file.name, error: null });
+      // Stems are per-track: if a new track lands while this stem is still
+      // decoding/analyzing, the result belongs to the OLD track — drop it
+      // instead of re-adding it after loadFile just cleared the list.
+      const gen = trackLoadGen;
       try {
         // Decode on the ENGINE's context: a fresh OfflineAudioContext would
         // resample and shift every FFT bin (the batch learned this once).
         const buf = await getEngine().ctx.decodeAudioData(await file.arrayBuffer());
         const analysis = await analyzeStem(pcmFromAudioBuffer(buf), file.name);
+        if (gen !== trackLoadGen) return;
         set({ stems: [...get().stems, { slot, analysis }] });
         flashNotice(`Stem "${analysis.name}" ready — route it in Modulation`);
       } catch (e) {
@@ -1154,7 +1180,7 @@ export const useVizStore = create<VizState>((set, get) => {
         await engine.play();
         const { meta, coverArt } = await readTrackMeta(pre.file, pre.file.name);
         if (gen !== trackLoadGen) return;
-        set({ trackMeta: meta, coverArt, libraryActivePath: next.path, error: null });
+        set({ trackMeta: meta, coverArt, stems: [], libraryActivePath: next.path, error: null });
         applyCoverArt();
         get().refreshOverlay();
         get().analyzeCurrentTrack();
@@ -1316,6 +1342,11 @@ export const useVizStore = create<VizState>((set, get) => {
       const fileName = `${baseName}${ext}`;
       // Desktop: pick the destination BEFORE rendering — a cancelled dialog
       // after a long 4K render would throw the work away.
+      // The dialog is also a window where a new track can land (loadFile has
+      // no export guard, deliberately): `buf` above is the OLD track, while
+      // everything read after the dialog (meta, grid, stems, cover) would be
+      // the NEW one — a mixed-track export. Detect and bail instead.
+      const genAtStart = trackLoadGen;
       let savePath: string | null = null;
       let pngDir: string | null = null;
       if (isTauri()) {
@@ -1356,6 +1387,11 @@ export const useVizStore = create<VizState>((set, get) => {
               ? "GIF/WebP export needs the desktop app (it runs the bundled ffmpeg)"
               : "ProRes export needs the desktop app (it runs the bundled ffmpeg)",
         });
+        exportStarting = false;
+        return;
+      }
+      if (genAtStart !== trackLoadGen) {
+        set({ exportError: "The track changed while the save dialog was open — export cancelled" });
         exportStarting = false;
         return;
       }
@@ -1564,6 +1600,13 @@ export const useVizStore = create<VizState>((set, get) => {
     async startBatch() {
       const b = get().batch;
       if (!b || b.tracks.length === 0 || get().batchStatus === "running" || batchStarting) return;
+      // Symmetric to runExport's batch check: two renders at once would fight
+      // over the GPU and the shared progress/abort state (concurrency is 1 by
+      // design — each export builds its own device + encoder session).
+      if (get().exporting || exportStarting) {
+        set({ exportError: "Finish (or cancel) the running export before starting a batch" });
+        return;
+      }
       if (!isTauri()) {
         set({ exportError: "Batch render needs the desktop app (it writes files to a folder)" });
         return;
@@ -1686,6 +1729,11 @@ export const useVizStore = create<VizState>((set, get) => {
     async retryFailedBatch() {
       const b = get().batch;
       if (!b || get().batchStatus === "running") return;
+      // Same single-render rule as startBatch: never race a running export.
+      if (get().exporting || exportStarting) {
+        set({ exportError: "Finish (or cancel) the running export before retrying the batch" });
+        return;
+      }
       const again = retryFailed(b, Date.now());
       if (again.jobs.length === 0) return;
       const ac = new AbortController();

@@ -126,6 +126,10 @@ export class AudioEngine {
    */
   async startLiveInput(): Promise<(chunk: ArrayBuffer) => void> {
     if (this.liveNode) throw new Error("Live input already active");
+    // Freeze the playhead the way pause() does BEFORE tearing down the
+    // source — otherwise leaving live mode later resumes from wherever the
+    // last segment began (usually 0), silently rewinding the track.
+    if (this._playing) this.offset = this.currentTime;
     this.stopSource();
     this._playing = false;
     if (this.ctx.state === "suspended") await this.ctx.resume();
