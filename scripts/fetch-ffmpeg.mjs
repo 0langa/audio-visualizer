@@ -35,11 +35,26 @@ mkdirSync(path.dirname(tmpZip), { recursive: true });
 await pipeline(res.body, createWriteStream(tmpZip));
 
 console.log("Extracting ffmpeg.exe…");
-const extractDir = path.join(ROOT, "src-tauri", "binaries", "_ffmpeg_extract");
+const binDir = path.join(ROOT, "src-tauri", "binaries");
+const extractDir = path.join(binDir, "_ffmpeg_extract");
 rmSync(extractDir, { recursive: true, force: true });
-// tar on Windows 10+ understands zip archives.
 mkdirSync(extractDir, { recursive: true });
-execFileSync("tar", ["-xf", tmpZip, "-C", extractDir]);
+// NOT `tar`: Git Bash puts GNU tar first in PATH and it reads neither zip
+// archives nor "C:\" paths. PowerShell's Expand-Archive is always present
+// on Windows (and on GitHub's windows runners); unzip covers the rest.
+if (process.platform === "win32") {
+  execFileSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      "Expand-Archive -Path '_ffmpeg.zip' -DestinationPath '_ffmpeg_extract' -Force",
+    ],
+    { cwd: binDir },
+  );
+} else {
+  execFileSync("unzip", ["-q", "_ffmpeg.zip", "-d", "_ffmpeg_extract"], { cwd: binDir });
+}
 const inner = ASSET.replace(/\.zip$/, "");
 renameSync(path.join(extractDir, inner, "bin", "ffmpeg.exe"), DEST);
 rmSync(tmpZip, { force: true });
