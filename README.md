@@ -77,6 +77,9 @@ Free and open source. Built to become a professional-grade tool for producers an
   is sample-exact. 720p→4K / 30/60 fps / auto or manual bitrate. **HEVC and
   AV1** where the hardware supports them (probed, smaller files, identical
   pixels). Design: [docs/EXPORT-DESIGN.md](docs/EXPORT-DESIGN.md)
+- **Transparent WebM export** — VP9 with a real alpha channel (color + alpha
+  planes muxed via BlockAdditions) + Opus audio, for OBS overlays and web
+  embeds. Pick the _VP9 + alpha_ codec, set Background to Transparent
 - **PNG sequence export** with alpha — numbered frames into a folder, keeping
   transparency for compositing in Premiere/Resolve/After Effects
 - **ProRes 4444 export** (desktop): one .mov with alpha + untouched PCM audio —

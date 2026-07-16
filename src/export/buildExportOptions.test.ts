@@ -38,6 +38,8 @@ describe("buildExportOptions", () => {
   it("passes the format's codec through (frozen batch runs keep encoding it)", () => {
     const o = buildExportOptions(doc(), { ...FMT, codec: "hevc" }, track, undefined, {});
     expect(o.codec).toBe("hevc");
+    const w = buildExportOptions(doc(), { ...FMT, codec: "vp9a" }, track, undefined, {});
+    expect(w.codec).toBe("vp9a");
   });
 
   it("carries every field the export pipeline reads", () => {

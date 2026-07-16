@@ -193,9 +193,11 @@ async function createTauriWriter(path: string): Promise<FileWriter> {
   };
 }
 
-function toResult(core: ExportCoreResult): ExportResult {
+function toResult(core: ExportCoreResult, codec?: VideoCodecId): ExportResult {
   return {
-    blob: core.buffer ? new Blob([core.buffer], { type: "video/mp4" }) : undefined,
+    blob: core.buffer
+      ? new Blob([core.buffer], { type: codec === "vp9a" ? "video/webm" : "video/mp4" })
+      : undefined,
     bytes: core.bytes,
     seconds: core.seconds,
     audioCodec: core.audioCodec,
@@ -297,7 +299,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     }
     await writer?.close();
     await pngWriter?.close();
-    return toResult(result);
+    return toResult(result, o.codec);
   } catch (e) {
     await writer?.discard();
     await pngWriter?.discard();

@@ -118,9 +118,10 @@ export function expandJobs(
     for (const fmt of formats) {
       const stem = safeName(track.meta.title || track.file.name);
       const withFmt = formats.length > 1 ? `${stem}_${fmt.w}x${fmt.h}` : stem;
-      let name = `${withFmt}.mp4`;
+      const ext = fmt.codec === "vp9a" ? "webm" : "mp4";
+      let name = `${withFmt}.${ext}`;
       let n = 2;
-      while (used.has(name.toLowerCase())) name = `${withFmt} (${n++}).mp4`;
+      while (used.has(name.toLowerCase())) name = `${withFmt} (${n++}).${ext}`;
       used.add(name.toLowerCase());
       jobs.push({
         id: newBatchId(),
@@ -249,9 +250,10 @@ export function retryFailed(run: BatchRun, nowMs: number): BatchRun {
     if (track && fmt) {
       const stem = safeName(track.meta.title || track.file.name);
       const withFmt = run.formats.length > 1 ? `${stem}_${fmt.w}x${fmt.h}` : stem;
-      let name = `${withFmt}.mp4`;
+      const ext = fmt.codec === "vp9a" ? "webm" : "mp4";
+      let name = `${withFmt}.${ext}`;
       let n = 2;
-      while (taken.has(name.toLowerCase())) name = `${withFmt} (${n++}).mp4`;
+      while (taken.has(name.toLowerCase())) name = `${withFmt} (${n++}).${ext}`;
       taken.add(name.toLowerCase());
       outPath = `${run.outDir}/${name}`;
     }

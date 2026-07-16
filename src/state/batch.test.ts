@@ -73,6 +73,11 @@ describe("expandJobs", () => {
     expect(jobs[0].outPath).toBe("/out/Drift (2).mp4");
   });
 
+  it("names vp9a formats .webm (VP9+alpha muxes into WebM, not MP4)", () => {
+    const jobs = expandJobs([track("t1", "Overlay")], [{ ...F16, codec: "vp9a" }], "/out");
+    expect(jobs[0].outPath).toBe("/out/Overlay.webm");
+  });
+
   it("strips only what the filesystem forbids", () => {
     const jobs = expandJobs([track("t1", 'A/B:C*?"<>|D')], [F16], "/out");
     expect(jobs[0].outPath).toBe("/out/ABCD.mp4");

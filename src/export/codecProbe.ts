@@ -9,16 +9,23 @@
  * its real dimensions).
  */
 
-export type VideoCodecId = "h264" | "hevc" | "av1";
+export type VideoCodecId = "h264" | "hevc" | "av1" | "vp9a";
+
+/** The codecs that mux into MP4 via mp4-muxer. "vp9a" is the odd one out: it
+ * encodes VP9 with an alpha plane and muxes into WebM via mediabunny — the
+ * only browser-encodable path to a transparent *video* (PNG sequences and
+ * ProRes 4444 cover the editorial hand-off; this covers OBS/web overlays). */
+export type Mp4CodecId = Exclude<VideoCodecId, "vp9a">;
 
 export const CODEC_LABELS: Record<VideoCodecId, string> = {
   h264: "H.264 — plays everywhere",
   hevc: "HEVC — smaller files, Apple-friendly",
   av1: "AV1 — smallest files, newest players",
+  vp9a: "VP9 + alpha — transparent WebM overlay",
 };
 
 /** mp4-muxer track codec ids. */
-export const MUXER_CODEC: Record<VideoCodecId, "avc" | "hevc" | "av1"> = {
+export const MUXER_CODEC: Record<Mp4CodecId, "avc" | "hevc" | "av1"> = {
   h264: "avc",
   hevc: "hevc",
   av1: "av1",
@@ -46,6 +53,12 @@ export function codecString(
       if (px > 260_000_000) return "av01.0.13M.08";
       if (px > 130_000_000) return "av01.0.12M.08";
       return "av01.0.08M.08";
+    case "vp9a":
+      // Profile 0, 8-bit; levels 4.1 / 5.0 / 5.1 (alpha rides as side data —
+      // the codec string describes the color stream)
+      if (px > 260_000_000) return "vp09.00.51.08";
+      if (px > 130_000_000) return "vp09.00.50.08";
+      return "vp09.00.41.08";
     default:
       // H.264 High profile; levels 4.2 / 5.1 / 5.2
       if (px > 260_000_000) return "avc1.640034";
@@ -67,6 +80,7 @@ export interface CodecSupport {
   h264: boolean;
   hevc: boolean;
   av1: boolean;
+  vp9a: boolean;
 }
 
 let probePromise: Promise<CodecSupport> | null = null;
@@ -89,8 +103,13 @@ export function probeCodecs(): Promise<CodecSupport> {
         return false;
       }
     };
-    const [h264, hevc, av1] = await Promise.all([test("h264"), test("hevc"), test("av1")]);
-    return { h264, hevc, av1 };
+    const [h264, hevc, av1, vp9a] = await Promise.all([
+      test("h264"),
+      test("hevc"),
+      test("av1"),
+      test("vp9a"),
+    ]);
+    return { h264, hevc, av1, vp9a };
   })();
   return probePromise;
 }

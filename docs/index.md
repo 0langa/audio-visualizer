@@ -22,8 +22,9 @@ GitHub is the only channel and everything is free forever.
 4. **Make it yours.** _Layers_ adds your title (auto-filled from tags), logo,
    or album art. _Sync_ chooses what drives the motion (kicks, bass, melody,
    voice…). _Post_ adds bloom, grain, vignette.
-5. **Export.** One MP4 (H.264/HEVC/AV1), a PNG sequence with alpha, or a
-   ProRes 4444 `.mov` for your editor. What you previewed is what renders —
+5. **Export.** One MP4 (H.264/HEVC/AV1), a transparent WebM (VP9 + alpha), a
+   PNG sequence with alpha, or a ProRes 4444 `.mov` for your editor. What you
+   previewed is what renders —
    sync is sample-exact.
 
 ## More

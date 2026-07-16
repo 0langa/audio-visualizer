@@ -6,7 +6,7 @@ import { exportVideo } from "./export/videoExporter";
 import { CODEC_LABELS, type VideoCodecId } from "./export/codecProbe";
 import { APP_VERSION } from "./version";
 
-const CODEC_IDS: readonly VideoCodecId[] = ["h264", "hevc", "av1"];
+const CODEC_IDS: readonly VideoCodecId[] = ["h264", "hevc", "av1", "vp9a"];
 import { getEngine } from "./state/services";
 import { rasterizeOverlay } from "./render/overlay";
 import { BatchPanel } from "./ui/BatchPanel";
@@ -893,7 +893,7 @@ export default function App() {
                 <button
                   className={`segment ${exportSettings.format === "mp4" ? "active" : ""}`}
                   disabled={!!exporting}
-                  title="One .mp4 file: H.264/HEVC/AV1 video + audio"
+                  title="One video file with audio: H.264/HEVC/AV1 (.mp4) or VP9 with alpha (.webm)"
                   onClick={() => store().setExportSettings({ format: "mp4" })}
                 >
                   MP4
@@ -993,7 +993,7 @@ export default function App() {
                   className="select"
                   value={exportSettings.codec}
                   disabled={!!exporting}
-                  title="Encode format. Pixels are identical — this only changes file size and player compatibility."
+                  title="Encode format. Pixels are identical — this only changes file size and player compatibility. VP9 + alpha writes a transparent .webm (set Background to Transparent)."
                   onChange={(e) =>
                     store().setExportSettings({ codec: e.target.value as VideoCodecId })
                   }
@@ -1005,6 +1005,14 @@ export default function App() {
                   ))}
                 </select>
               </label>
+            )}
+
+            {!canvasMode && exportSettings.format === "mp4" && exportSettings.codec === "vp9a" && (
+              <p className="section-hint">
+                VP9 + alpha writes a transparent <strong>.webm</strong> — for OBS overlays, web
+                embeds, and players that honor WebM transparency. Set Background to{" "}
+                <strong>Transparent</strong>; an opaque background just encodes a solid alpha.
+              </p>
             )}
 
             {!canvasMode && (

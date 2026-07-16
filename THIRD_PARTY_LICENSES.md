@@ -21,5 +21,16 @@ rendered frames to it. It is not linked into the application.
 FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
 This application is not affiliated with or endorsed by the FFmpeg project.
 
+## mediabunny (bundled JavaScript library)
+
+The WebM (VP9 + alpha) export path uses **mediabunny**
+(<https://github.com/Vanilagy/mediabunny>), bundled into the application
+JavaScript like any other npm dependency.
+
+- License: **Mozilla Public License 2.0** (file-level copyleft). The library
+  is used unmodified; its complete corresponding source is available from the
+  npm package (`mediabunny`, version pinned in `package-lock.json`) and the
+  repository above, which satisfies MPL-2.0 source availability.
+
 Everything else in this repository is original code under the repository's
 own MIT license; JavaScript dependencies carry their own licenses via npm.

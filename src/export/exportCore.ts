@@ -1,4 +1,15 @@
 import { ArrayBufferTarget, Muxer, StreamTarget } from "mp4-muxer";
+import {
+  AudioSample,
+  AudioSampleSource,
+  BufferTarget,
+  Output,
+  StreamTarget as WebmStreamTarget,
+  VideoSample,
+  VideoSampleSource,
+  WebMOutputFormat,
+  type StreamTargetChunk,
+} from "mediabunny";
 import { OfflineAnalyzer } from "../audio/offlineSource";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import type { PcmData, SyncSettings } from "../audio/types";
@@ -16,7 +27,13 @@ import { applyMods, type ModRoute } from "../state/modMatrix";
 import type { Timeline } from "../state/timeline";
 import { resolveActiveFrame } from "../state/frameResolve";
 import { presetById } from "../render/presets";
-import { codecConfigExtras, codecString, MUXER_CODEC, type VideoCodecId } from "./codecProbe";
+import {
+  codecConfigExtras,
+  codecString,
+  MUXER_CODEC,
+  type Mp4CodecId,
+  type VideoCodecId,
+} from "./codecProbe";
 import { bakeBackgroundBitmap } from "../render/bgImage";
 import { stemValuesAt, type StemEntry } from "../audio/stems";
 import { registerCustomPreset, validCustomPreset } from "../render/presets/custom";
@@ -142,7 +159,15 @@ export interface ExportCoreHooks {
   signal?: AbortSignal;
 }
 
-const CODEC_NAMES: Record<VideoCodecId, string> = { h264: "H.264", hevc: "HEVC", av1: "AV1" };
+const CODEC_NAMES: Record<VideoCodecId, string> = {
+  h264: "H.264",
+  hevc: "HEVC",
+  av1: "AV1",
+  vp9a: "VP9 (alpha)",
+};
+
+/** Sample rates the WebCodecs Opus encoder accepts (Opus operating rates). */
+const OPUS_RATES = new Set([8000, 12000, 16000, 24000, 48000]);
 
 export async function runExportJob(
   job: ExportJob,
@@ -185,6 +210,16 @@ export async function runExportJob(
   let muxer: Muxer<ArrayBufferTarget | StreamTarget> | null = null;
   let videoEncoder: VideoEncoder | null = null;
   let audioEncoder: AudioEncoder | null = null;
+  // "vp9a" takes the mediabunny lane: VP9 color + alpha planes dual-encoded
+  // (mediabunny splits the frames and syncs the encoders) and muxed into WebM
+  // with BlockAdditions — the transparent-video path. The render walk above
+  // these encoders is byte-identical to the MP4 path; only the encode/mux
+  // stage differs.
+  const isWebm = !isPng && (job.codec ?? "h264") === "vp9a";
+  let webmOutput: Output | null = null;
+  let webmVideo: VideoSampleSource | null = null;
+  let webmAudio: AudioSampleSource | null = null;
+  let webmBuffer: BufferTarget | null = null;
 
   // Encoder callbacks run async — capture errors, surface them in the loop.
   // errorWaiters lets a parked backpressure wait bail immediately when an
@@ -202,7 +237,63 @@ export async function runExportJob(
   // it. That is worse than failing, so treat it exactly like an encoder error.
   let deviceLost: Error | null = null;
 
-  if (!isPng) {
+  if (isWebm) {
+    audioCodec = "opus";
+    const vSupport = await VideoEncoder.isConfigSupported({
+      codec: codecString("vp9a", job.width, job.height, job.fps),
+      width: job.width,
+      height: job.height,
+      bitrate: job.bitrate,
+      framerate: job.fps,
+    } as VideoEncoderConfig);
+    if (!vSupport.supported) {
+      throw new Error(
+        `VP9 encode not supported for ${job.width}x${job.height}@${job.fps}` +
+          " on this machine — switch Codec back to H.264",
+      );
+    }
+
+    webmVideo = new VideoSampleSource({
+      codec: "vp9",
+      bitrate: job.bitrate,
+      alpha: "keep",
+      keyFrameInterval: 2, // seconds — matches the MP4 lane's fps*2 frames
+      latencyMode: "quality",
+    });
+    // Opus only runs at its operating rates; mediabunny resamples the audio
+    // lane when the track is e.g. 44.1 kHz. The analyzer keeps reading the
+    // untouched pcm, so the visuals are unaffected.
+    webmAudio = new AudioSampleSource({
+      codec: "opus",
+      bitrate: 192_000,
+      ...(OPUS_RATES.has(sampleRate) ? {} : { transform: { sampleRate: 48000 } }),
+    });
+    webmBuffer = job.mode === "buffer" ? new BufferTarget() : null;
+    webmOutput = new Output({
+      format: new WebMOutputFormat(),
+      // Stream mode uses POSITIONED writes: the WebM muxer seeks back to patch
+      // sizes/cues/duration (unlike fragmented MP4's forward-only stream), and
+      // the desktop file writer supports seeks. appendOnly would avoid the
+      // seeks but ships a file with no duration or cues — strictly worse.
+      target:
+        webmBuffer ??
+        new WebmStreamTarget(
+          new WritableStream<StreamTargetChunk>({
+            write: (chunk) => {
+              // Copy: the chunk goes to an async writer chain that outlives
+              // this callback, and the muxer may reuse its buffer.
+              const copy = chunk.data.slice();
+              bytesOut = Math.max(bytesOut, chunk.position + copy.length);
+              hooks.onChunk?.(copy, chunk.position);
+            },
+          }),
+          { chunked: true },
+        ),
+    });
+    webmOutput.addVideoTrack(webmVideo, { frameRate: job.fps });
+    webmOutput.addAudioTrack(webmAudio);
+    await webmOutput.start();
+  } else if (!isPng) {
     try {
       if (!(await AudioEncoder.isConfigSupported(aacConfig)).supported) {
         audioCodec = "opus";
@@ -214,7 +305,7 @@ export async function runExportJob(
       throw new Error("No supported audio encoder (tried AAC, Opus)");
     }
 
-    const codec: VideoCodecId = job.codec ?? "h264";
+    const codec = (job.codec ?? "h264") as Mp4CodecId;
     const videoConfig = {
       codec: codecString(codec, job.width, job.height, job.fps),
       width: job.width,
@@ -362,7 +453,7 @@ export async function runExportJob(
     let loudnessResult: LoudnessResult | undefined;
     let normGainDb = 0;
     let normInputLufs = 0;
-    if (audioEncoder && job.loudness) {
+    if ((audioEncoder || webmAudio) && job.loudness) {
       normInputLufs = integratedLufs(pcm.channels.slice(0, channels), sampleRate);
       normGainDb = normalizationGainDb(normInputLufs, job.loudness.targetLufs);
       limiter = new TruePeakLimiter(
@@ -390,7 +481,7 @@ export async function runExportJob(
       }
       limiter.process(prime, lat, channels);
     }
-    for (let pos = 0; audioEncoder && pos < pcm.length; pos += CHUNK) {
+    for (let pos = 0; (audioEncoder || webmAudio) && pos < pcm.length; pos += CHUNK) {
       abort();
       const frames = Math.min(CHUNK, pcm.length - pos);
       for (let ch = 0; ch < channels; ch++) {
@@ -411,12 +502,21 @@ export async function runExportJob(
         timestamp: Math.round((pos * 1e6) / sampleRate),
         data: planar.subarray(0, frames * channels),
       });
-      audioEncoder.encode(data);
-      data.close();
-      // Backpressure the audio lane too: without it the whole track is queued
-      // synchronously ahead of the first video frame, and peak memory scales
-      // with track length — the opposite of the flat-memory guarantee.
-      if (audioEncoder.encodeQueueSize > QUEUE_MAX) await waitForDrain(audioEncoder);
+      if (webmAudio) {
+        // add() awaits the internal encode queue — backpressure built in.
+        // Closing the sample closes the wrapped AudioData.
+        const sample = new AudioSample(data);
+        await webmAudio.add(sample);
+        sample.close();
+      } else {
+        audioEncoder!.encode(data);
+        data.close();
+        // Backpressure the audio lane too: without it the whole track is
+        // queued synchronously ahead of the first video frame, and peak memory
+        // scales with track length — the opposite of the flat-memory
+        // guarantee.
+        if (audioEncoder!.encodeQueueSize > QUEUE_MAX) await waitForDrain(audioEncoder!);
+      }
     }
     if (limiter) {
       const r = limiter.report;
@@ -516,6 +616,16 @@ export async function runExportJob(
         const bytes = new Uint8Array(await blob.arrayBuffer());
         bytesOut += bytes.length;
         hooks.onFrame?.(bytes, n);
+      } else if (webmVideo) {
+        // mediabunny timestamps are seconds. add() splits the frame into
+        // color+alpha, feeds both encoders, and awaits their queues —
+        // backpressure built in.
+        const sample = new VideoSample(source, {
+          timestamp: n / job.fps,
+          duration: 1 / job.fps,
+        });
+        await webmVideo.add(sample);
+        sample.close();
       } else {
         const frame = new VideoFrame(source, {
           timestamp: Math.round((n * 1e6) / job.fps),
@@ -541,12 +651,24 @@ export async function runExportJob(
     // Last gate before the file is declared good.
     if (deviceLost) throw deviceLost;
     muxer?.finalize();
+    if (webmOutput) await webmOutput.finalize();
     hooks.onProgress?.(analyzer.frameCount, analyzer.frameCount);
 
     if (bufferTarget) {
       return {
         buffer: bufferTarget.buffer,
         bytes: bufferTarget.buffer.byteLength,
+        seconds: pcm.duration,
+        audioCodec,
+        loudness: loudnessResult,
+      };
+    }
+    if (webmBuffer) {
+      // finalize() above populated the buffer; null here would be a bug.
+      const buffer = webmBuffer.buffer!;
+      return {
+        buffer,
+        bytes: buffer.byteLength,
         seconds: pcm.duration,
         audioCodec,
         loudness: loudnessResult,
@@ -559,6 +681,15 @@ export async function runExportJob(
       if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
     } catch {
       // already closed
+    }
+    // Abort/failure path: release mediabunny's encoders and writer. cancel()
+    // throws if the output already finalized — the success path — so gate it.
+    try {
+      if (webmOutput && webmOutput.state !== "finalized" && webmOutput.state !== "canceled") {
+        void webmOutput.cancel();
+      }
+    } catch {
+      // already torn down
     }
     headFrames.forEach((b) => b.close());
     // Never let teardown throw: this runs on the failure path too, and a

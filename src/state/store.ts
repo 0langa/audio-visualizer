@@ -1302,7 +1302,9 @@ export const useVizStore = create<VizState>((set, get) => {
       const pngMode = settings.format === "png" && !canvasMode;
       // ProRes goes through the ffmpeg sidecar; canvas loops stay MP4.
       const proresMode = settings.format === "prores" && !canvasMode;
-      const fileName = `${baseName}${proresMode ? ".mov" : ".mp4"}`;
+      // VP9+alpha muxes into WebM (canvas loops force H.264, so never there).
+      const webmMode = settings.format === "mp4" && settings.codec === "vp9a" && !canvasMode;
+      const fileName = `${baseName}${proresMode ? ".mov" : webmMode ? ".webm" : ".mp4"}`;
       // Desktop: pick the destination BEFORE rendering — a cancelled dialog
       // after a long 4K render would throw the work away.
       let savePath: string | null = null;
@@ -1321,7 +1323,9 @@ export const useVizStore = create<VizState>((set, get) => {
             fileName,
             proresMode
               ? [{ name: "QuickTime (ProRes)", extensions: ["mov"] }]
-              : [{ name: "MP4 video", extensions: ["mp4"] }],
+              : webmMode
+                ? [{ name: "WebM video", extensions: ["webm"] }]
+                : [{ name: "MP4 video", extensions: ["mp4"] }],
           );
           if (!savePath) {
             exportStarting = false;

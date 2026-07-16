@@ -63,6 +63,9 @@ removes it.
   fps, auto or manual bitrate. Optional **loudness normalization** to −14 /
   −16 / −23 LUFS with a −1 dBTP true-peak ceiling (audio only — pixels
   unchanged).
+- **WebM VP9 + alpha** — pick the _VP9 + alpha_ codec to write a transparent
+  `.webm` (color + alpha planes, Opus audio) for OBS overlays and web embeds.
+  Set Background to Transparent.
 - **PNG frames** — numbered stills with alpha (set Background to
   Transparent) for compositing.
 - **ProRes 4444** — one `.mov` with alpha + untouched PCM audio, straight
