@@ -5,6 +5,7 @@ import {
   BG_PRESET,
   BG_SOLID,
   BG_TRANSPARENT,
+  BG_VIDEO,
   DEFAULT_MOTION,
   DEFAULT_POST,
 } from "../render/types";
@@ -117,9 +118,12 @@ export function parseProject(json: string): ProjectDocument {
 export function validateDocument(doc: Partial<ProjectDocument>): ProjectDocument {
   const assets = validAssets(doc.assets);
   const bg = validBg(doc.bg);
-  // Image background referencing a missing asset degrades to the preset's
-  // own background instead of rendering a black hole.
+  // Image/video background referencing a missing asset degrades to the
+  // preset's own background instead of rendering a black hole.
   if (bg.mode === BG_IMAGE && (!bg.image || !assets[bg.image.assetId])) {
+    bg.mode = BG_PRESET;
+  }
+  if (bg.mode === BG_VIDEO && (!bg.video || !assets[bg.video.assetId])) {
     bg.mode = BG_PRESET;
   }
   return {
@@ -312,7 +316,8 @@ export function validBg(v: unknown): BgSettings {
     bg?.mode === BG_PRESET ||
     bg?.mode === BG_SOLID ||
     bg?.mode === BG_TRANSPARENT ||
-    bg?.mode === BG_IMAGE;
+    bg?.mode === BG_IMAGE ||
+    bg?.mode === BG_VIDEO;
   const validColor =
     Array.isArray(bg?.color) &&
     bg.color.length === 3 &&
@@ -331,13 +336,24 @@ export function validBg(v: unknown): BgSettings {
             blur: n(bg!.image.blur, 0, 0, 60),
           }
         : undefined;
+    const video =
+      typeof bg!.video === "object" &&
+      bg!.video !== null &&
+      typeof bg!.video.assetId === "string" &&
+      bg!.video.assetId.length > 0
+        ? { assetId: bg!.video.assetId, dim: n(bg!.video.dim, 0.35, 0, 0.9), blur: 0 }
+        : undefined;
     return {
-      // Image mode without a usable image reference falls back to the
-      // preset's own background (the asset check happens in validateDocument,
-      // which can see the assets map).
-      mode: bg!.mode === BG_IMAGE && !image ? BG_PRESET : bg!.mode!,
+      // Image/video mode without a usable reference falls back to the preset's
+      // own background (the asset check happens in validateDocument, which can
+      // see the assets map).
+      mode:
+        (bg!.mode === BG_IMAGE && !image) || (bg!.mode === BG_VIDEO && !video)
+          ? BG_PRESET
+          : bg!.mode!,
       color: bg!.color!.map((c) => Math.min(1, Math.max(0, c))) as [number, number, number],
       ...(image ? { image } : {}),
+      ...(video ? { video } : {}),
     };
   }
   return { mode: BG_PRESET, color: [0, 0, 0] };

@@ -13,6 +13,7 @@ import {
   BG_IMAGE,
   BG_PRESET,
   BG_SOLID,
+  BG_VIDEO,
   BG_TRANSPARENT,
   DEFAULT_MOTION,
   DEFAULT_POST,
@@ -76,7 +77,7 @@ const SYNC_OPTIONS: Array<{ mode: SyncMode; label: string; hint: string }> = [
   { mode: "hats", label: "Hats", hint: "Pulse on hi-hat hits (5 kHz+ transients)" },
 ];
 
-const BG_OPTIONS: Array<{ mode: BgMode; label: string; hint: string }> = [
+const BG_OPTIONS_BASE: Array<{ mode: BgMode; label: string; hint: string }> = [
   { mode: BG_PRESET, label: "Animated", hint: "The visual's own moving background" },
   {
     mode: BG_SOLID,
@@ -94,6 +95,14 @@ const BG_OPTIONS: Array<{ mode: BgMode; label: string; hint: string }> = [
     hint: "Your artwork (or the album art) behind the visualization — cover-fit, with blur and dim",
   },
 ];
+
+/** Video is desktop-only (it decodes a local file), so it's appended by the
+ * panel when running under Tauri. */
+const BG_OPTION_VIDEO = {
+  mode: BG_VIDEO,
+  label: "Video",
+  hint: "A short local video looped behind the visualization — deterministic, cover-fit",
+};
 
 type PostNumKey = "bloom" | "bloomThreshold" | "exposure" | "vignette" | "grain" | "chromatic";
 const POST_SLIDERS: Array<{
@@ -199,6 +208,10 @@ export function ParamsPanel(props: {
   onBg: (bg: BgSettings) => void;
   onPickBackgroundImage: () => void;
   onUseAlbumArtBackground: () => void;
+  onPickVideoBackground: () => void;
+  videoBgLoading: boolean;
+  /** Offer the Video background option (desktop only). */
+  showVideoBg: boolean;
   sync: SyncSettings;
   onSync: (sync: SyncSettings) => void;
   rendererKind: string;
@@ -1015,21 +1028,24 @@ export function ParamsPanel(props: {
             <span className="section-title">Background</span>
           </div>
           <div className="segmented">
-            {BG_OPTIONS.map((o) => (
-              <button
-                key={o.mode}
-                className={`segment ${props.bg.mode === o.mode ? "active" : ""}`}
-                title={o.hint}
-                onPointerEnter={() => setHint(o.hint)}
-                onPointerLeave={() => setHint(null)}
-                onClick={() => {
-                  if (o.mode === BG_IMAGE && !props.bg.image) props.onPickBackgroundImage();
-                  else props.onBg({ ...props.bg, mode: o.mode });
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
+            {(props.showVideoBg ? [...BG_OPTIONS_BASE, BG_OPTION_VIDEO] : BG_OPTIONS_BASE).map(
+              (o) => (
+                <button
+                  key={o.mode}
+                  className={`segment ${props.bg.mode === o.mode ? "active" : ""}`}
+                  title={o.hint}
+                  onPointerEnter={() => setHint(o.hint)}
+                  onPointerLeave={() => setHint(null)}
+                  onClick={() => {
+                    if (o.mode === BG_IMAGE && !props.bg.image) props.onPickBackgroundImage();
+                    else if (o.mode === BG_VIDEO && !props.bg.video) props.onPickVideoBackground();
+                    else props.onBg({ ...props.bg, mode: o.mode });
+                  }}
+                >
+                  {o.label}
+                </button>
+              ),
+            )}
           </div>
           {props.bg.mode === BG_SOLID && (
             <div className="row color-row">
@@ -1105,6 +1121,41 @@ export function ParamsPanel(props: {
                 />
                 <span className="row-value">{props.bg.image.blur.toFixed(0)}</span>
               </label>
+            </>
+          )}
+          {props.bg.mode === BG_VIDEO && (
+            <>
+              <div className="save-look-row">
+                <button
+                  className="text-btn"
+                  title="Choose a different video file"
+                  onClick={props.onPickVideoBackground}
+                >
+                  {props.videoBgLoading ? "Decoding…" : "Choose video…"}
+                </button>
+              </div>
+              {props.bg.video && (
+                <label
+                  className="row param-row"
+                  title="Darken the video so the visualization stays readable (re-decodes)"
+                >
+                  <span className="row-label">Dim</span>
+                  <Slider
+                    min={0}
+                    max={0.9}
+                    step={0.01}
+                    value={props.bg.video.dim}
+                    onChange={(dim) =>
+                      props.onBg({ ...props.bg, video: { ...props.bg.video!, dim } })
+                    }
+                  />
+                  <span className="row-value">{props.bg.video.dim.toFixed(2)}</span>
+                </label>
+              )}
+              <p className="section-hint">
+                A short clip loops behind the visualization (first {12}s, decoded to a fixed loop).
+                Deterministic — the export matches the preview. Desktop only.
+              </p>
             </>
           )}
           {props.bg.mode === BG_TRANSPARENT && (

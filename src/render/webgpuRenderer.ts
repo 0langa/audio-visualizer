@@ -390,9 +390,10 @@ fn composite(color: vec4f, uv: vec2f) -> vec4f {
     let a = clamp(max(out.r, max(out.g, out.b)), 0.0, 1.0);
     if (u.bgMode == 1u) {
       out = vec4f(u.bgColor.rgb * (1.0 - a) + out.rgb, 1.0);
-    } else if (u.bgMode == 3u) {
-      // Image background, cover-fit: fill the frame, crop the excess.
-      // Blur/dim were baked into the bitmap on the CPU.
+    } else if (u.bgMode == 3u || u.bgMode == 4u) {
+      // Image/video background, cover-fit: fill the frame, crop the excess.
+      // For images blur/dim were baked into the bitmap on the CPU; for video
+      // the current frame is uploaded to bgTex each rendered frame.
       let dims = vec2f(textureDimensions(bgTex));
       let texAspect = dims.x / max(dims.y, 1.0);
       var buv = uv - 0.5;
@@ -1768,6 +1769,39 @@ export class WebGPURenderer implements Renderer {
     this.bindGroup = null;
     this.transitionBindGroup = null;
     this.compositeBind = null;
+  }
+
+  /**
+   * Upload one video-background frame to bgTex. Unlike setBackgroundImage this
+   * runs every rendered frame, so it reuses the texture (recreating only on a
+   * size change) and does NOT close the source — video frames are owned by the
+   * store's decoded loop and reused. Bind groups are invalidated only when the
+   * texture object actually changes.
+   */
+  updateBackgroundVideoFrame(source: ImageBitmap): void {
+    if (
+      !this.bgTexture ||
+      this.bgTexture.width !== source.width ||
+      this.bgTexture.height !== source.height
+    ) {
+      this.bgTexture?.destroy();
+      this.bgTexture = this.device.createTexture({
+        size: [source.width, source.height],
+        format: "rgba8unorm",
+        usage:
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_DST |
+          GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      this.bindGroup = null;
+      this.transitionBindGroup = null;
+      this.compositeBind = null;
+    }
+    this.device.queue.copyExternalImageToTexture(
+      { source },
+      { texture: this.bgTexture, premultipliedAlpha: false },
+      [source.width, source.height],
+    );
   }
 
   setBackgroundImage(source: ImageBitmap | null): void {

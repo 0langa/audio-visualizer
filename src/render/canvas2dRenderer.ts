@@ -51,6 +51,12 @@ export class Canvas2DRenderer implements Renderer {
     this.bgImage = source;
   }
 
+  updateBackgroundVideoFrame(source: ImageBitmap): void {
+    // The 2D fallback draws its single built-in look and no image/video bg;
+    // frames are owned by the store's loop, so nothing to keep or close here.
+    void source;
+  }
+
   setCoverArt(source: ImageBitmap | null): void {
     // Fallback renderer has no preset that samples cover art — but the host
     // hands over ownership, so the bitmap still must be released.

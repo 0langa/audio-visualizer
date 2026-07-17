@@ -212,6 +212,49 @@ const MIME_BY_EXT: Record<string, string> = {
   svg: "image/svg+xml",
 };
 
+const VIDEO_EXTENSIONS = ["mp4", "webm", "mov", "m4v", "mkv"];
+const VIDEO_MIME_BY_EXT: Record<string, string> = {
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
+};
+
+/** Pick a video and return it as a data URL (embeds into projects — clips are
+ * expected to be short background loops). */
+export async function openVideoFile(): Promise<{ name: string; dataUrl: string } | null> {
+  if (isTauri()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const { readFile } = await import("@tauri-apps/plugin-fs");
+    const path = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Videos", extensions: VIDEO_EXTENSIONS }],
+    });
+    if (typeof path !== "string") return null;
+    const bytes = await readFile(path);
+    const name = path.split(/[\\/]/).pop() ?? path;
+    const ext = name.split(".").pop()?.toLowerCase() ?? "mp4";
+    return { name, dataUrl: bytesToDataUrl(bytes, VIDEO_MIME_BY_EXT[ext] ?? "video/mp4") };
+  }
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = VIDEO_EXTENSIONS.map((e) => `.${e}`).join(",");
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: file.name, dataUrl: reader.result as string });
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    };
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
+}
+
 /** Pick an image and return it as a data URL (embeds into projects). */
 export async function openImageFile(): Promise<{ name: string; dataUrl: string } | null> {
   if (isTauri()) {

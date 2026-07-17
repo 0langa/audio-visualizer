@@ -88,6 +88,10 @@ yours; everything renders identically in exports.
   fps, auto or manual bitrate. Optional **loudness normalization** to −14 /
   −16 / −23 LUFS with a −1 dBTP true-peak ceiling (audio only — pixels
   unchanged).
+- **Video** — pick a short local clip to loop behind the visualization
+  (desktop): cover-fit, dimmable, deterministic (the frame for each moment is a
+  pure function of track time, so exports match the preview). Decoded to a
+  fixed loop of the first seconds.
 - **WebM VP9 + alpha** — pick the _VP9 + alpha_ codec to write a transparent
   `.webm` (color + alpha planes, Opus audio) for OBS overlays and web embeds.
   Set Background to Transparent.

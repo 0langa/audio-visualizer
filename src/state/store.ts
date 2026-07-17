@@ -24,7 +24,19 @@ import {
   type VideoCodecId,
 } from "../export/codecProbe";
 import { demos } from "../audio/demoTrack";
-import { BG_IMAGE, type BgSettings, type ParamValues, type PresetDef } from "../render/types";
+import {
+  BG_IMAGE,
+  BG_VIDEO,
+  type BgSettings,
+  type ParamValues,
+  type PresetDef,
+} from "../render/types";
+import {
+  decodeVideoBgFrames,
+  disposeVideoBgFrames,
+  videoBgFrameIndex,
+  type VideoBgFrames,
+} from "../render/videoBg";
 import { bakeBackgroundBitmap } from "../render/bgImage";
 import { renderPresetThumbnails } from "../render/thumbnails";
 import {
@@ -74,6 +86,7 @@ import {
   downloadBlob,
   isTauri,
   openImageFile,
+  openVideoFile,
   openTextFile,
   pickFolder,
   pickSavePath,
@@ -334,6 +347,8 @@ interface SessionSlice {
   lyricStyle: LyricStyle;
   /** Audiogram overlay elements (progress bar / time / waveform); persisted. */
   audiogram: AudiogramSettings;
+  /** A video background is decoding (spinner in the bg controls). */
+  videoBgLoading: boolean;
 }
 
 interface Actions {
@@ -346,6 +361,8 @@ interface Actions {
   setBg(bg: BgSettings): void;
   /** Pick an image file as the background (switches bg.mode to image). */
   pickBackgroundImage(): Promise<void>;
+  /** Pick a local video for the background (desktop; decodes a capped loop). */
+  pickVideoBackground(): Promise<void>;
   /** Use the loaded track's cover art as the background. */
   useAlbumArtBackground(): void;
   setAspect(aspect: Aspect): void;
@@ -469,6 +486,8 @@ let overlayTimer: ReturnType<typeof setTimeout> | undefined;
  * redraws base+line on every line/fade-step change, so the renderer only
  * ever receives composed copies (it closes what it's handed). */
 let overlayBase: ImageBitmap | null = null;
+/** Decoded video-background loop; the frame tick uploads the frame for t. */
+let videoBgFrames: VideoBgFrames | null = null;
 const NULL_FRAME_KEY: OverlayFrameKey = {
   lyricIdx: -2,
   lyricAlphaQ: -1,
@@ -645,6 +664,8 @@ export const useVizStore = create<VizState>((set, get) => {
    * again must not overwrite the newer image.
    */
   let bgImageToken = 0;
+  // Decoded video-background loop (non-serializable, lives outside state).
+  let videoBgToken = 0;
   const applyBgImage = () => {
     const token = ++bgImageToken;
     const { bg, assets } = get();
@@ -660,6 +681,48 @@ export const useVizStore = create<VizState>((set, get) => {
       })
       .catch(() => {
         if (token === bgImageToken) getRenderer()?.setBackgroundImage(null);
+      });
+  };
+
+  /**
+   * Decode (or clear) the video-background loop for the current bg. Token-
+   * guarded like applyBgImage: a slow decode finishing after the bg changed
+   * again must not install stale frames. The per-frame upload happens in the
+   * frame tick; this only owns the decoded array's lifecycle.
+   */
+  const applyVideoBg = () => {
+    const token = ++videoBgToken;
+    const { bg, assets } = get();
+    const asset = bg.mode === BG_VIDEO && bg.video ? assets[bg.video.assetId] : undefined;
+    if (!asset || !bg.video) {
+      disposeVideoBgFrames(videoBgFrames);
+      videoBgFrames = null;
+      // Leaving video mode: clear bgTex so a stale last frame doesn't linger.
+      if (bg.mode !== BG_VIDEO) getRenderer()?.setBackgroundImage(null);
+      set({ videoBgLoading: false });
+      return;
+    }
+    set({ videoBgLoading: true });
+    void fetch(asset.dataUrl)
+      .then((r) => r.blob())
+      .then((blob) => decodeVideoBgFrames(blob, bg.video!.dim))
+      .then((decoded) => {
+        if (token !== videoBgToken) {
+          disposeVideoBgFrames(decoded);
+          return;
+        }
+        disposeVideoBgFrames(videoBgFrames);
+        videoBgFrames = decoded;
+        set({ videoBgLoading: false });
+      })
+      .catch((e) => {
+        if (token !== videoBgToken) return;
+        disposeVideoBgFrames(videoBgFrames);
+        videoBgFrames = null;
+        set({
+          videoBgLoading: false,
+          error: `Could not load video background: ${(e as Error).message}`,
+        });
       });
   };
 
@@ -683,9 +746,11 @@ export const useVizStore = create<VizState>((set, get) => {
     // the app into a black background — degrade to the preset background.
     bg: (() => {
       const bg = loadStoredBg();
-      return bg.mode === BG_IMAGE && (!bg.image || !initialOverlay.assets[bg.image.assetId])
-        ? { ...bg, mode: 0 }
-        : bg;
+      const imageMissing =
+        bg.mode === BG_IMAGE && (!bg.image || !initialOverlay.assets[bg.image.assetId]);
+      const videoMissing =
+        bg.mode === BG_VIDEO && (!bg.video || !initialOverlay.assets[bg.video.assetId]);
+      return imageMissing || videoMissing ? { ...bg, mode: 0 } : bg;
     })(),
     overlayLayers: initialOverlay.layers,
     assets: initialOverlay.assets,
@@ -757,6 +822,7 @@ export const useVizStore = create<VizState>((set, get) => {
     lyricFileName: null,
     lyricStyle: loadStoredLyricStyle(),
     audiogram: loadStoredAudiogram(),
+    videoBgLoading: false,
     customDefs: initialCustomDefs,
     showShaderEditor: false,
     showBatch: false,
@@ -792,13 +858,23 @@ export const useVizStore = create<VizState>((set, get) => {
           getRenderer()?.setMotion(get().motion);
           applyCoverArt(); // new renderer starts without a cover bound
           applyBgImage(); // ...and without a background image
+          applyVideoBg(); // ...and without video frames (re-decode for it)
           get().refreshOverlay(); // new renderer starts without an overlay bound
         },
         onResize: () => get().refreshOverlay(),
         onMeter: (lufs, stereoWidth) => set({ lufs, stereoWidth }),
         getStemValues: (t) => stemValuesAt(get().stems, t),
-        onLyricTick: (t) => {
+        onFrameTick: (t) => {
           const s = get();
+          // Video background: upload the frame for THIS track time (pure index
+          // → deterministic, matches the export). A GPU renderer only.
+          if (videoBgFrames && s.bg.mode === BG_VIDEO) {
+            const r = getRenderer();
+            if (r instanceof WebGPURenderer) {
+              const i = videoBgFrameIndex(videoBgFrames.frames.length, videoBgFrames.fps, t);
+              r.updateBackgroundVideoFrame(videoBgFrames.frames[i]);
+            }
+          }
           const dyn = overlayDynamics(s);
           if (!hasDynamics(dyn)) return;
           const canvas = liveCanvas;
@@ -890,6 +966,7 @@ export const useVizStore = create<VizState>((set, get) => {
       saveStoredBg(bg);
       getRenderer()?.setBackground(bg);
       applyBgImage();
+      applyVideoBg();
     },
 
     async pickBackgroundImage() {
@@ -922,6 +999,40 @@ export const useVizStore = create<VizState>((set, get) => {
       else flashNotice("Image too large to remember — background is session-only");
       getRenderer()?.setBackground(bg);
       applyBgImage();
+    },
+
+    async pickVideoBackground() {
+      if (!isTauri()) {
+        set({ error: "Video backgrounds need the desktop app" });
+        return;
+      }
+      const vid = await openVideoFile();
+      if (!vid) return;
+      record("bg");
+      const asset: OverlayAsset = {
+        id: `as-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        name: vid.name,
+        dataUrl: vid.dataUrl,
+      };
+      const assets = { ...get().assets, [asset.id]: asset };
+      const prev = get().bg;
+      // Orphan-GC the previous video/image asset (same as pickBackgroundImage).
+      const prevId = prev.video?.assetId ?? prev.image?.assetId;
+      if (prevId && !get().overlayLayers.some((l) => "assetId" in l && l.assetId === prevId)) {
+        delete assets[prevId];
+      }
+      const bg: BgSettings = {
+        ...prev,
+        mode: BG_VIDEO,
+        video: { assetId: asset.id, dim: prev.video?.dim ?? 0.35, blur: 0 },
+      };
+      set({ assets, bg });
+      // A video's data URL is large; keep it session-only if it won't persist
+      // (localStorage), but the project-file / autosave path still embeds it.
+      if (saveStoredOverlay(get().overlayLayers, assets)) saveStoredBg(bg);
+      else flashNotice("Video kept for this session — save a project to keep it");
+      getRenderer()?.setBackground(bg);
+      applyVideoBg();
     },
 
     useAlbumArtBackground() {

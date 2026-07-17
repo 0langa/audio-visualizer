@@ -18,6 +18,7 @@ import { TruePeakLimiter } from "../audio/dsp/truepeak";
 import { WebGPURenderer } from "../render/webgpuRenderer";
 import {
   BG_IMAGE,
+  BG_VIDEO,
   type BgSettings,
   type MotionSettings,
   type ParamValues,
@@ -36,6 +37,12 @@ import {
   type VideoCodecId,
 } from "./codecProbe";
 import { bakeBackgroundBitmap } from "../render/bgImage";
+import {
+  decodeVideoBgFrames,
+  disposeVideoBgFrames,
+  videoBgFrameIndex,
+  type VideoBgFrames,
+} from "../render/videoBg";
 import { stemValuesAt, type StemEntry } from "../audio/stems";
 import { registerCustomPreset, validCustomPreset } from "../render/presets/custom";
 import {
@@ -97,6 +104,9 @@ export interface ExportJob {
   /** Image background (bg.mode 3): the asset + baked-look parameters. The
    * core bakes with the same shared function as the live view. */
   bgImage?: { dataUrl: string; dim: number; blur: number };
+  /** Video background (bg.mode 4): the asset + dim. The core decodes the same
+   * capped loop the live view did and uploads a frame per export frame. */
+  bgVideo?: { dataUrl: string; dim: number };
   /** Imported stems' envelope timelines — mod-matrix stem sources. */
   stems?: StemEntry[];
   /** Timed lyrics (already segment-shifted) + style — composited onto the
@@ -435,6 +445,8 @@ export async function runExportJob(
   };
   const dynamicOverlay = hasDynamics(dynamics);
   const overlayBase = dynamicOverlay ? (job.overlay ?? null) : null;
+  // Hoisted so the finally can dispose it on the abort/failure path too.
+  let videoBg: VideoBgFrames | null = null;
   let lastFrameKey: OverlayFrameKey = {
     lyricIdx: -2,
     lyricAlphaQ: -1,
@@ -471,6 +483,17 @@ export async function runExportJob(
         );
       } catch {
         bgImageFailed = true;
+      }
+    }
+    // Video background: decode the SAME loop the live view decoded (mediabunny
+    // is deterministic on the same bytes + dim), then upload the frame for each
+    // export frame's track time. A broken decode degrades to the preset bg.
+    if (job.bgVideo) {
+      try {
+        const blob = await (await fetch(job.bgVideo.dataUrl)).blob();
+        videoBg = await decodeVideoBgFrames(blob, job.bgVideo.dim);
+      } catch {
+        videoBg = null;
       }
     }
     renderer.resize(job.width, job.height, 1);
@@ -616,9 +639,18 @@ export async function runExportJob(
       // A failed background-image bake degrades to the preset background for
       // EVERY frame — resolveActiveFrame keeps handing back image mode, and
       // re-applying it verbatim would undo the degrade into black frames.
+      const videoModeFailed = rf.bg.mode === BG_VIDEO && !videoBg;
       renderer.setBackground(
-        bgImageFailed && rf.bg.mode === BG_IMAGE ? { ...rf.bg, mode: 0 } : rf.bg,
+        (bgImageFailed && rf.bg.mode === BG_IMAGE) || videoModeFailed
+          ? { ...rf.bg, mode: 0 }
+          : rf.bg,
       );
+      // Upload the video-bg frame for this export frame's track time — pure
+      // index, so it matches the live preview frame-for-frame.
+      if (videoBg && rf.bg.mode === BG_VIDEO) {
+        const vi = videoBgFrameIndex(videoBg.frames.length, videoBg.fps, t);
+        renderer.updateBackgroundVideoFrame(videoBg.frames[vi]);
+      }
       // Dynamic overlay (lyrics/audiogram): recompose when the key moves — the
       // SAME pure key + compose functions the live loop uses, fed this frame's
       // t, is what makes the file match the preview.
@@ -767,6 +799,7 @@ export async function runExportJob(
     }
     headFrames.forEach((b) => b.close());
     overlayBase?.close();
+    disposeVideoBgFrames(videoBg);
     // Never let teardown throw: this runs on the failure path too, and a
     // dispose() that throws on an already-lost device would replace the real
     // error with a confusing one — and skip the rest of the cleanup.

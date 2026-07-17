@@ -67,8 +67,9 @@ Free and open source. Built to become a professional-grade tool for producers an
 - Sync-source system: choose what visuals react to (kicks, energy, bass,
   melody, voice, treble) + smoothing, per mode
 - Background system on every preset: preset-animated, any solid color
-  (incl. chroma green/magenta swatches), or transparent (luma alpha,
-  checkerboard preview)
+  (incl. chroma green/magenta swatches), transparent (luma alpha,
+  checkerboard preview), a cover-fit **image** (or album art), or a looped
+  **video** (desktop; deterministic frame-by-track-time so exports match)
 - **MP4 export**: offline-rendered WebCodecs pipeline (H.264 + AAC, hardware
   encode, faster than realtime) running **in a worker** — the UI never
   freezes. On desktop, exports **stream straight to disk** (fragmented MP4,

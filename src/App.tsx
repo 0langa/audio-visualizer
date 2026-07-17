@@ -130,6 +130,7 @@ export default function App() {
   const lyricFileName = useVizStore((s) => s.lyricFileName);
   const lyricStyle = useVizStore((s) => s.lyricStyle);
   const audiogram = useVizStore((s) => s.audiogram);
+  const videoBgLoading = useVizStore((s) => s.videoBgLoading);
   const showBatch = useVizStore((s) => s.showBatch);
   const customDefs = useVizStore((s) => s.customDefs);
   const showShaderEditor = useVizStore((s) => s.showShaderEditor);
@@ -367,6 +368,10 @@ export default function App() {
                 dim: s.bg.image.dim,
                 blur: s.bg.image.blur,
               }
+            : undefined,
+        bgVideo:
+          s.bg.mode === 4 && s.bg.video && s.assets[s.bg.video.assetId]
+            ? { dataUrl: s.assets[s.bg.video.assetId].dataUrl, dim: s.bg.video.dim }
             : undefined,
         timeline: s.timeline.enabled ? s.timeline : undefined,
         paramsByPreset: s.paramsByPreset,
@@ -735,6 +740,9 @@ export default function App() {
           onBg={(next) => store().setBg(next)}
           onPickBackgroundImage={() => void store().pickBackgroundImage()}
           onUseAlbumArtBackground={() => store().useAlbumArtBackground()}
+          onPickVideoBackground={() => void store().pickVideoBackground()}
+          videoBgLoading={videoBgLoading}
+          showVideoBg={isTauri()}
           sync={sync}
           onSync={(next) => store().setSync(next)}
           rendererKind={rendererKind}

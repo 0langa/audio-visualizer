@@ -38,6 +38,8 @@ export interface ExportOptions {
   codec?: VideoCodecId;
   /** Image background asset + baked-look params (bg.mode 3). */
   bgImage?: { dataUrl: string; dim: number; blur: number };
+  /** Video background asset + dim (bg.mode 4). */
+  bgVideo?: { dataUrl: string; dim: number };
   /** Imported stems' envelope timelines (mod-matrix stem sources). */
   stems?: StemEntry[];
   /** Timed lyrics + style — composited onto the overlay per line, exactly
@@ -253,6 +255,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     motion: o.motion,
     coverArt: o.coverArt,
     bgImage: o.bgImage,
+    bgVideo: o.bgVideo,
     // Segment exports (Canvas loops) slice the audio, so the stems' t=0 must
     // move with it — same treatment as beatGrid/timeline below. Unshifted
     // stems would modulate the loop with envelopes from the track's start.

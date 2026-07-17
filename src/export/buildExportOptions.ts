@@ -1,7 +1,13 @@
 import { DEFAULT_SYNC } from "../audio/types";
 import type { BeatGrid } from "../audio/analysis/beatGrid";
 import { presetById } from "../render/presets";
-import { BG_IMAGE, defaultParams, type ParamValues, type PresetDef } from "../render/types";
+import {
+  BG_IMAGE,
+  BG_VIDEO,
+  defaultParams,
+  type ParamValues,
+  type PresetDef,
+} from "../render/types";
 import type { OverlayMeta } from "../render/overlay";
 import type { ProjectDocument } from "../state/project";
 import type { ExportOptions } from "./videoExporter";
@@ -126,6 +132,11 @@ export function buildExportOptions(
             dim: doc.bg.image.dim,
             blur: doc.bg.image.blur,
           }
+        : undefined,
+    // Video background: same asset-resolve; the core decodes the loop itself.
+    bgVideo:
+      doc.bg.mode === BG_VIDEO && doc.bg.video && doc.assets[doc.bg.video.assetId]
+        ? { dataUrl: doc.assets[doc.bg.video.assetId].dataUrl, dim: doc.bg.video.dim }
         : undefined,
     beatGrid: track.beatGrid ?? undefined,
     stems: track.stems,

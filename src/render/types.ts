@@ -93,11 +93,12 @@ export function allParams(preset: PresetDef): ParamSpec[] {
  *  - image: a user image (or the track's album art) behind the visualization,
  *    cover-fit, with blur/dim baked once on the CPU (deterministic).
  */
-export type BgMode = 0 | 1 | 2 | 3;
+export type BgMode = 0 | 1 | 2 | 3 | 4;
 export const BG_PRESET: BgMode = 0;
 export const BG_SOLID: BgMode = 1;
 export const BG_TRANSPARENT: BgMode = 2;
 export const BG_IMAGE: BgMode = 3;
+export const BG_VIDEO: BgMode = 4;
 
 /** Image-background settings: which document asset, and the baked look. */
 export interface BgImage {
@@ -109,12 +110,22 @@ export interface BgImage {
   blur: number;
 }
 
+/** Video-background settings: which document asset + the baked look. Frames
+ * are decoded from the asset at load; the shader cover-fits like an image. */
+export interface BgVideo {
+  assetId: string;
+  dim: number;
+  blur: number;
+}
+
 export interface BgSettings {
   mode: BgMode;
   /** 0..1 rgb, used by solid mode */
   color: [number, number, number];
   /** Present when mode is image (kept while switching modes, for undo). */
   image?: BgImage;
+  /** Present when mode is video (kept while switching modes, for undo). */
+  video?: BgVideo;
 }
 
 /** Post-processing settings — all-neutral defaults render identically to raw. */
@@ -203,6 +214,9 @@ export interface Renderer {
    * visualization when bg.mode is image. Takes ownership; null clears it.
    */
   setBackgroundImage(source: ImageBitmap | null): void;
+  /** Upload one video-background frame (bg.mode 4). Reuses the texture; does
+   * not close the source (frames are owned by the caller's decoded loop). */
+  updateBackgroundVideoFrame(source: ImageBitmap): void;
   /** Global smooth-spectrum toggle: spline-connected bins, no hard corners. */
   setSmoothSpectrum(v: boolean): void;
   /** Global motion masters (rotation / pulse / detail), applied across modes. */
