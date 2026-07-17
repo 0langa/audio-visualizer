@@ -106,10 +106,10 @@ export const voiceOrb: PresetDef = {
       key: "growth",
       label: "Level growth",
       min: 0,
-      max: 2,
+      max: 1.4,
       step: 0.05,
       default: 0.85,
-      hint: "How much the orb grows when speaking",
+      hint: "How much the orb grows when speaking (kept inside the frame)",
     },
     {
       key: "idleBreath",
@@ -178,10 +178,10 @@ export const voiceOrb: PresetDef = {
       key: "ringDist",
       label: "Ring distance",
       min: 1.1,
-      max: 2.2,
+      max: 1.9,
       step: 0.05,
       default: 1.45,
-      hint: "How far the wave ring orbits from the orb",
+      hint: "How far the wave ring orbits from the orb (kept inside the frame)",
     },
     {
       key: "ringWave",
@@ -249,8 +249,10 @@ fn preset(uv: vec2f) -> vec4f {
   let disp = (m1 * f1 * P_mode1() + m2 * f2 * P_mode2() + m3 * f3 * P_mode3())
            * P_wobble() * P_wobScale() * (0.25 + level * 0.75);
 
-  let radius = P_size() * (1.0 + level * P_growth()) + idle;
-  let edge = radius + disp;
+  // Frame-safety: the orb (and its ring below) must stay inside the frame —
+  // the top/bottom edge is r=0.5 — however loud the voice or high the growth.
+  let radius = min(P_size() * (1.0 + level * P_growth()) + idle, 0.4);
+  let edge = min(radius + disp, 0.46);
 
   // Background: quiet radial wash that warms slightly with speech
   var col = hsl2rgb(P_hue() + 30.0, 0.45, P_bgLevel() + level * 0.02) * (1.0 - r * 0.75);
@@ -274,7 +276,7 @@ fn preset(uv: vec2f) -> vec4f {
   // Circular waveform ring
   if (P_ring() > 0.5) {
     let wv = waveAt(fract(a / TAU + 0.5));
-    let ringR = radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2);
+    let ringR = min(radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2), 0.47);
     let dRing = abs(r - ringR);
     let ringHue = P_hue() + 25.0 + wv * 20.0;
     col += hsl2rgb(ringHue, 0.7, 0.55) * smoothstep(0.004, 0.0008, dRing) * (0.35 + level * 0.5);
@@ -282,6 +284,8 @@ fn preset(uv: vec2f) -> vec4f {
   }
 
   col *= 1.0 - r * r * P_vignette();
+  // Frame-safety fade: nothing bright past the top/bottom edge.
+  col *= smoothstep(0.5, 0.46, r);
   return vec4f(col, 1.0);
 }
 `,
