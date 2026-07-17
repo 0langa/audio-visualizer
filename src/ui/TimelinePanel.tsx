@@ -27,6 +27,8 @@ export function TimelinePanel(props: {
   presets: PresetDef[];
   activeParams: ParamValues;
   onChange: (timeline: Timeline) => void;
+  /** Build scenes from the detected sections (energy-ranked visuals). */
+  onAutoArrange: () => void;
   onSeek: (t: number) => void;
   onClose: () => void;
 }) {
@@ -310,6 +312,13 @@ export function TimelinePanel(props: {
           onClick={addSceneAtPlayhead}
         >
           + Scene at playhead
+        </button>
+        <button
+          className="text-btn"
+          title="Build an arrangement from the song's detected sections — quiet parts get calm visuals, loud parts get hard ones. One Ctrl+Z undoes."
+          onClick={props.onAutoArrange}
+        >
+          ✦ Auto-arrange
         </button>
         <select
           className="select tl-add-lane"

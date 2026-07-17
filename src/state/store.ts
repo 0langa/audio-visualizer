@@ -58,6 +58,7 @@ import { newRouteId, type ModRoute, type ModSource } from "./modMatrix";
 import { clearHistory, historyDepths, popRedo, popUndo, pushHistory } from "./history";
 import type { Timeline } from "./timeline";
 import { LyricParseError, parseLyrics, type LyricLine, type LyricStyle } from "./lyrics";
+import { autoArrangeScenes, overviewEnergy } from "./autoArrange";
 import {
   composeLyricOverlay,
   lyricFrameKeyAt,
@@ -373,6 +374,8 @@ interface Actions {
   loadLyricsText(fileName: string, contents: string): void;
   clearLyrics(): void;
   setLyricStyle(patch: Partial<LyricStyle>): void;
+  /** One click: detected sections -> energy-ranked timeline scenes. */
+  autoArrangeTimeline(): void;
   pickLibraryFolder(): Promise<void>;
   playLibraryTrack(path: string): Promise<void>;
   /** Auto-advance hook — called by the engine's natural-end callback. */
@@ -940,6 +943,33 @@ export const useVizStore = create<VizState>((set, get) => {
       record("timeline");
       set({ timeline });
       saveStoredTimeline(timeline);
+    },
+
+    autoArrangeTimeline() {
+      const s = get();
+      const buf = getEngine().audioBuffer;
+      if (!buf) {
+        set({ error: "Load a track first — auto-arrange reads its detected sections" });
+        return;
+      }
+      if (s.sections.length === 0 || !s.waveformOverview) {
+        flashNotice(
+          s.analyzing
+            ? "Still analyzing the track — try again in a moment"
+            : "No sections detected in this track",
+        );
+        return;
+      }
+      record("timeline");
+      const scenes = autoArrangeScenes(
+        s.sections,
+        buf.duration,
+        overviewEnergy(s.waveformOverview, buf.duration),
+      );
+      const timeline = { ...s.timeline, enabled: true, scenes };
+      set({ timeline, showTimeline: true });
+      saveStoredTimeline(timeline);
+      flashNotice(`Arranged ${scenes.length} scenes from the song's sections — one Ctrl+Z undoes`);
     },
 
     setShowTimeline(v) {

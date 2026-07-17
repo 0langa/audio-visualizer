@@ -780,6 +780,7 @@ export default function App() {
       {showTimeline && (
         <TimelinePanel
           timeline={timeline}
+          onAutoArrange={() => store().autoArrangeTimeline()}
           duration={playback.duration}
           time={playback.time}
           beatGrid={beatGrid}
