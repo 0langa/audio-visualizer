@@ -105,8 +105,10 @@ export interface ExportJob {
    * core bakes with the same shared function as the live view. */
   bgImage?: { dataUrl: string; dim: number; blur: number };
   /** Video background (bg.mode 4): the asset + dim. The core decodes the same
-   * capped loop the live view did and uploads a frame per export frame. */
-  bgVideo?: { dataUrl: string; dim: number };
+   * capped loop the live view did and uploads a frame per export frame.
+   * timeOffset (seconds) shifts the loop index for segment exports so it
+   * matches the live view's absolute-track-time loop. */
+  bgVideo?: { dataUrl: string; dim: number; timeOffset?: number };
   /** Imported stems' envelope timelines — mod-matrix stem sources. */
   stems?: StemEntry[];
   /** Timed lyrics (already segment-shifted) + style — composited onto the
@@ -648,7 +650,11 @@ export async function runExportJob(
       // Upload the video-bg frame for this export frame's track time — pure
       // index, so it matches the live preview frame-for-frame.
       if (videoBg && rf.bg.mode === BG_VIDEO) {
-        const vi = videoBgFrameIndex(videoBg.frames.length, videoBg.fps, t);
+        const vi = videoBgFrameIndex(
+          videoBg.frames.length,
+          videoBg.fps,
+          t + (job.bgVideo?.timeOffset ?? 0),
+        );
         renderer.updateBackgroundVideoFrame(videoBg.frames[vi]);
       }
       // Dynamic overlay (lyrics/audiogram): recompose when the key moves — the

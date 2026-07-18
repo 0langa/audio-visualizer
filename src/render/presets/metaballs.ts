@@ -239,8 +239,10 @@ fn preset(uv: vec2f) -> vec4f {
     );
     // Size = calm floor + smooth energy breathing (primary sync) + a gentle
     // per-band accent + a synchronized beat gulp across all blobs
-    let rad = P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
-            + band * P_radiusBand() + u.driveBeat * P_beatSwell() * u.pulse);
+    // Cap the blob radius so a loud beat can't inflate a single ball into a
+    // full-frame solid wash — it stays a blob that merges, not a fill.
+    let rad = min(P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
+            + band * P_radiusBand() + u.driveBeat * P_beatSwell() * u.pulse), 0.34);
     let d2 = dot(p - pos, p - pos);
     let contrib = rad * rad / (d2 + 1e-5);
     field += contrib;

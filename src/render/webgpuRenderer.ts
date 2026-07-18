@@ -488,10 +488,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
     let shift = (bhash(vec2f(row, 3.0)) - 0.5) * 0.25 * g;
     let uvB = vec2f(fract(uv.x + shift), uv.y);
     let sp = 0.01 * g;
+    let bCtr = textureSampleLevel(toTex, smp, uvB, 0.0);
     let br = textureSampleLevel(toTex, smp, vec2f(fract(uvB.x + sp), uvB.y), 0.0).r;
-    let bg = textureSampleLevel(toTex, smp, uvB, 0.0).g;
     let bb = textureSampleLevel(toTex, smp, vec2f(fract(uvB.x - sp), uvB.y), 0.0).b;
-    let bGl = vec4f(br, bg, bb, 1.0);
+    // Keep the incoming frame's alpha — hardcoding 1.0 made transparent
+    // (PNG/WebM-alpha) exports opaque for the whole glitch window.
+    let bGl = vec4f(br, bCtr.g, bb, bCtr.a);
     return mix(a, bGl, smoothstep(0.0, 1.0, m));
   }
   if (k == 6) { // hard cut at the midpoint (beat-cut when fade is short)

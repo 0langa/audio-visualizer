@@ -202,6 +202,22 @@ async function createTauriWriter(path: string): Promise<FileWriter> {
   };
 }
 
+/** Slice a whole-track waveform overview to a segment (seconds), so a
+ * Canvas-loop export's audiogram strip shows only the clip it rendered. */
+function sliceWaveform(
+  wf: Float32Array | null,
+  segment: { start: number; duration: number },
+  full: { duration: number },
+): Float32Array | null {
+  if (!wf || wf.length === 0 || full.duration <= 0) return wf;
+  const i0 = Math.max(0, Math.floor((segment.start / full.duration) * wf.length));
+  const i1 = Math.min(
+    wf.length,
+    Math.ceil(((segment.start + segment.duration) / full.duration) * wf.length),
+  );
+  return i1 > i0 ? wf.slice(i0, i1) : wf;
+}
+
 function toResult(core: ExportCoreResult, codec?: VideoCodecId): ExportResult {
   return {
     blob: core.buffer
@@ -255,7 +271,10 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
     motion: o.motion,
     coverArt: o.coverArt,
     bgImage: o.bgImage,
-    bgVideo: o.bgVideo,
+    // Video bg loops on ABSOLUTE track time in the live view; a segment export
+    // slices the audio to 0, so carry the segment offset for the frame index to
+    // match (otherwise the loop shows the track's opening, not the segment).
+    bgVideo: o.bgVideo ? { ...o.bgVideo, timeOffset: o.segment?.start ?? 0 } : undefined,
     // Segment exports (Canvas loops) slice the audio, so the stems' t=0 must
     // move with it — same treatment as beatGrid/timeline below. Unshifted
     // stems would modulate the loop with envelopes from the track's start.
@@ -279,10 +298,14 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
             })),
           }
         : o.lyrics,
-    // Audiogram progress/time are inherently relative to the exported clip
-    // (pcm is already sliced for segments) — no shift, duration comes from
-    // pcm.duration inside the core.
-    audiogram: o.audiogram,
+    // Audiogram progress/time are relative to the exported clip (pcm is sliced;
+    // duration comes from pcm.duration in the core). The waveform STRIP, though,
+    // is the whole-track overview — slice it to the segment so the exported clip
+    // shows only its own portion, not the entire track swept in a few seconds.
+    audiogram:
+      o.audiogram && o.segment
+        ? { ...o.audiogram, waveform: sliceWaveform(o.audiogram.waveform, o.segment, full) }
+        : o.audiogram,
     customPresets: o.customPresets,
     paramsByPreset: o.paramsByPreset,
     modsByPreset: o.modsByPreset,

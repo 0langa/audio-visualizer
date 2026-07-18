@@ -478,7 +478,8 @@ fn preset(uv: vec2f) -> vec4f {
     let xs = abs(seg * 2.0 - 1.0);
     let v = binAt(xs);
     let inner = P_radialR() * (1.0 + u.bass * 0.1);
-    let len = v * P_radialLen();
+    // Frame-safety: bar tips stay inside the frame (edge at r=0.5).
+    let len = min(v * P_radialLen(), max(0.0, 0.47 - inner));
     let rHue = P_hue() + xs * P_hueSpread();
     let inBar = step(inner, r) * step(r, inner + len);
     let radial = (r - inner) / max(len, 0.001);
@@ -509,7 +510,8 @@ fn preset(uv: vec2f) -> vec4f {
   // --- Waveform circle
   if (P_waveCircle() > 0.5) {
     let wv = waveAt(fract(a / TAU + 0.5));
-    let cr = P_circleR() + wv * P_circleAmp() * (0.5 + u.drive * 1.2);
+    // Frame-safety: the wave circle stays inside the frame at loud passages.
+    let cr = min(P_circleR() + wv * P_circleAmp() * (0.5 + u.drive * 1.2), 0.47);
     let d = abs(r - cr);
     let cHue = P_hue() + 30.0 + wv * 25.0;
     col += hsl2rgb(cHue, 0.7, 0.55) * smoothstep(0.004, 0.0008, d) * 0.7;
@@ -522,7 +524,8 @@ fn preset(uv: vec2f) -> vec4f {
     let spin = u.time * 0.35;
     let amp = P_orbSize() * P_orbWobble() * (0.1 + level * 0.35);
     let wob = sin(a * 3.0 + spin) * amp + sin(a * 6.0 - spin * 0.8 + 1.5) * amp * 0.4;
-    let orbR = P_orbSize() * (1.0 + level * P_orbPump()) + wob;
+    // Frame-safety: the orb can't balloon past the frame on a loud beat.
+    let orbR = min(P_orbSize() * (1.0 + level * P_orbPump()) + wob, 0.44);
     let inside = smoothstep(orbR, orbR - 0.01, r);
     let body = hsl2rgb(P_hue() + 20.0, 0.7, 0.18 + level * 0.3 + exp(-r * 6.0) * 0.2);
     col = mix(col, body, inside);

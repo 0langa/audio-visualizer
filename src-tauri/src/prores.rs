@@ -155,7 +155,11 @@ fn spawn_sidecar(args: Vec<String>) -> Result<(Child, PathBuf), String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW — no console flash
     }
-    let child = cmd.spawn().map_err(|e| format!("ffmpeg spawn failed: {e}"))?;
+    let child = cmd.spawn().map_err(|e| {
+        // Spawn failed — the log file we just created would otherwise leak.
+        let _ = std::fs::remove_file(&log_path);
+        format!("ffmpeg spawn failed: {e}")
+    })?;
     Ok((child, log_path))
 }
 
@@ -235,6 +239,13 @@ pub fn anim_begin(
     let mut job_guard = state.job.lock().map_err(|_| "state poisoned")?;
     if job_guard.is_some() {
         return Err("A sidecar export is already running".into());
+    }
+    // GIF/WebP carry no audio: drop any WAV a prior prores_set_audio staged so
+    // it can't orphan in %TEMP% when the user switches ProRes -> GIF/WebP.
+    if let Ok(mut w) = state.pending_wav.lock() {
+        if let Some(p) = w.take() {
+            let _ = std::fs::remove_file(p);
+        }
     }
     if !(1..=240).contains(&fps) {
         return Err(format!("Unreasonable fps: {fps}"));

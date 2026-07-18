@@ -719,6 +719,9 @@ export const useVizStore = create<VizState>((set, get) => {
         if (token !== videoBgToken) return;
         disposeVideoBgFrames(videoBgFrames);
         videoBgFrames = null;
+        // Clear bgTex so mode 4 doesn't keep compositing the last uploaded
+        // frame frozen forever — a broken video degrades to an empty bg.
+        getRenderer()?.setBackgroundImage(null);
         set({
           videoBgLoading: false,
           error: `Could not load video background: ${(e as Error).message}`,
@@ -999,6 +1002,7 @@ export const useVizStore = create<VizState>((set, get) => {
       else flashNotice("Image too large to remember — background is session-only");
       getRenderer()?.setBackground(bg);
       applyBgImage();
+      applyVideoBg(); // switching away from a video bg: release its decoded loop
     },
 
     async pickVideoBackground() {
@@ -1006,7 +1010,13 @@ export const useVizStore = create<VizState>((set, get) => {
         set({ error: "Video backgrounds need the desktop app" });
         return;
       }
-      const vid = await openVideoFile();
+      let vid: { name: string; dataUrl: string } | null;
+      try {
+        vid = await openVideoFile();
+      } catch (e) {
+        set({ error: `Could not open video: ${(e as Error).message}` });
+        return;
+      }
       if (!vid) return;
       record("bg");
       const asset: OverlayAsset = {
@@ -1065,6 +1075,7 @@ export const useVizStore = create<VizState>((set, get) => {
       else flashNotice("Cover too large to remember — background is session-only");
       getRenderer()?.setBackground(bg);
       applyBgImage();
+      applyVideoBg(); // switching away from a video bg: release its decoded loop
     },
 
     setSmoothSpectrum(v) {
@@ -1793,6 +1804,10 @@ export const useVizStore = create<VizState>((set, get) => {
       // export error toast used to show for every sidecar failure.
       const errText = (x: unknown): string =>
         x instanceof Error ? x.message : typeof x === "string" ? x : String(x);
+      // Hoisted so the finally can close it even when exportVideo throws (e.g.
+      // WebGPU init fails) — the batch runner already closes its overlay; this
+      // path leaked the rasterized ImageBitmap on the error path.
+      let overlayBitmap: ImageBitmap | undefined;
       try {
         if (proresMode && savePath) {
           // Original (un-normalized) audio: a mezzanine keeps source levels.
@@ -1802,7 +1817,7 @@ export const useVizStore = create<VizState>((set, get) => {
           await animBegin(animFormat, fps, savePath);
         }
         // Same rasterizer as the live view, at export resolution — WYSIWYG
-        const overlay =
+        overlayBitmap =
           (await rasterizeOverlay(
             get().overlayLayers,
             get().assets,
@@ -1810,6 +1825,7 @@ export const useVizStore = create<VizState>((set, get) => {
             res.h,
             get().trackMeta,
           )) ?? undefined;
+        const overlay = overlayBitmap;
         // Everything the document contributes is resolved by the shared
         // builder, so the batch runner and this path cannot drift apart.
         const result = await exportVideo(
@@ -1915,6 +1931,7 @@ export const useVizStore = create<VizState>((set, get) => {
           set({ exportError: errText(e) });
         }
       } finally {
+        overlayBitmap?.close();
         set({ exporting: null });
         exportAbort = null;
         exportStarting = false;
@@ -2290,6 +2307,7 @@ export const useVizStore = create<VizState>((set, get) => {
       getRenderer()?.setPreset(preset);
       getRenderer()?.setBackground(doc.bg);
       applyBgImage();
+      applyVideoBg(); // restore/clear a video background on open/theme/undo
       getAnalyzer().setSync(sync);
       get().refreshOverlay();
       // Covers undo/redo/project-open: without this the autosave file kept

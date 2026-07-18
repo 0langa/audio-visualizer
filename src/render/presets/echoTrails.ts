@@ -211,7 +211,11 @@ fn preset(uv: vec2f) -> vec4f {
   // --- Inject a fresh audio-driven source over the trails ---
   // Spectrum ring: its radius per angle rides the spectrum + bass.
   let spec = binAt(fract(ang / TAU + 0.5));
-  let ringR = P_radius() + spec * P_react() * (0.6 + u.bass * 0.8);
+  // Frame-safety: the FRESH ring is the source the feedback zoom streams
+  // outward from — inject it on-screen (r<=0.45), or a loud/bright master at
+  // high Ring size + Reactivity puts the whole source off-frame and the tunnel
+  // has nothing to echo. The trails still extend past this via feedback.
+  let ringR = min(P_radius() + spec * P_react() * (0.6 + u.bass * 0.8), 0.45);
   let band = smoothstep(P_thick() + 0.02, 0.0, abs(rad - ringR));
   let hue = P_hue() + ang * 57.2958 * P_hueSpin() + u.time * P_hueDrift() * 30.0;
   col += hsl2rgb(hue, 0.85, 0.6) * band * (0.5 + spec) * P_inject();
