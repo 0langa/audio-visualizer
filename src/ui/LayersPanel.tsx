@@ -30,6 +30,9 @@ function AnchorPicker(props: { value: OverlayAnchor; onChange: (a: OverlayAnchor
         <button
           key={a}
           className={`anchor-cell ${props.value === a ? "active" : ""}`}
+          aria-label={`Anchor ${a.replace("-", " ")}`}
+          aria-pressed={props.value === a}
+          title={`Anchor: ${a.replace("-", " ")}`}
           onClick={() => props.onChange(a)}
         />
       ))}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ParamSpec, PresetDef } from "../render/types";
 import { NEW_SHADER_TEMPLATE, newCustomPresetId } from "../render/presets/custom";
+import { IconClose } from "./Icons";
 
 /**
  * The WGSL preset editor — a modal that authors a custom PresetDef: name,
@@ -131,8 +132,13 @@ export function ShaderEditor(props: ShaderEditorProps) {
       >
         <div className="panel-header">
           <span className="panel-heading">Shader editor</span>
-          <button className="icon-btn subtle" title="Close" onClick={props.onClose}>
-            ✕
+          <button
+            className="icon-btn subtle"
+            title="Close"
+            aria-label="Close shader editor"
+            onClick={props.onClose}
+          >
+            <IconClose size={16} />
           </button>
         </div>
 
@@ -213,6 +219,8 @@ export function ShaderEditor(props: ShaderEditorProps) {
                   key={field}
                   className="look-name-input"
                   placeholder={field}
+                  aria-label={`Parameter ${field}`}
+                  title={field}
                   value={r[field]}
                   onChange={(e) =>
                     setRows(
@@ -224,6 +232,7 @@ export function ShaderEditor(props: ShaderEditorProps) {
               <button
                 className="chip-x"
                 title="Remove parameter"
+                aria-label="Remove parameter"
                 onClick={() => setRows(rows.filter((_, j) => j !== i))}
               >
                 ✕
