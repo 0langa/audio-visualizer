@@ -74,6 +74,52 @@ body,
   pointer-events: none;
 }
 
+/* Stage mode: a clean, chrome-free full-bleed output for live performance,
+   projecting or screen capture. Drive visuals via keys/MIDI; Esc exits. */
+.app.stage-mode {
+  cursor: none;
+}
+.app.stage-mode .chrome {
+  display: none !important;
+}
+.blackout-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 60;
+}
+.stage-hud {
+  position: fixed;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  color: var(--accent-fg);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  z-index: 55;
+  pointer-events: none;
+  animation: stage-hud-fade 1.6s ease forwards;
+}
+@keyframes stage-hud-fade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  12%,
+  70% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .app.idle .top-bar {
   transform: translateY(-8px);
 }

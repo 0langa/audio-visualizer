@@ -110,6 +110,17 @@ export const IconFullscreen = ({ size }: IconProps) =>
     </>,
   );
 
+/** Monitor on a stand — stage / performance output. */
+export const IconStage = ({ size }: IconProps) =>
+  svg(
+    size,
+    <>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M9 20h6" />
+      <path d="M12 16v4" />
+    </>,
+  );
+
 /** Stacked sheets — a queue of tracks, one video each. */
 export const IconBatch = ({ size }: IconProps) =>
   svg(

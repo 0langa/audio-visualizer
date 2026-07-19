@@ -292,6 +292,11 @@ interface SessionSlice {
   seeking: boolean;
   rendererKind: string;
   chromeIdle: boolean;
+  /** Stage mode: chrome-free full-bleed output for live performance / capture /
+   * projecting. Drive visuals via keys/MIDI; Esc exits. */
+  stageMode: boolean;
+  /** Instant black-out over the visual (VJ cut), only meaningful in stage mode. */
+  blackout: boolean;
   dragOver: boolean;
   showPanel: boolean;
   showHelp: boolean;
@@ -459,6 +464,8 @@ interface Actions {
   setDragOver(v: boolean): void;
   setShowPanel(v: boolean | ((prev: boolean) => boolean)): void;
   setShowHelp(v: boolean): void;
+  setStageMode(v: boolean): void;
+  setBlackout(v: boolean): void;
   setShowExport(v: boolean): void;
   setExportSettings(patch: Partial<ExportSettings>): void;
   runExport(): Promise<void>;
@@ -817,6 +824,8 @@ export const useVizStore = create<VizState>((set, get) => {
     seeking: false,
     rendererKind: "…",
     chromeIdle: false,
+    stageMode: false,
+    blackout: false,
     dragOver: false,
     showPanel: loadStoredPanelOpen(),
     showHelp: false,
@@ -1809,6 +1818,16 @@ export const useVizStore = create<VizState>((set, get) => {
 
     setShowHelp(showHelp) {
       set({ showHelp });
+    },
+
+    setStageMode(stageMode) {
+      // Entering stage closes panels for a clean output; leaving clears blackout.
+      if (stageMode) set({ stageMode, showPanel: false, showTimeline: false, showHelp: false });
+      else set({ stageMode, blackout: false });
+    },
+
+    setBlackout(blackout) {
+      set({ blackout });
     },
 
     setShowExport(showExport) {

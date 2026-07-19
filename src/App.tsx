@@ -45,6 +45,7 @@ import {
   IconBroadcast,
   IconMusic,
   IconSettings,
+  IconStage,
 } from "./ui/Icons";
 import "./App.css";
 
@@ -58,6 +59,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["L", "Loop"],
   ["[ / ]", "Previous / next preset"],
   ["1 – 9", "Jump to mode (beat-quantized when Live › Quantize is on)"],
+  ["\\", "Stage mode (chrome-free output) · . blackout · Esc exits"],
   ["G", "Settings panel"],
   ["F", "Fullscreen"],
   ["Ctrl+S", "Save project"],
@@ -99,6 +101,8 @@ export default function App() {
   const muted = useVizStore((s) => s.muted);
   const rendererKind = useVizStore((s) => s.rendererKind);
   const chromeIdle = useVizStore((s) => s.chromeIdle);
+  const stageMode = useVizStore((s) => s.stageMode);
+  const blackout = useVizStore((s) => s.blackout);
   const dragOver = useVizStore((s) => s.dragOver);
   const showPanel = useVizStore((s) => s.showPanel);
   const showHelp = useVizStore((s) => s.showHelp);
@@ -261,11 +265,18 @@ export default function App() {
         case "Q":
           s.setShowLibrary(!s.showLibrary);
           break;
+        case "\\":
+          s.setStageMode(!s.stageMode);
+          break;
+        case ".":
+          if (s.stageMode) s.setBlackout(!s.blackout);
+          break;
         case "Escape":
           s.setShowHelp(false);
           if (!s.exporting) s.setShowExport(false);
           // Never let Escape dismiss a running queue out from under itself.
           if (s.batchStatus !== "running") s.setShowBatch(false);
+          if (s.stageMode) s.setStageMode(false);
           break;
       }
     };
@@ -526,7 +537,7 @@ export default function App() {
 
   return (
     <div
-      className={`app ${dragOver ? "drag-over" : ""} ${idle ? "idle" : ""}`}
+      className={`app ${dragOver ? "drag-over" : ""} ${idle ? "idle" : ""} ${stageMode ? "stage-mode" : ""}`}
       onMouseMove={() => store().pokeChrome()}
       onPointerDown={() => store().pokeChrome()}
       onDragOver={(e) => e.preventDefault()}
@@ -600,6 +611,14 @@ export default function App() {
           onDoubleClick={toggleFullscreen}
         />
       </div>
+      {stageMode && blackout && <div className="blackout-overlay" />}
+      {/* Keyed by presetId so it re-mounts and replays the fade on each switch
+          — the CSS animation ends hidden, so no timer/state is needed. */}
+      {stageMode && !blackout && (
+        <div className="stage-hud" key={presetId}>
+          {preset.name}
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -718,6 +737,15 @@ export default function App() {
             onClick={() => void store().toggleLiveInput()}
           >
             <IconBroadcast size={18} />
+          </button>
+          <button
+            className={`icon-btn ${stageMode ? "active" : ""}`}
+            title="Stage mode — chrome-free output for performance/capture (\\)"
+            aria-label="Stage mode"
+            aria-pressed={stageMode}
+            onClick={() => store().setStageMode(!stageMode)}
+          >
+            <IconStage size={18} />
           </button>
           <button
             className={`icon-btn ${showPanel ? "active" : ""}`}
