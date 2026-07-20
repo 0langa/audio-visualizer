@@ -284,8 +284,9 @@ fn preset(uv: vec2f) -> vec4f {
   }
 
   col *= 1.0 - r * r * P_vignette();
-  // Frame-safety fade: nothing bright past the top/bottom edge.
-  col *= smoothstep(0.5, 0.46, r);
+  // NOTE: no global r=0.5 fade here — see radialBurst. The orb radius, rim and
+  // wave ring are already hard-clamped to <=0.47, so the full-field multiply
+  // was redundant and clipped the ambient field into a visible hard circle.
   return vec4f(col, 1.0);
 }
 `,

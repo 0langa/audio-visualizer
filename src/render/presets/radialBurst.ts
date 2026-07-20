@@ -298,9 +298,11 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Vignette
   col *= 1.0 - r * r * P_vignette();
-  // Frame-safety fade: guarantee nothing (bar tips, tip-glow, wash) stays
-  // bright past the top/bottom edge (r=0.5), so the burst never spills out.
-  col *= smoothstep(0.5, 0.45, r);
+  // NOTE: no global r=0.5 fade here. Frame-safety is enforced GEOMETRICALLY —
+  // bar length, peak arc and core are all hard-clamped to <=0.47 above — so a
+  // full-field multiply is redundant. It also cut the background wash and the
+  // tip glow off at r=0.5, which is well inside a 16:9 frame (corners reach
+  // r~1.02) and showed up as a hard black circle around the burst.
   return vec4f(col, 1.0);
 }
 `,
