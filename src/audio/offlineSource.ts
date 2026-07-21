@@ -13,9 +13,17 @@ const FFT_SIZE = 4096;
  * weight in a window ending at t, so every beat/onset pulse fired one full
  * frame late (measured: exactly +33 ms at 30 fps, +17 ms at 60 fps on
  * synthetic kicks). One 60 fps frame of lookahead lands the pulse in the
- * frame where the transient is heard. The live path needs no counterpart:
- * its analyser taps the audio graph ahead of the speakers by the output
- * latency, which plays the same role.
+ * frame where the transient is heard.
+ *
+ * The live path needs no explicit counterpart because its analyser taps the
+ * graph ahead of the speakers by the output latency, which plays the same
+ * role — but the two are ANALOGOUS, not equal, and it is worth being precise
+ * about that. This lookahead is a constant 16.67 ms; the live lead is
+ * `baseLatency + outputLatency`, typically 10-40 ms, device-dependent and
+ * EMA-smoothed. So preview and export can sit up to ~20 ms apart on where a
+ * transient lands. That residual is well inside the ITU-R BT.1359 A/V sync
+ * window (-125 ms to +45 ms), so it is not audible-grade — but it is a real
+ * difference, and any future claim of "identical math" here would be wrong.
  */
 const ANALYSIS_LOOKAHEAD = 1 / 60;
 
