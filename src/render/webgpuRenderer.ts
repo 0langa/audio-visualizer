@@ -24,7 +24,7 @@ const UNIFORM_SIZE = 128;
  */
 const SCENE_FORMAT: GPUTextureFormat = "rgba16float";
 /** Post uniform block: 8 f32 lanes = 32 bytes (16-byte aligned). */
-const POST_UNIFORM_SIZE = 32;
+const POST_UNIFORM_SIZE = 48; // 9 f32 (8 post params + transparent flag), 16B-aligned
 /** Particle uniform block: 24 scalar lanes = 96 bytes. */
 const PARTICLE_UNIFORM_SIZE = 96;
 /** Fixed particle simulation rate. Steps are keyed to track time
@@ -55,6 +55,10 @@ struct PostU {
   grain: f32,
   chromatic: f32,
   time: f32,
+  /** 1 when the frame is a transparent (premultiplied) delivery — PNG+alpha,
+   * VP9-alpha, ProRes 4444. The post chain then has to carry alpha alongside
+   * RGB instead of only modifying colour. */
+  transparent: f32,
 }
 @group(0) @binding(0) var srcTex: texture_2d<f32>;
 @group(0) @binding(1) var srcSmp: sampler;
@@ -125,15 +129,19 @@ fn fs_final(in: VSOut) -> @location(0) vec4f {
     let g = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0);
     let bb = textureSampleLevel(srcTex, srcSmp, in.uv - off, 0.0);
     col = vec3f(r.r, g.g, bb.b);
-    a = g.a;
+    // Transparent delivery: RGB comes from three taps, so coverage must span
+    // them too or the fringe is clipped against the centre tap's alpha.
+    a = select(g.a, max(g.a, max(r.a, bb.a)), p.transparent > 0.5);
   } else {
     let s = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0);
     col = s.rgb;
     a = s.a;
   }
   // Additive bloom.
+  var bloomAdd = vec3f(0.0);
   if (p.bloom > 0.0) {
-    col = col + textureSampleLevel(bloomTex, srcSmp, in.uv, 0.0).rgb * p.bloom;
+    bloomAdd = textureSampleLevel(bloomTex, srcSmp, in.uv, 0.0).rgb * p.bloom;
+    col = col + bloomAdd;
   }
   // Exposure + tonemap.
   col = col * p.exposure;
@@ -141,12 +149,23 @@ fn fs_final(in: VSOut) -> @location(0) vec4f {
   // Vignette.
   if (p.vignette > 0.0) {
     let d = length(toC) * 1.4142;
-    col = col * (1.0 - p.vignette * smoothstep(0.4, 1.0, d));
+    let v = 1.0 - p.vignette * smoothstep(0.4, 1.0, d);
+    col = col * v;
+    // Transparent delivery: fade coverage with the light, or the corners come
+    // out dark-AND-opaque instead of falling away.
+    if (p.transparent > 0.5) { a = a * v; }
   }
   // Deterministic film grain (track-time seeded, not Math.random).
   if (p.grain > 0.0) {
     let n = hash(in.uv + fract(p.time)) - 0.5;
-    col = col + n * p.grain;
+    // Premultiplied output divides by alpha on un-premultiply, which would
+    // scale grain by 1/a — several times too strong in semi-transparent areas.
+    col = col + n * p.grain * select(1.0, a, p.transparent > 0.5);
+  }
+  // Bloom adds emitted light; in premultiplied output the coverage has to rise
+  // with it or the halo is visible in the preview and gone from the file.
+  if (p.transparent > 0.5 && p.bloom > 0.0) {
+    a = clamp(a + max(bloomAdd.r, max(bloomAdd.g, bloomAdd.b)), 0.0, 1.0);
   }
   return vec4f(col, a);
 }
@@ -386,6 +405,15 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 const COMPOSITE_BODY = /* wgsl */ `
 fn composite(color: vec4f, uv: vec2f) -> vec4f {
   var out = color;
+  if (u.bgMode == 0u) {
+    // The preset's own background is opaque by definition. Fragment presets
+    // already return a = 1, but the compute-particle and mesh3d paths clear
+    // visTex to a = 0 and emit per-sprite alpha — so without this a PNG
+    // sequence or VP9-alpha export on the DEFAULT background came out with a
+    // transparent sky behind Spectrum Scape and transparent gaps between
+    // Particle Flow's sprites.
+    out = vec4f(out.rgb, 1.0);
+  }
   if (u.bgMode != 0u) {
     let a = clamp(max(out.r, max(out.g, out.b)), 0.0, 1.0);
     if (u.bgMode == 1u) {
@@ -1416,6 +1444,7 @@ export class WebGPURenderer implements Renderer {
     d[5] = this.post.grain;
     d[6] = this.post.chromatic;
     d[7] = time;
+    d[8] = clearA === 0 ? 1 : 0; // transparent delivery → keep alpha correct
     this.device.queue.writeBuffer(this.postUniform, 0, d);
 
     const pass = (pipe: GPURenderPipeline, bind: GPUBindGroup, view: GPUTextureView) => {
