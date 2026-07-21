@@ -27,6 +27,71 @@
   --radius-sm: 8px;
 }
 
+/* Respect the OS "reduce motion" setting. This is a music visualizer, so the
+   CANVAS is the point and is left alone — but the chrome's infinite loops
+   (the queued-switch chip pulse, the live-capture breathe) are exactly the
+   kind of thing a photosensitive or motion-sensitive user needs stopped. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Render-throw fallback (ErrorBoundary) — the app shell is gone at this point,
+   so this styling stands alone. */
+.crash-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+  background: var(--bg-strong);
+  color: var(--text);
+  user-select: text;
+}
+.crash-sub {
+  color: var(--text-dim);
+  max-width: 52ch;
+  line-height: 1.5;
+}
+.crash-detail {
+  max-width: 80ch;
+  max-height: 30vh;
+  overflow: auto;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--danger);
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  user-select: text;
+}
+.crash-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Toasts are copy-able (for bug reports) and the error one is dismissible. */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toast-text {
+  user-select: text;
+}
+
 * {
   margin: 0;
   padding: 0;

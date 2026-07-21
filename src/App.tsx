@@ -945,8 +945,28 @@ export default function App() {
         onToggleMute={() => store().applyVolume(volume, !muted)}
       />
 
-      {error && <div className="toast error-toast">{error}</div>}
-      {notice && !error && <div className="toast notice-toast">{notice}</div>}
+      {/* role=alert so a screen reader is actually told; dismissible so a
+          sticky message (notably the degraded-but-working "WebGPU
+          unavailable") isn't a dead end that sits over Stage mode all
+          session; selectable so the text can be copied into a bug report. */}
+      {error && (
+        <div className="toast error-toast" role="alert">
+          <span className="toast-text">{error}</span>
+          <button
+            className="chip-x"
+            aria-label="Dismiss error"
+            title="Dismiss"
+            onClick={() => store().clearError()}
+          >
+            <IconClose size={13} />
+          </button>
+        </div>
+      )}
+      {notice && !error && (
+        <div className="toast notice-toast" role="status">
+          <span className="toast-text">{notice}</span>
+        </div>
+      )}
 
       {showShaderEditor && (
         <ShaderEditor

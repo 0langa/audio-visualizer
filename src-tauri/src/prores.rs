@@ -13,7 +13,7 @@
 
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Mutex;
 
@@ -116,6 +116,14 @@ fn anim_args(format: &str, fps: u32, out: &str) -> Vec<String> {
         ),
         _ => args.extend(
             [
+                // Pin the muxer. Without an explicit -f, ffmpeg picks by
+                // extension and lands on the image2 family for .webp, which
+                // applies printf formatting to the filename: a save path
+                // containing a %d token wrote ONE frame to a renamed file
+                // instead of an animation. (.gif already resolves to the gif
+                // muxer, so only webp needs pinning.)
+                "-f",
+                "webp",
                 "-c:v",
                 "libwebp_anim",
                 "-lossless",
@@ -131,6 +139,30 @@ fn anim_args(format: &str, fps: u32, out: &str) -> Vec<String> {
     }
     args.push(out.to_string());
     args
+}
+
+/// True only for a plain LOCAL absolute path (a drive-letter path on Windows).
+///
+/// `is_absolute()` alone is not a sufficient gate: on Windows it also returns
+/// true for UNC (`\\host\share\x.mov`). ffmpeg is spawned with `-y`, which
+/// truncates unconditionally, and `prores_finish` removes the target on
+/// failure — so accepting UNC turned "pick an output file" into a write/delete
+/// primitive against an arbitrary remote host, plus an outbound NTLM
+/// authentication to it. Only local disks are accepted.
+fn is_local_absolute(path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        let disk = matches!(
+            path.components().next(),
+            Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        );
+        disk && path.is_absolute()
+    }
+    #[cfg(not(windows))]
+    {
+        path.is_absolute()
+    }
 }
 
 /// Case-insensitive extension check — Windows paths carry whatever case the
@@ -193,7 +225,7 @@ pub fn prores_begin(
         return Err(format!("Unreasonable fps: {fps}"));
     }
     let out = PathBuf::from(&out_path);
-    if !out.is_absolute() || !has_extension(&out, "mov") {
+    if !is_local_absolute(&out) || !has_extension(&out, "mov") {
         return Err("Output must be an absolute .mov path".into());
     }
     let wav_path = state
@@ -254,7 +286,7 @@ pub fn anim_begin(
         return Err(format!("Unknown animation format: {format}"));
     }
     let out = PathBuf::from(&out_path);
-    if !out.is_absolute() || !has_extension(&out, &format) {
+    if !is_local_absolute(&out) || !has_extension(&out, &format) {
         return Err(format!("Output must be an absolute .{format} path"));
     }
     let (mut child, log_path) = spawn_sidecar(anim_args(&format, fps, &out.to_string_lossy()))?;
@@ -397,6 +429,25 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unc_and_relative_output_paths() {
+        // ffmpeg runs with -y (unconditional truncate) and the finish path
+        // removes the target on failure, so a UNC output would be a remote
+        // write/delete primitive plus an outbound NTLM auth. is_absolute()
+        // alone accepts UNC on Windows — this gate must not.
+        assert!(!is_local_absolute(Path::new(r"\\attacker-host\share\x.mov")));
+        assert!(!is_local_absolute(Path::new("//attacker-host/share/x.mov")));
+        assert!(!is_local_absolute(Path::new("relative/x.mov")));
+        assert!(!is_local_absolute(Path::new("x.mov")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn accepts_a_plain_drive_letter_path() {
+        assert!(is_local_absolute(Path::new(r"C:\Users\me\out.mov")));
+        assert!(is_local_absolute(Path::new("C:/Users/me/out.mov")));
+    }
+
+    #[test]
     fn webp_args_are_exactly_the_proven_contract() {
         let args = anim_args("webp", 30, "C:/t/out.webp");
         assert_eq!(
@@ -410,6 +461,11 @@ mod tests {
                 "30",
                 "-i",
                 "-",
+                // Output muxer pinned: without it ffmpeg picks image2 for
+                // .webp and printf-formats the filename, so a save path
+                // containing %d produced one renamed frame, not an animation.
+                "-f",
+                "webp",
                 "-c:v",
                 "libwebp_anim",
                 "-lossless",

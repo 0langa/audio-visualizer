@@ -464,6 +464,9 @@ interface Actions {
   setDragOver(v: boolean): void;
   setShowPanel(v: boolean | ((prev: boolean) => boolean)): void;
   setShowHelp(v: boolean): void;
+  /** Dismiss the error toast (it never auto-cleared, so a degraded-mode
+   * message sat on screen for the whole session — including over Stage mode). */
+  clearError(): void;
   setStageMode(v: boolean): void;
   setBlackout(v: boolean): void;
   setShowExport(v: boolean): void;
@@ -1831,6 +1834,10 @@ export const useVizStore = create<VizState>((set, get) => {
 
     setShowHelp(showHelp) {
       set({ showHelp });
+    },
+
+    clearError() {
+      set({ error: null });
     },
 
     setStageMode(stageMode) {
