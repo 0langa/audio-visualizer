@@ -11,6 +11,47 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.36.0] - 2026-07-21
+
+The visuals release. Every one of the 16 modes was reworked to a single quality
+bar, and a regression that had blanked the live preview is fixed.
+
+### Fixed
+
+- **The live preview is no longer black.** Track playback was wired to the
+  volume node instead of the analysis tap, so the analysers heard digital
+  silence while audio still played — and since every visual is audio-driven,
+  the whole canvas went dark except the background. Exports were never
+  affected (they analyse the file directly), which is why it slipped a release.
+  A graph-shape test now guards it.
+
+### Changed
+
+- **All 16 visual modes rebuilt to match Spectrum Bars and Bass Circle.** A
+  shared "look kit" (saturated cosine palettes instead of muddy HSL hue drift,
+  domain-warped noise, ACES tone mapping, dithering, vignette) now backs every
+  mode. Highlights:
+  - **Tunnel** — was a flat olive dartboard, now a real perspective tunnel
+    receding to a hot vanishing point.
+  - **Particles** — was flat uniform static, now a curl-noise flow field with
+    depth, motion streaks and hot cores.
+  - **Kaleido Nebula** — was muddy olive fog, now a saturated violet filament
+    mandala over true black.
+  - **Synthwave** — the horizon grid was nearly empty, now a dense converging
+    perspective grid with a glowing sun.
+  - **Oscilloscope** — gained a hot beam core, CRT phosphor persistence and a
+    lab graticule. **LED Matrix** — per-dot bloom and panel texture.
+    **Metaballs, Aurora, Echo Trails, Voice Orb, Spectrum Scape** — depth,
+    hot cores and per-element motion.
+- **Club mirror everywhere it fits.** The kaleidoscope/mirror fold Spectrum
+  Bars had is now a param on the modes where it makes visual sense.
+
+### Notes
+
+- Existing `.avproj` projects keep every setting; only new optional params were
+  added. Non-default named styles may render a slightly different (still
+  saturated) colour than the old HSL maths gave them — a cosmetic follow-up.
+
 ## [2.35.0] - 2026-07-21
 
 A hardening release: the whole render/export/state stack, CI, and the docs
@@ -445,7 +486,8 @@ Initial public release.
 - Onboarding UI, keyboard shortcuts, auto-hiding chrome.
 - Three synthesized demo tracks.
 
-[Unreleased]: https://github.com/0langa/beatform/compare/v2.35.0...HEAD
+[Unreleased]: https://github.com/0langa/beatform/compare/v2.36.0...HEAD
+[2.36.0]: https://github.com/0langa/beatform/compare/v2.35.0...v2.36.0
 [2.35.0]: https://github.com/0langa/beatform/compare/v2.34.1...v2.35.0
 [2.34.1]: https://github.com/0langa/beatform/compare/v2.34.0...v2.34.1
 [2.34.0]: https://github.com/0langa/beatform/compare/v2.33.0...v2.34.0
