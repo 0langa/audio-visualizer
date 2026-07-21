@@ -142,7 +142,7 @@ export const particleFlow: PresetDef = {
       min: 0.1,
       max: 1.5,
       step: 0.05,
-      default: 0.5,
+      default: 0.62,
       hint: "Additive glow of each particle",
     },
     {
@@ -151,8 +151,8 @@ export const particleFlow: PresetDef = {
       min: 0.1,
       max: 1,
       step: 0.05,
-      default: 1,
-      hint: "Fraction of the 120k particles drawn",
+      default: 0.45,
+      hint: "Fraction of the 120k particles drawn — lower shows the flow structure, 1.0 packs it solid",
     },
   ],
   advanced: [
@@ -171,7 +171,7 @@ export const particleFlow: PresetDef = {
       min: 0.8,
       max: 0.99,
       step: 0.005,
-      default: 0.93,
+      default: 0.95,
       hint: "Velocity retained each step — higher = longer, smoother streams",
     },
     {
@@ -180,7 +180,7 @@ export const particleFlow: PresetDef = {
       min: 0,
       max: 1.5,
       step: 0.05,
-      default: 0.12,
+      default: 0.05,
       hint: "Pull back toward the center — balances the outward fountain",
     },
     {
@@ -234,7 +234,7 @@ export const particleFlow: PresetDef = {
       min: 0.02,
       max: 0.6,
       step: 0.02,
-      default: 0.12,
+      default: 0.55,
       hint: "How near the center particles respawn after drifting off-frame",
     },
   ],

@@ -698,6 +698,18 @@ fn curl(p: vec2f) -> vec2f {
   return vec2f(dy, -dx) / (2.0 * e);
 }
 
+// Overall force-budget multiplier. Before this existed, a particle's
+// terminal speed under damping (vel settles toward force*dt/(1-damping) at
+// steady state) worked out to roughly 0.03-0.05 NDC/sec at the default
+// knobs: crossing the ~0.6 NDC gap from the spawn disc to the 1.15 respawn
+// radius took 15-20+ seconds, so the field never had time to develop and
+// particles just sat on top of the spawn distribution. That is what actually
+// painted the "dense static blob" (confirmed by watching it render, not just
+// by theory); the respawn-radius fix further down is the other half of it.
+// This raises typical terminal speed into the ~0.15-0.3 NDC/sec range so
+// particles visibly traverse the frame in a few seconds.
+const FORCE_SCALE: f32 = 3.5;
+
 @compute @workgroup_size(64)
 fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
@@ -705,6 +717,9 @@ fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
   var pos = parts[i].pos;
   var vel = parts[i].vel;
   let seed = h11(f32(i) * 0.61803 + 0.123);
+  // Per-particle burst direction; also reused below as the outward-drift
+  // fallback at the origin so that edge case doesn't carry a fixed +x bias.
+  let bdir = normalize(vec2f(h11(seed * 3.3) - 0.5, h11(seed * 7.7) - 0.5) + vec2f(1e-4));
 
   // Curl-noise flow, drifting over time, amplified by bass. The fixed scale
   // factors keep raw curl / positional terms in a sane velocity range so the
@@ -720,20 +735,37 @@ fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
   // Steady outward drift: with the center respawn this makes a fountain, so the
   // curl field bends the outflow into visible radiating tendrils (a uniform
   // fill would look like static under divergence-free flow). Loudness feeds it.
-  let outward = normalize(pos + vec2f(1e-5, 0.0));
+  let r = length(pos);
+  var outward = pos * (1.0 / max(r, 1e-5));
+  if (r < 1e-4) { outward = bdir; }
   force += outward * (0.03 + pu.drive * 0.05);
-  // Per-particle radial burst on kicks.
-  let bdir = normalize(vec2f(h11(seed * 3.3) - 0.5, h11(seed * 7.7) - 0.5) + vec2f(1e-4));
-  // Burst on the selected sync source's beats (falls back to kicks in Kick mode).
-  force += bdir * max(pu.driveBeat, pu.kick * 0.5) * pu.beatBurst * 0.3;
+  // Radial burst on the selected sync source's beats (falls back to kicks in
+  // Kick mode), weighted a bit above the continuous terms so a kick reads as
+  // a distinct scatter instead of blending into the ambient flow.
+  force += bdir * max(pu.driveBeat, pu.kick * 0.5) * pu.beatBurst * 0.5;
+  force *= FORCE_SCALE;
 
-  vel = vel * pu.damping + force * pu.dt;
+  // Per-step velocity retention, written as a per-second rate raised to dt so
+  // its effective strength stays correct even if the sim's fixed step rate
+  // (SIM_FPS in webgpuRenderer.ts, currently 60) ever changes. At today's
+  // fixed dt=1/60 this is numerically identical to using pu.damping directly
+  // per step (pow(d, 1) == d): same behaviour, just frame-rate-honest.
+  let retention = pow(clamp(pu.damping, 0.001, 0.999), pu.dt * 60.0);
+  vel = vel * retention + force * pu.dt;
   pos += vel * pu.dt;
 
-  // Respawn once a particle drifts out of the framed region.
+  // Respawn once a particle drifts out of the framed region. sqrt() on the
+  // radius sample makes the respawn disc AREA-uniform, matching the CPU seed
+  // in initParticles(). Without it, sampling the radius uniformly instead of
+  // its square root packs particles near r=0 (equal-width rings near the
+  // centre cover less area but got the same particle count), which is what
+  // permanently reinforced a hot core: every respawn re-piled particles on
+  // the same spot instead of spreading across the disc. This is the other
+  // half of the "dense blob" bug, independent of the velocity fix above.
   if (abs(pos.x) > 1.15 || abs(pos.y) > 1.15) {
     let a = h11(seed * 13.1 + pu.time) * 6.28318530718;
-    pos = vec2f(cos(a), sin(a)) * pu.spawnRadius * h11(seed * 5.5 + pu.time * 0.7);
+    let rr = sqrt(h11(seed * 5.5 + pu.time * 0.7));
+    pos = vec2f(cos(a), sin(a)) * pu.spawnRadius * rr;
     vel = vec2f(0.0);
   }
   parts[i].pos = pos;
@@ -774,15 +806,50 @@ fn vs_draw(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
   let c = corners[vi];
   let p = parts[ii];
   let speed = length(p.vel);
-  let size = pu.size * (1.0 + speed * pu.sizePulse);
+
+  // PER-PARTICLE constants, derived from the instance index alone. Never from
+  // time: a stochastic value re-rolled every frame gives persistence of vision
+  // nothing to lock onto, which is the single biggest reason a particle field
+  // reads as TV static instead of as moving matter.
+  let seed = f32(ii) * 0.61803 + 0.123;
+  // Fake depth. Uniform size + uniform brightness is what made this look like
+  // one flat sheet of noise; a spread of apparent distances gives the eye
+  // near/far layers to separate, which is most of the "3D" impression.
+  let depth = 0.35 + 0.65 * h11(seed * 2.7);
+  // Long-tailed brightness instead of a flat random range: most particles
+  // land in a modest band and only a rare few (the high tail of rnd^8) spike
+  // hot. That reads as a few genuinely bright points in the field instead of
+  // a uniform haze that clips to one flat white mass once enough of them
+  // additively overlap.
+  let rnd = h11(seed * 5.1);
+  let bright = 0.2 + 0.35 * rnd + 1.05 * pow(rnd, 8.0);
+
+  let size = pu.size * depth * (1.0 + speed * pu.sizePulse);
+
+  // Streak along the direction of travel. A round dot carries no motion
+  // information; an elongated one traces its own streamline, which is what
+  // makes a curl-noise field read as FLOW rather than as scatter.
+  let dir = select(vec2f(1.0, 0.0), p.vel / max(speed, 1e-6), speed > 1e-5);
+  let perp = vec2f(-dir.y, dir.x);
+  let stretch = 1.0 + min(speed * 26.0, 3.5);
+  let off = dir * (c.x * size * stretch) + perp * (c.y * size);
+
   // pos is in NDC (-1..1 fills the frame); correct sprite x for aspect so
   // dots stay round. y is flipped for clip space.
-  let clip = vec2f(p.pos.x + c.x * size / pu.aspect, -(p.pos.y + c.y * size));
+  let clip = vec2f(p.pos.x + off.x / pu.aspect, -(p.pos.y + off.y));
   let hue = pu.hue + seedHue(ii) * pu.hueSpread + speed * pu.speedColor * 400.0;
   var out: VOut;
   out.pos = vec4f(clip, 0.0, 1.0);
   out.uv = c;
-  out.shade = hsl2rgb(hue, pu.sat, 0.6) * pu.brightness;
+  // Nearer particles are brighter as well as bigger — the two cues together
+  // are what sell depth.
+  //
+  // Divided by the stretch factor to conserve energy: these sprites are
+  // ADDITIVELY blended, so a streak covering 4x the pixels of a dot deposits
+  // 4x the light. Without this the field clipped to a solid white blob the
+  // moment streaking was introduced (observed, not theorised).
+  out.shade = hsl2rgb(hue, pu.sat, 0.6) * pu.brightness * bright * depth
+            / (0.45 + stretch * 0.75);
   return out;
 }
 fn seedHue(ii: u32) -> f32 { return h11(f32(ii) * 0.61803 + 0.123) - 0.5; }
