@@ -904,6 +904,16 @@ struct VOut {
   @location(0) normal: vec3f,
   @location(1) shade: vec3f,
   @location(2) height: f32,
+  // Perspective w == view-space distance from the camera plane, a free fog
+  // depth with no extra uniforms. This is the cue that was missing: without
+  // it, distant bars cut straight to black instead of receding.
+  @location(3) fog: f32,
+  @location(4) heightNorm: f32,
+}
+
+fn m3_tonemap(x: vec3f) -> vec3f {
+  let a = 2.51; let b = 0.03; let c = 2.43; let d = 0.59; let e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
 }
 
 @vertex
@@ -932,22 +942,47 @@ fn vs_mesh(
   var out: VOut;
   out.pos = m.viewProj * vec4f(world, 1.0);
   out.normal = inNormal;
-  out.shade = hsl2rgb(m.hue + r * m.hueRange + h * 24.0, 0.85, 0.55);
+  out.shade = hsl2rgb(m.hue + r * m.hueRange + h * 24.0, 0.9, 0.55);
   out.height = h;
+  out.fog = out.pos.w;
+  // 0 at the floor, 1 near the top of the tallest bar — drives the hot core.
+  out.heightNorm = clamp(h / max(m.heightScale * 0.6, 0.001), 0.0, 1.0);
   return out;
 }
 
 @fragment
 fn fs_mesh(in: VOut) -> @location(0) vec4f {
   let n = normalize(in.normal);
-  let lightDir = normalize(vec3f(0.4, 0.9, 0.3));
-  let diff = max(dot(n, lightDir), 0.0);
-  let lit = in.shade * (0.25 + diff * m.light);
-  // Emissive rises with height so tall bars glow (bloom picks them up). The
-  // clamp scales with heightScale so the glow keeps tracking the slider instead
-  // of pinning at a fixed ceiling that mid-level bars already hit by default.
-  let emis = in.shade * clamp(in.height, 0.0, m.heightScale * 0.5) * m.emissive * (0.7 + m.drive * 0.6 + m.driveBeat * 0.5);
-  return vec4f(lit + emis, 1.0);
+
+  // Key light + a dimmer fill from the opposite side, plus a hemisphere
+  // ambient (cool from above, near-black from below). A single light over a
+  // flat 0.25 ambient is what made the city read as flat plastic; giving the
+  // shaded faces some cool sky bounce gives every bar visible form.
+  let key = max(dot(n, normalize(vec3f(0.4, 0.9, 0.3))), 0.0);
+  let fill = max(dot(n, normalize(vec3f(-0.5, 0.35, -0.6))), 0.0) * 0.35;
+  let sky = 0.5 + 0.5 * n.y;                       // 1 facing up, 0 facing down
+  let ambient = mix(vec3f(0.03, 0.04, 0.07), vec3f(0.10, 0.12, 0.18), sky);
+  var col = in.shade * (ambient + (key * m.light + fill));
+
+  // Hot tops: the tallest bars desaturate toward white and push past 1.0 so
+  // the tone map rolls them off as genuine emission rather than flat colour.
+  let hot = smoothstep(0.55, 1.0, in.heightNorm);
+  col = mix(col, vec3f(1.0), hot * 0.6);
+  col += in.shade * hot * (0.6 + m.drive * 0.6 + m.driveBeat * 0.6);
+
+  // Existing height emissive, kept.
+  col += in.shade * clamp(in.height, 0.0, m.heightScale * 0.5) * m.emissive
+       * (0.7 + m.drive * 0.6 + m.driveBeat * 0.5);
+
+  // Distance fog: recede into a dark blue haze rather than a hard black cut.
+  // Density chosen so the far edge of a default-distance camera softens
+  // without swallowing the near bars.
+  let fogAmt = 1.0 - exp(-in.fog * 0.045);
+  let haze = vec3f(0.02, 0.03, 0.06);
+  col = mix(col, haze, clamp(fogAmt, 0.0, 0.85));
+
+  col = m3_tonemap(col * 1.1);
+  return vec4f(col, 1.0);
 }
 `;
 
