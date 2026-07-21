@@ -2049,6 +2049,11 @@ export const useVizStore = create<VizState>((set, get) => {
                         proresFail.err ??= e;
                         ac.abort(); // stop rendering — ffmpeg is gone
                       });
+                    // RETURN the chain: the core awaits it, so the render is
+                    // paced by ffmpeg's blocking stdin write instead of piling
+                    // 4K PNGs up in memory. Without this the Rust-side
+                    // backpressure was discarded here.
+                    return proresChain;
                   }
                 : undefined,
               segment,

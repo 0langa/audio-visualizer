@@ -306,7 +306,13 @@ export function classifyError(e: unknown): { kind: FailKind; message: string } |
   // — a machine capability, not a broken input file. The /unsupported/ input
   // match below never catches the two-word form.
   if (/encode not supported/i.test(message)) return { kind: "gpu", message };
-  if (/no space|ENOSPC|disk full|stalled/i.test(message)) return { kind: "disk", message };
+  // Windows ERROR_DISK_FULL (112) surfaces through @tauri-apps/plugin-fs as
+  // "There is not enough space on the disk. (os error 112)" — which matched
+  // none of the POSIX spellings, so the most common desktop out-of-disk was
+  // landing in "unknown" and losing its tailored retry advice.
+  if (/no space|not enough space|ENOSPC|os error 112|disk full|stalled/i.test(message)) {
+    return { kind: "disk", message };
+  }
   if (/decode|empty|unsupported/i.test(message)) return { kind: "input", message };
   return { kind: "unknown", message };
 }

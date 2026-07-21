@@ -206,4 +206,43 @@ describe("project files (.avproj)", () => {
     const parsed = parseProject(JSON.stringify(file));
     expect(parsed.bg.mode).toBe(0);
   });
+
+  // Regression: video assets are minted as `data:video/…` but validAssets only
+  // accepted `data:image/`, so every save/load silently dropped the asset and
+  // flipped bg.mode back to the preset background — a shipped feature that
+  // could not survive being saved.
+  it("video background survives a round-trip (asset + mode + dim/blur)", () => {
+    const file = JSON.parse(serializeProject(doc, "x"));
+    file.document.assets = {
+      "vid-1": { id: "vid-1", name: "clip", dataUrl: "data:video/mp4;base64,AA" },
+    };
+    file.document.bg = {
+      mode: 4,
+      color: [0, 0, 0],
+      video: { assetId: "vid-1", dim: 0.4, blur: 12 },
+    };
+    const parsed = parseProject(JSON.stringify(file));
+    expect(parsed.assets["vid-1"]?.dataUrl).toBe("data:video/mp4;base64,AA");
+    expect(parsed.bg.mode).toBe(4);
+    expect(parsed.bg.video).toEqual({ assetId: "vid-1", dim: 0.4, blur: 12 });
+  });
+
+  it("video background with a missing asset still degrades to the preset bg", () => {
+    const file = JSON.parse(serializeProject(doc, "x"));
+    file.document.bg = { mode: 4, color: [0, 0, 0], video: { assetId: "gone", dim: 0.4, blur: 0 } };
+    const parsed = parseProject(JSON.stringify(file));
+    expect(parsed.bg.mode).toBe(0);
+  });
+
+  it("an image layer cannot reference a video asset", () => {
+    const file = JSON.parse(serializeProject(doc, "x"));
+    file.document.assets = {
+      "vid-1": { id: "vid-1", name: "clip", dataUrl: "data:video/mp4;base64,AA" },
+    };
+    file.document.overlayLayers = [
+      { id: "l1", type: "image", assetId: "vid-1", size: 0.2, opacity: 1, anchor: "center" },
+    ];
+    const parsed = parseProject(JSON.stringify(file));
+    expect(parsed.overlayLayers).toHaveLength(0);
+  });
 });

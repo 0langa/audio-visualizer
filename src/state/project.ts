@@ -184,7 +184,7 @@ function validPresetId(v: unknown): string {
 
 export function validParamsByPreset(v: unknown): Record<string, ParamValues> {
   if (typeof v !== "object" || v === null) return {};
-  const out: Record<string, ParamValues> = {};
+  const out: Record<string, ParamValues> = Object.create(null);
   for (const [presetId, params] of Object.entries(v)) {
     if (typeof params !== "object" || params === null) continue;
     const clean: ParamValues = {};
@@ -209,7 +209,7 @@ const SYNC_MODES = new Set([
 
 export function validSyncByPreset(v: unknown): Record<string, SyncSettings> {
   if (typeof v !== "object" || v === null) return {};
-  const out: Record<string, SyncSettings> = {};
+  const out: Record<string, SyncSettings> = Object.create(null);
   for (const [presetId, sync] of Object.entries(v)) {
     const s = sync as Partial<SyncSettings>;
     if (
@@ -239,18 +239,28 @@ function num(v: unknown, fallback: number, lo: number, hi: number): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
 }
 
+/** The asset map holds overlay/background images AND video-background sources
+ * (bg.video references one by id), so both MIME families must survive a
+ * round-trip. Accepting only `data:image/` silently dropped every video asset
+ * on load, which flipped bg.mode back to the preset background and left
+ * bg.video as a dangling id that re-serialized forever. */
 export function validAssets(v: unknown): Record<string, OverlayAsset> {
   if (typeof v !== "object" || v === null) return {};
-  const out: Record<string, OverlayAsset> = {};
+  const out: Record<string, OverlayAsset> = Object.create(null);
   for (const [id, asset] of Object.entries(v)) {
     const a = asset as Partial<OverlayAsset>;
     if (
       typeof a === "object" &&
       a !== null &&
       typeof a.dataUrl === "string" &&
-      a.dataUrl.startsWith("data:image/")
+      (a.dataUrl.startsWith("data:image/") || a.dataUrl.startsWith("data:video/"))
     ) {
-      out[id] = { id, name: typeof a.name === "string" ? a.name : "image", dataUrl: a.dataUrl };
+      const isVideo = a.dataUrl.startsWith("data:video/");
+      out[id] = {
+        id,
+        name: typeof a.name === "string" ? a.name : isVideo ? "video" : "image",
+        dataUrl: a.dataUrl,
+      };
     }
   }
   return out;
@@ -294,7 +304,11 @@ export function validLayers(v: unknown, assets: Record<string, OverlayAsset>): O
       });
     } else if (l.type === "image") {
       const i = raw as Partial<import("../render/overlay").ImageLayer>;
-      if (typeof i.assetId !== "string" || !assets[i.assetId]) continue;
+      // The asset map also holds video-background sources now, so an image
+      // layer must reference an actual image — not merely an existing asset.
+      if (typeof i.assetId !== "string") continue;
+      const src = assets[i.assetId];
+      if (!src || !src.dataUrl.startsWith("data:image/")) continue;
       out.push({
         id: l.id,
         type: "image",

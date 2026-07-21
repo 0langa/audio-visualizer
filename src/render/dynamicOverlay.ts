@@ -24,6 +24,16 @@ export interface OverlayDynamics {
   audiogram?: { settings: AudiogramSettings; duration: number; waveform: Float32Array | null };
 }
 
+/**
+ * The frame key decides WHEN to re-rasterize; the draw must then use the SAME
+ * quantized values, or the bitmap freezes whatever raw value existed on the
+ * frame that happened to cross the boundary — a different frame at 30 fps than
+ * at 60, so lyric fades stepped differently in preview vs export. These two
+ * helpers are the single source of that quantization for both paths.
+ */
+const quantAlpha = (a: number): number => Math.round(a * 64) / 64;
+const quantProg = (p: number): number => Math.round(p * 32) / 32;
+
 export interface OverlayFrameKey {
   /** Active lyric line index (-1 = none). */
   lyricIdx: number;
@@ -52,15 +62,13 @@ export function overlayFrameKeyAt(d: OverlayDynamics, t: number, w: number): Ove
   if (d.lyrics && d.lyrics.style.enabled) {
     const idx = activeLyricIndex(d.lyrics.lines, t);
     const aQ =
-      idx < 0
-        ? 0
-        : Math.round(lyricAlphaAt(d.lyrics.lines, idx, t, d.lyrics.style.fadeSec) * 64) / 64;
+      idx < 0 ? 0 : quantAlpha(lyricAlphaAt(d.lyrics.lines, idx, t, d.lyrics.style.fadeSec));
     lyricIdx = aQ === 0 ? -1 : idx;
     lyricAlphaQ = aQ;
     // Karaoke wipe: the within-line play position must move the frame key, or
     // the sweep would never re-rasterize. 1/32 steps = smooth but still gated.
     if (lyricIdx >= 0 && d.lyrics.style.anim === "wipe") {
-      lyricProgQ = Math.round(lyricProgressAt(d.lyrics.lines, idx, t) * 32) / 32;
+      lyricProgQ = quantProg(lyricProgressAt(d.lyrics.lines, idx, t));
     }
   }
   let progressPx = -1;
@@ -256,8 +264,10 @@ export async function composeOverlayFrame(
   if (d.lyrics && d.lyrics.style.enabled) {
     const idx = activeLyricIndex(d.lyrics.lines, t);
     if (idx >= 0) {
-      const alpha = lyricAlphaAt(d.lyrics.lines, idx, t, d.lyrics.style.fadeSec);
-      const prog = lyricProgressAt(d.lyrics.lines, idx, t);
+      // Quantized exactly as the frame key is, so the rasterized bitmap is a
+      // pure function of that key and cannot differ between frame rates.
+      const alpha = quantAlpha(lyricAlphaAt(d.lyrics.lines, idx, t, d.lyrics.style.fadeSec));
+      const prog = quantProg(lyricProgressAt(d.lyrics.lines, idx, t));
       if (alpha > 0) drawLyric(ctx, d.lyrics.lines, idx, alpha, prog, d.lyrics.style, w, h);
     }
   }

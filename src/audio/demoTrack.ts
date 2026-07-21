@@ -17,14 +17,28 @@ interface Kit {
   noiseBuf: AudioBuffer;
 }
 
+/**
+ * Deterministic noise source. `Math.random()` here made every hat and snare in
+ * all three demo tracks differ per session — so the audio differed, so the
+ * visuals did, so demo-track exports were NOT byte-reproducible run to run,
+ * contradicting the project's own determinism law. A fixed-seed LCG (the
+ * numerical-recipes constants) gives the same buffer forever.
+ */
+function seededNoise(out: Float32Array, seed: number): void {
+  let s = seed >>> 0;
+  for (let i = 0; i < out.length; i++) {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    out[i] = (s / 0xffffffff) * 2 - 1;
+  }
+}
+
 function makeKit(sampleRate: number, duration: number): Kit {
   const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
   const master = ctx.createGain();
   master.gain.value = 0.8;
   master.connect(ctx.destination);
   const noiseBuf = ctx.createBuffer(1, sampleRate, sampleRate);
-  const nd = noiseBuf.getChannelData(0);
-  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  seededNoise(noiseBuf.getChannelData(0), 0x9e3779b9);
   return { ctx, master, noiseBuf };
 }
 

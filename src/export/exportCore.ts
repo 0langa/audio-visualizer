@@ -183,8 +183,20 @@ export interface ExportCoreHooks {
   onProgress?: (framesDone: number, framesTotal: number) => void;
   /** "stream" mode: sequential-position file chunks (fragmented MP4). */
   onChunk?: (data: Uint8Array, position: number) => void;
-  /** "png" mode: one encoded PNG per frame, in order (index is 0-based). */
-  onFrame?: (data: Uint8Array, index: number) => void;
+  /**
+   * "png" mode: one encoded PNG per frame, in order (index is 0-based).
+   *
+   * MAY return a promise, and the core AWAITS it — that await is the only
+   * backpressure on this lane. The MP4/WebM lanes throttle on
+   * `encodeQueueSize`, but PNG/ProRes/GIF/WebP have no encoder queue to watch:
+   * the ffmpeg sidecar (or the disk) is typically slower than the GPU render,
+   * so a fire-and-forget sink grew the backlog by (render fps − encode fps) ×
+   * frame size per second — hundreds of MB/s at 4K, and the likeliest cause of
+   * an OOM on a long ProRes or GIF export. The Rust side already blocks on
+   * ffmpeg's stdin; awaiting here is what stops that backpressure being
+   * discarded in TypeScript.
+   */
+  onFrame?: (data: Uint8Array, index: number) => void | Promise<void>;
   signal?: AbortSignal;
 }
 
@@ -580,13 +592,20 @@ export async function runExportJob(
       });
       if (webmAudio) {
         // add() awaits the internal encode queue — backpressure built in.
-        // Closing the sample closes the wrapped AudioData.
+        // Closing the sample closes the wrapped AudioData. finally: a rejection
+        // mid-queue would otherwise leak both.
         const sample = new AudioSample(data);
-        await webmAudio.add(sample);
-        sample.close();
+        try {
+          await webmAudio.add(sample);
+        } finally {
+          sample.close();
+        }
       } else {
-        audioEncoder!.encode(data);
-        data.close();
+        try {
+          audioEncoder!.encode(data);
+        } finally {
+          data.close();
+        }
         // Backpressure the audio lane too: without it the whole track is
         // queued synchronously ahead of the first video frame, and peak memory
         // scales with track length — the opposite of the flat-memory
@@ -728,7 +747,8 @@ export async function runExportJob(
         const blob = await source.convertToBlob({ type: "image/png" });
         const bytes = new Uint8Array(await blob.arrayBuffer());
         bytesOut += bytes.length;
-        hooks.onFrame?.(bytes, n);
+        // Awaited: this is the PNG lane's backpressure (see onFrame's docs).
+        await hooks.onFrame?.(bytes, n);
       } else if (webmVideo) {
         // mediabunny timestamps are seconds. add() splits the frame into
         // color+alpha, feeds both encoders, and awaits their queues —
@@ -737,15 +757,27 @@ export async function runExportJob(
           timestamp: n / job.fps,
           duration: 1 / job.fps,
         });
-        await webmVideo.add(sample);
-        sample.close();
+        // finally: the rejection window spans mediabunny's whole dual-encoder
+        // queue, so a VP9-alpha failure at 4K would otherwise leak a
+        // full-resolution frame's GPU allocation.
+        try {
+          await webmVideo.add(sample);
+        } finally {
+          sample.close();
+        }
       } else {
         const frame = new VideoFrame(source, {
           timestamp: Math.round((n * 1e6) / job.fps),
           duration: Math.round(1e6 / job.fps),
         });
-        videoEncoder!.encode(frame, { keyFrame: n % (job.fps * 2) === 0 });
-        frame.close();
+        // finally: encode() throws synchronously if an async encoder-error
+        // callback landed since the last check — exactly the check-then-encode
+        // gap this sits in.
+        try {
+          videoEncoder!.encode(frame, { keyFrame: n % (job.fps * 2) === 0 });
+        } finally {
+          frame.close();
+        }
       }
 
       // Backpressure: don't let the encode queue grow unbounded

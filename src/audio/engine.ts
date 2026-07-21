@@ -69,6 +69,9 @@ export class AudioEngine {
   /** Per-channel taps for stereo features (width) and loudness metering. */
   readonly analyserL: AnalyserNode;
   readonly analyserR: AnalyserNode;
+  /** Unity-gain analysis tap: sources connect here, not to `gain`, so volume
+   * and mute never reach the analysers. */
+  private tap: GainNode;
   private gain: GainNode;
   private splitter: ChannelSplitterNode;
   private source: AudioBufferSourceNode | null = null;
@@ -104,11 +107,24 @@ export class AudioEngine {
     this.analyserR = this.ctx.createAnalyser();
     this.analyserL.fftSize = 4096;
     this.analyserR.fftSize = 4096;
+    // Unity-gain analysis tap. Sources feed THIS, and it feeds both the
+    // analysers and the volume gain — so what we analyse is the raw programme
+    // material, exactly like the offline path (which analyses raw PCM).
+    //
+    // Tapping after `gain` instead meant the preview changed with the volume
+    // slider (at 50% every magnitude bin sat ~6 dB lower, shifting bands,
+    // drive and the flux threshold) and went completely flat when muted, while
+    // the export rendered normally — a live-vs-export divergence on a control
+    // that has nothing to do with the picture. Live loopback input already
+    // taps here (see startLiveInput); this puts track playback on the same
+    // footing.
+    this.tap = this.ctx.createGain();
     this.gain = this.ctx.createGain();
+    this.tap.connect(this.gain);
     this.gain.connect(this.ctx.destination);
-    this.gain.connect(this.analyser);
+    this.tap.connect(this.analyser);
     this.splitter = this.ctx.createChannelSplitter(2);
-    this.gain.connect(this.splitter);
+    this.tap.connect(this.splitter);
     this.splitter.connect(this.analyserL, 0);
     this.splitter.connect(this.analyserR, 1);
   }

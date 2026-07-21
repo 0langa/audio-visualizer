@@ -388,6 +388,11 @@ describe("classifyError", () => {
 
     expect(classifyError(new Error("ENOSPC: no space left"))?.kind).toBe("disk");
     expect(classifyError(new Error("file write stalled"))?.kind).toBe("disk");
+    // Windows ERROR_DISK_FULL as the Tauri fs plugin words it — the most
+    // common desktop out-of-disk, previously classified "unknown".
+    expect(
+      classifyError(new Error("There is not enough space on the disk. (os error 112)"))?.kind,
+    ).toBe("disk");
     expect(classifyError(new Error("Nothing to export: the audio segment is empty"))?.kind).toBe(
       "input",
     );

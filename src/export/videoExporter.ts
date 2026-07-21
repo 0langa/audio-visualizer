@@ -90,7 +90,7 @@ export interface ExportOptions {
    * Receive each encoded PNG instead of (or as well as) writing to pngDir —
    * for callers without desktop fs access. Setting either selects PNG mode.
    */
-  onPngFrame?: (data: Uint8Array, index: number) => void;
+  onPngFrame?: (data: Uint8Array, index: number) => void | Promise<void>;
   /**
    * Normalize the delivered audio to a loudness target with a true-peak
    * ceiling. Audio-only: the visuals do not change, so a normalized export
@@ -124,7 +124,9 @@ interface FileWriter {
  * land in order and a failure surfaces on close().
  */
 interface SequenceWriter {
-  write(data: Uint8Array, index: number): void;
+  /** Returns the settled-through-this-frame queue, so the caller can await it
+   * and stop the renderer outrunning the disk. */
+  write(data: Uint8Array, index: number): Promise<void>;
   close(): Promise<void>;
   discard(): Promise<void>;
 }
@@ -139,7 +141,9 @@ async function createPngSequenceWriter(dir: string): Promise<SequenceWriter> {
     write(data, index) {
       queue = queue.then(async () => {
         if (failed) return;
-        const name = `frame_${String(index + 1).padStart(5, "0")}.png`;
+        // 6 digits: 5 overflowed past 27 min at 60 fps, which breaks ffmpeg's
+        // %05d glob (lexicographic sort survived, but the glob would not).
+        const name = `frame_${String(index + 1).padStart(6, "0")}.png`;
         const path = `${dir}/${name}`;
         try {
           await writeFile(path, data);
@@ -148,6 +152,7 @@ async function createPngSequenceWriter(dir: string): Promise<SequenceWriter> {
           failed = e as Error;
         }
       });
+      return queue;
     },
     async close() {
       await queue;
@@ -333,9 +338,11 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
   const pngWriter = o.pngDir ? await createPngSequenceWriter(o.pngDir) : null;
   // Frames go to the folder writer and/or the caller's sink.
   const onFrame = isPng
-    ? (data: Uint8Array, index: number) => {
-        pngWriter?.write(data, index);
-        o.onPngFrame?.(data, index);
+    ? async (data: Uint8Array, index: number) => {
+        // Awaited by the core — this is what throttles the render to the speed
+        // of the disk / ffmpeg sidecar instead of letting frames pile up.
+        await pngWriter?.write(data, index);
+        await o.onPngFrame?.(data, index);
       }
     : undefined;
   try {
@@ -370,7 +377,7 @@ async function runInline(
   job: ExportJob,
   o: ExportOptions,
   writer: FileWriter | null,
-  onFrame: ((data: Uint8Array, index: number) => void) | undefined,
+  onFrame: ((data: Uint8Array, index: number) => void | Promise<void>) | undefined,
 ): Promise<ExportCoreResult> {
   return runExportJob(job, {
     signal: o.signal,
@@ -384,7 +391,7 @@ function runInWorker(
   job: ExportJob,
   o: ExportOptions,
   writer: FileWriter | null,
-  onFrame: ((data: Uint8Array, index: number) => void) | undefined,
+  onFrame: ((data: Uint8Array, index: number) => void | Promise<void>) | undefined,
 ): Promise<ExportCoreResult> {
   const worker = new Worker(new URL("./exportWorker.ts", import.meta.url), {
     type: "module",
@@ -428,7 +435,14 @@ function runInWorker(
           break;
         case "frame":
           wroteAnything = true;
-          onFrame?.(msg.data, msg.index);
+          // Ack only once the frame is actually written — that ack is what
+          // releases the worker to render the next one (flow control for the
+          // PNG/ProRes/GIF/WebP lane, which has no encoder queue to throttle
+          // on). Ack even on failure, or the export would wedge instead of
+          // surfacing the error.
+          void Promise.resolve(onFrame?.(msg.data, msg.index))
+            .catch(() => undefined)
+            .then(() => worker.postMessage({ type: "frameAck" }));
           break;
         case "done":
           resolve(msg.result);
