@@ -19,7 +19,6 @@ use std::sync::Mutex;
 
 pub struct ProresJob {
     child: Child,
-    stdin: Option<ChildStdin>,
     /// ProRes muxes a staged WAV; GIF/WebP sessions have no audio input.
     wav_path: Option<PathBuf>,
     log_path: PathBuf,
@@ -29,6 +28,23 @@ pub struct ProresJob {
 #[derive(Default)]
 pub struct ProresState {
     pub job: Mutex<Option<ProresJob>>,
+    /// The frame pipe, deliberately held in its OWN mutex rather than inside
+    /// `job`.
+    ///
+    /// `prores_write` performs a BLOCKING `write_all` — that is the
+    /// backpressure design, and it can legitimately block for a long time if
+    /// ffmpeg stalls on a full pipe, a slow disk or a wedged encoder. When the
+    /// pipe lived inside `job`, the writer held the `job` mutex for that whole
+    /// time, and `prores_abort` needs that same mutex: cancel could never run.
+    /// An export that wedged was unkillable.
+    ///
+    /// Split apart, abort takes only `job`, kills ffmpeg, and the kill breaks
+    /// the pipe — which makes the blocked `write_all` fail and return. The
+    /// writer unblocks itself as a consequence of the cancel.
+    ///
+    /// LOCK ORDER, where both are needed: `job` first, then `stdin`. Never the
+    /// reverse. `prores_write` takes `stdin` alone.
+    pub stdin: Mutex<Option<ChildStdin>>,
     pub pending_wav: Mutex<Option<PathBuf>>,
 }
 
@@ -250,10 +266,9 @@ pub fn prores_begin(
             return Err(e);
         }
     };
-    let stdin = child.stdin.take();
+    *state.stdin.lock().map_err(|_| "state poisoned")? = child.stdin.take();
     *job_guard = Some(ProresJob {
         child,
-        stdin,
         wav_path: Some(wav_path),
         log_path,
         out_path: out,
@@ -292,10 +307,9 @@ pub fn anim_begin(
         return Err(format!("Output must be an absolute .{format} path"));
     }
     let (mut child, log_path) = spawn_sidecar(anim_args(&format, fps, &out.to_string_lossy()))?;
-    let stdin = child.stdin.take();
+    *state.stdin.lock().map_err(|_| "state poisoned")? = child.stdin.take();
     *job_guard = Some(ProresJob {
         child,
-        stdin,
         wav_path: None,
         log_path,
         out_path: out,
@@ -305,7 +319,10 @@ pub fn anim_begin(
 
 /// One or more encoded PNG frames, in order (raw body). Blocking write =
 /// backpressure: the invoke resolves only once ffmpeg took the bytes.
-#[tauri::command]
+///
+/// Takes the `stdin` mutex ONLY — never `job` — so a long or wedged write can
+/// never block `prores_abort`. See ProresState::stdin.
+#[tauri::command(async)]
 pub fn prores_write(
     state: tauri::State<'_, ProresState>,
     request: tauri::ipc::Request<'_>,
@@ -313,12 +330,11 @@ pub fn prores_write(
     let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
         return Err("expected raw frame body".into());
     };
-    let mut guard = state.job.lock().map_err(|_| "state poisoned")?;
-    let job = guard.as_mut().ok_or("No sidecar export running")?;
-    let stdin = job.stdin.as_mut().ok_or("Export already finishing")?;
+    let mut guard = state.stdin.lock().map_err(|_| "state poisoned")?;
+    let stdin = guard.as_mut().ok_or("No sidecar export running")?;
     stdin.write_all(data).map_err(|e| {
-        // ffmpeg died (bad frame, disk full): surface its log tail below via
-        // finish/abort; here just report the pipe failure.
+        // ffmpeg died (bad frame, disk full) or abort killed it: surface its
+        // log tail below via finish/abort; here just report the pipe failure.
         format!("ffmpeg pipe write failed: {e}")
     })
 }
@@ -340,11 +356,17 @@ fn cleanup(job: &ProresJob) {
 }
 
 /// Close the frame pipe (EOF), wait for ffmpeg, verify success.
-#[tauri::command]
+///
+/// `async` because `child.wait()` is unbounded — finalizing a multi-GB ProRes
+/// movie or running GIF `paletteuse` took however long it took, and as a
+/// blocking command that ran inline on the IPC handler and froze the UI.
+#[tauri::command(async)]
 pub fn prores_finish(state: tauri::State<'_, ProresState>) -> Result<(), String> {
     let mut guard = state.job.lock().map_err(|_| "state poisoned")?;
     let mut job = guard.take().ok_or("No sidecar export running")?;
-    drop(job.stdin.take()); // EOF -> ffmpeg finalizes the output
+    // EOF -> ffmpeg finalizes the output. Waits out an in-flight write, which
+    // is correct: frames must all land before the pipe closes.
+    drop(state.stdin.lock().map_err(|_| "state poisoned")?.take());
     let status = job.child.wait().map_err(|e| e.to_string());
     let ok = matches!(&status, Ok(s) if s.success());
     let tail = if ok {
@@ -362,13 +384,22 @@ pub fn prores_finish(state: tauri::State<'_, ProresState>) -> Result<(), String>
 }
 
 /// Cancel: kill ffmpeg and remove the partial output.
-#[tauri::command]
+///
+/// Deliberately kills BEFORE reclaiming the pipe. A frame write may be blocked
+/// in `prores_write` holding the `stdin` mutex; killing the child breaks the
+/// pipe, that write fails, and the mutex is released. Taking `stdin` first
+/// would just queue this cancel behind the very write it needs to interrupt —
+/// which is the deadlock this split exists to remove.
+#[tauri::command(async)]
 pub fn prores_abort(state: tauri::State<'_, ProresState>) -> Result<(), String> {
     let mut guard = state.job.lock().map_err(|_| "state poisoned")?;
     if let Some(mut job) = guard.take() {
-        drop(job.stdin.take());
         let _ = job.child.kill();
         let _ = job.child.wait();
+        // The writer has been broken loose by now; reclaim and close the pipe.
+        if let Ok(mut s) = state.stdin.lock() {
+            drop(s.take());
+        }
         let _ = std::fs::remove_file(&job.out_path);
         cleanup(&job);
     }
@@ -446,6 +477,44 @@ mod tests {
         assert!(!is_local_absolute(Path::new("//attacker-host/share/x.mov")));
         assert!(!is_local_absolute(Path::new("relative/x.mov")));
         assert!(!is_local_absolute(Path::new("x.mov")));
+    }
+
+    #[test]
+    fn a_blocked_frame_write_cannot_block_cancel() {
+        // The deadlock this split removes: prores_write does a BLOCKING
+        // write_all, and it used to hold the `job` mutex for the whole write.
+        // prores_abort needs `job`, so a wedged ffmpeg made cancel impossible.
+        //
+        // The invariant now is that holding the frame pipe does not hold `job`.
+        // Simulate a write that is stuck for a long time and assert a canceller
+        // can still take `job` promptly. Before the split this would have had
+        // to wait out the whole "write".
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+
+        let state = Arc::new(ProresState::default());
+        let writer_state = Arc::clone(&state);
+        let stuck = Duration::from_millis(500);
+
+        let writer = std::thread::spawn(move || {
+            let _pipe = writer_state.stdin.lock().unwrap();
+            std::thread::sleep(stuck); // ffmpeg not draining the pipe
+        });
+
+        // Give the writer time to actually acquire the pipe.
+        std::thread::sleep(Duration::from_millis(50));
+
+        let t0 = Instant::now();
+        let job = state.job.lock().expect("cancel must not wait on the pipe");
+        let waited = t0.elapsed();
+        drop(job);
+
+        assert!(
+            waited < Duration::from_millis(200),
+            "taking the job mutex waited {waited:?} behind a blocked frame write — \
+             the pipe is back inside `job` and cancel can deadlock again"
+        );
+        writer.join().unwrap();
     }
 
     #[cfg(windows)]
