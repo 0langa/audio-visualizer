@@ -314,7 +314,14 @@ export class AudioEngine {
     const src = this.ctx.createBufferSource();
     src.buffer = this.buffer;
     src.loop = this._loop;
-    src.connect(this.gain);
+    // THE TAP, not the gain. `tap` feeds both the analysers and `gain`, so
+    // connecting a source straight to `gain` routes it to the speakers while
+    // bypassing every analyser: audio plays, the spectrum reads digital
+    // silence (-70 LUFS), and since every visual is audio-driven the whole
+    // canvas goes black except the static background wash. Exports are
+    // unaffected — they analyse raw PCM offline — which is exactly why this
+    // survived a full export-based verification pass.
+    src.connect(this.tap);
     src.onended = () => {
       // Fires for natural end only; stopSource() detaches first otherwise.
       if (this.source === src) {
