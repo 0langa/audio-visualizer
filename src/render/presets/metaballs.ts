@@ -299,12 +299,15 @@ fn preset(uv: vec2f) -> vec4f {
   // Rim glow
   col += mix(pal, vec3f(1.0), 0.3) * rim * (0.4 + P_glow() * 0.9);
 
-  // Hot core: the field's own 1/d^2 falloff blows out to white exactly at
-  // each blob's nucleus (and even harder where blobs overlap), so every
-  // blob reads as emitting rather than merely being a flat colored disc.
-  let hot = smoothstep(P_threshold() * 1.15, P_threshold() * 2.2, field);
-  col = mix(col, vec3f(1.0, 0.98, 0.95), hot * 0.75);
-  col *= 1.0 + hot * 1.4;
+  // Hot core: the field's own 1/d^2 falloff spikes to huge values only very
+  // near a blob's point-mass centre. The band must therefore start WELL above
+  // the surface threshold — at 1.15x it saturated across the entire blob
+  // interior (field >> threshold everywhere inside) and turned the whole blob
+  // into one white mass, the exact blow-out this was meant to avoid. 3x..10x
+  // isolates just the nucleus; the tone map then rolls it off as emission.
+  let hot = smoothstep(P_threshold() * 3.0, P_threshold() * 10.0, field);
+  col = mix(col, vec3f(1.0, 0.97, 0.92), hot * 0.6);
+  col += pal * hot * (0.5 + u.driveBeat * 0.5);
 
   col *= vignette(uv, P_vignette());
   col = tonemap(col * 1.05);

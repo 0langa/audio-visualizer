@@ -283,8 +283,14 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Contrast shaping pushes mid-density DOWN toward the dark field so gaps
   // between filaments read as genuinely empty instead of a uniform haze.
-  let sharp = 2.0 + P_contrast() * 4.0;
+  // Softened from (2.0 + c*4.0): at the old strength pow() crushed everything
+  // but the top ~20% of density to black, so the nebula read as a few sparse
+  // specks on empty black rather than a cloud. vSoft is a gentle companion
+  // curve that keeps the mid-density filament STRUCTURE dimly visible
+  // everywhere, layered under the sharp bright peaks below.
+  let sharp = 1.4 + P_contrast() * 3.0;
   let v = pow(density, sharp);
+  let vSoft = pow(density, 1.4);
 
   // Cosine palette keyed off density + a mid-driven phase shift, instead of
   // an hsl hue drifting across hueRange + midHueShift degrees (up to ~500
@@ -305,7 +311,11 @@ fn preset(uv: vec2f) -> vec4f {
   // rather than lifting the whole frame, so gaps stay dark even when bass
   // is pumping hard — only lit structure gets brighter, never the void.
   let energyGain = P_brightFloor() + u.bass * P_bassBright() + u.drive * P_driveGlow();
-  var col = bg + pal * v * (0.5 + energyGain * 1.6);
+  // Two layers: an always-on soft cloud (vSoft) so the nebula reads as a full
+  // structured cloud rather than sparse specks, plus the sharp bright peaks
+  // (v) that the audio gain drives. The soft layer is dim enough that gaps
+  // still fall to the dark field.
+  var col = bg + pal * vSoft * (0.35 + energyGain * 0.5) + pal * v * (0.5 + energyGain * 1.6);
 
   // Hot core: filament peaks desaturate toward white and push past 1.0 so
   // tonemap() gives them a real emissive rolloff instead of a flat clip —
