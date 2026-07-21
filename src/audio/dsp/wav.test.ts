@@ -46,4 +46,31 @@ describe("wavFromPcm", () => {
     expect(v.getUint16(22, true)).toBe(1);
     expect(w.length).toBe(44 + 2);
   });
+
+  it("throws instead of writing a silently corrupt header past the u32 RIFF size limit", () => {
+    // RIFF/data chunk sizes are u32; DataView.setUint32 wraps out-of-range
+    // values modulo 2^32 rather than throwing, so past ~6.7 h of 44.1 kHz
+    // stereo the old code wrote a header whose declared length undershot the
+    // real file by however much it wrapped — a silently corrupt WAV. The
+    // channel arrays are deliberately EMPTY: the guard must fire from
+    // length/sampleRate metadata alone, before indexing sample data or
+    // allocating the multi-gigabyte output buffer.
+    const huge: PcmData = {
+      sampleRate: 44100,
+      length: 2 ** 32,
+      duration: 2 ** 32 / 44100,
+      channels: [new Float32Array(0), new Float32Array(0)],
+    };
+    expect(() => wavFromPcm(huge)).toThrow();
+    expect(() => wavFromPcm(huge)).toThrow(/too long|overflow|u32/i);
+  });
+
+  it("stays under the u32 limit for an ordinary recording", () => {
+    // 1 minute of real stereo audio is nowhere near the ~6.7 h boundary and
+    // must encode normally, not trip the new guard.
+    const frames = 44100 * 60;
+    const l = new Float32Array(frames);
+    const r = new Float32Array(frames);
+    expect(() => wavFromPcm(pcm([l, r]))).not.toThrow();
+  });
 });

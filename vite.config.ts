@@ -29,4 +29,34 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  build: {
+    rollupOptions: {
+      output: {
+        // Without this the whole app — React, zustand, the WebGPU renderer,
+        // every preset, and the mediabunny/mp4-muxer codec stack used by
+        // export and video backgrounds — lands in one >1 MB entry chunk
+        // (past Vite's 500 kB warning). None of that is lazy: the app is a
+        // single-page desktop shell, so splitting here is about caching and
+        // parse cost, not reducing what has to load.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          // React + its scheduler change far less often than the app itself
+          // does (this repo ships multiple releases a day) — their own
+          // chunk means the webview cache doesn't have to re-fetch and
+          // re-parse them on every update.
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          // mediabunny + mp4-muxer are the heavy codec/mux dependencies
+          // behind export and video backgrounds — the biggest single
+          // contributor to the oversized chunk.
+          if (/[\\/]node_modules[\\/](mediabunny|mp4-muxer)[\\/]/.test(id)) {
+            return "vendor-codec";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 }));

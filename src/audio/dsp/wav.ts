@@ -6,11 +6,32 @@ import type { PcmData } from "../types";
  * ProRes 4444 file is an editorial mezzanine, and editors expect the source
  * levels, not a loudness-processed master.
  */
+
+/** RIFF chunk-size fields are u32. Past this many data bytes (~6.7 h of
+ * 44.1 kHz stereo, ~8.2 h at 48 kHz) the header can no longer describe the
+ * file's true length. */
+const MAX_U32 = 0xffffffff;
+
 export function wavFromPcm(pcm: PcmData): Uint8Array {
   const channels = Math.min(2, pcm.channels.length);
   const frames = pcm.length;
   const bytesPerFrame = channels * 2;
   const dataBytes = frames * bytesPerFrame;
+  // The RIFF chunk-size field (byte 4) covers "WAVE" + fmt chunk + data
+  // chunk header + dataBytes, i.e. 36 + dataBytes. DataView.setUint32 does
+  // NOT throw on an out-of-range value — it silently wraps modulo 2^32 — so
+  // without this check a too-long recording would write a corrupt WAV whose
+  // declared size undershoots its real size by however much it wrapped,
+  // rather than failing. Fail loudly instead.
+  if (36 + dataBytes > MAX_U32) {
+    const hours = frames / pcm.sampleRate / 3600;
+    const maxHours = MAX_U32 / bytesPerFrame / pcm.sampleRate / 3600;
+    throw new Error(
+      `wavFromPcm: ${hours.toFixed(1)} h of ${channels}-channel audio is too long to encode ` +
+        `as a WAV — the RIFF/data chunk sizes are u32 and would overflow (max ~` +
+        `${maxHours.toFixed(1)} h at this rate). Split the export into shorter segments.`,
+    );
+  }
   const buf = new ArrayBuffer(44 + dataBytes);
   const v = new DataView(buf);
 
