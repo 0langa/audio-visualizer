@@ -752,6 +752,15 @@ fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
   // per step (pow(d, 1) == d): same behaviour, just frame-rate-honest.
   let retention = pow(clamp(pu.damping, 0.001, 0.999), pu.dt * 60.0);
   vel = vel * retention + force * pu.dt;
+  // Beat KICK: an instantaneous velocity impulse on the sync beat, on top of
+  // the (damped) burst force above. A force is smoothed away by the damping
+  // before it reads as motion; adding straight to velocity makes a kick
+  // visibly scatter the field outward, then the flow reclaims it. Gated on a
+  // fresh onset (driveBeat near its peak) so it fires once per beat, not every
+  // frame of the decay.
+  if (pu.driveBeat > 0.6) {
+    vel += bdir * pu.driveBeat * pu.beatBurst * 0.06;
+  }
   pos += vel * pu.dt;
 
   // Respawn once a particle drifts out of the framed region. sqrt() on the
@@ -824,7 +833,11 @@ fn vs_draw(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
   let rnd = h11(seed * 5.1);
   let bright = 0.2 + 0.35 * rnd + 1.05 * pow(rnd, 8.0);
 
-  let size = pu.size * depth * (1.0 + speed * pu.sizePulse);
+  // Audio makes the whole field breathe: bass swells every particle, a beat
+  // pops them a little bigger. Kept modest so the smooth curl flow still
+  // dominates — this is "some reactiveness", not a strobe.
+  let sizeReact = 1.0 + pu.bass * 0.35 + pu.driveBeat * 0.6 * pu.beatBurst * 0.35;
+  let size = pu.size * depth * (1.0 + speed * pu.sizePulse) * sizeReact;
 
   // Streak along the direction of travel. A round dot carries no motion
   // information; an elongated one traces its own streamline, which is what
@@ -841,6 +854,12 @@ fn vs_draw(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
   var out: VOut;
   out.pos = vec4f(clip, 0.0, 1.0);
   out.uv = c;
+  // Beat flash + bass pump on brightness — the field visibly pulses with the
+  // music instead of only its color drifting with speed. Scaled by beatBurst
+  // so the one "reactivity" knob drives both the sim scatter and the visual
+  // punch, and kept gentle so the flow reads as the main event.
+  let glowReact = 1.0 + pu.bass * 0.5 + pu.driveBeat * 1.4 * pu.beatBurst * 0.4;
+
   // Nearer particles are brighter as well as bigger — the two cues together
   // are what sell depth.
   //
@@ -848,7 +867,7 @@ fn vs_draw(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
   // ADDITIVELY blended, so a streak covering 4x the pixels of a dot deposits
   // 4x the light. Without this the field clipped to a solid white blob the
   // moment streaking was introduced (observed, not theorised).
-  out.shade = hsl2rgb(hue, pu.sat, 0.6) * pu.brightness * bright * depth
+  out.shade = hsl2rgb(hue, pu.sat, 0.6) * pu.brightness * bright * depth * glowReact
             / (0.45 + stretch * 0.75);
   return out;
 }
