@@ -11,6 +11,20 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.37.2] - 2026-07-22
+
+### Performance
+
+- **Particles runs far cheaper in both modes.** It draws a grid of particles at
+  every pixel, and that per-pixel work had grown well past what an integrated
+  GPU can hold at a smooth frame rate — playback stuttered and felt delayed.
+  The background wash, the drifting current and the per-particle motion are all
+  computed a cheaper way now, and **Fly mode** (Warp, Rave) halves the depth
+  shells it walks. Measured against Tunnel as the reference, Fly went from
+  roughly 3.6x Tunnel's cost to about 1.25x — the same cost as the drifting
+  mode. Both modes look the same as before: still free-floating individual
+  particles, still a deep streaking starfield.
+
 ## [2.37.1] - 2026-07-22
 
 A hardening patch from re-auditing the full report against the current code —
@@ -558,7 +572,8 @@ Initial public release.
 - Onboarding UI, keyboard shortcuts, auto-hiding chrome.
 - Three synthesized demo tracks.
 
-[Unreleased]: https://github.com/0langa/beatform/compare/v2.37.1...HEAD
+[Unreleased]: https://github.com/0langa/beatform/compare/v2.37.2...HEAD
+[2.37.2]: https://github.com/0langa/beatform/compare/v2.37.1...v2.37.2
 [2.37.1]: https://github.com/0langa/beatform/compare/v2.37.0...v2.37.1
 [2.37.0]: https://github.com/0langa/beatform/compare/v2.36.1...v2.37.0
 [2.36.1]: https://github.com/0langa/beatform/compare/v2.36.0...v2.36.1
