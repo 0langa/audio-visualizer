@@ -13,6 +13,11 @@ import type {
 } from "./types";
 
 const MAX_PARAMS = 48;
+/** Frames a render-target group may sit unused before it is released (M23).
+ * ~5 s at 60 fps: long enough that rapid preset cycling (a crossfade per
+ * switch) never thrashes allocations, short enough to hand back hundreds of
+ * MB during ordinary single-preset viewing. */
+const RT_IDLE_FRAMES = 300;
 /** Downsampled waveform points exposed to shaders */
 const WAVE_POINTS = 512;
 /** Uniform struct size in bytes (scalars + vec4 bgColor + sync block + motion) */
@@ -1329,6 +1334,19 @@ export class WebGPURenderer implements Renderer {
   private depthTex: GPUTexture | null = null;
   private depthSize: [number, number] = [0, 0];
 
+  // M23: full-res HDR targets are allocated on first use but were only ever
+  // freed on resize/dispose — after one crossfade plus one feedback/particle/
+  // 3D preset, ~330 MB (at 4K) of render targets sat retained for the whole
+  // session. Each group stamps the frame it was last used; render() releases
+  // a group once it has been idle for RT_IDLE_FRAMES. The ensure* guards
+  // re-allocate on the next use, so this trades a one-off (re)allocation on
+  // re-entry for hundreds of MB back during ordinary single-preset viewing.
+  private frameIndex = 0;
+  private fadeLastUsed = -1;
+  private feedbackLastUsed = -1;
+  private depthLastUsed = -1;
+  private graphLastUsed = -1;
+
   private preset: PresetDef | null = null;
   private uniformData = new ArrayBuffer(UNIFORM_SIZE);
   private uniformF32 = new Float32Array(this.uniformData);
@@ -2367,6 +2385,40 @@ export class WebGPURenderer implements Renderer {
     return entry.direct;
   }
 
+  /** Release render-target groups that have sat unused for RT_IDLE_FRAMES
+   * (M23). Bind groups holding views of a destroyed texture are nulled so
+   * the lazy getters rebuild them (feedback bindings fall back to
+   * emptyFeedback until the targets are needed again). */
+  private releaseIdleTargets(): void {
+    const idle = (last: number) => this.frameIndex - last > RT_IDLE_FRAMES;
+    if (this.fadeTexA && idle(this.fadeLastUsed)) {
+      this.fadeTexA.destroy();
+      this.fadeTexB?.destroy();
+      this.fadeTexA = this.fadeTexB = null;
+      this.blendBindGroup = null;
+    }
+    if (this.visTex && idle(this.feedbackLastUsed)) {
+      this.visTex.destroy();
+      this.histTex?.destroy();
+      this.visTex = this.histTex = null;
+      this.compositeBind = null;
+      this.bindGroup = null;
+      this.transitionBindGroup = null;
+    }
+    if (this.depthTex && idle(this.depthLastUsed)) {
+      this.depthTex.destroy();
+      this.depthTex = null;
+    }
+    if (this.sceneTex && idle(this.graphLastUsed)) {
+      this.sceneTex.destroy();
+      this.bloomTexA?.destroy();
+      this.bloomTexB?.destroy();
+      this.sceneTex = this.bloomTexA = this.bloomTexB = null;
+      this.brightBind = this.blurHBind = this.blurVBind = this.finalBind = null;
+      this.finalBloomSource = null;
+    }
+  }
+
   /** All-neutral post = fs_final is a pure copy, so the whole graph can be
    * skipped (M24). bloomThreshold is ignored: it only feeds the bright pass,
    * which bloom = 0 already disables. */
@@ -2492,19 +2544,25 @@ export class WebGPURenderer implements Renderer {
     // (DEFAULT_POST is neutral), so most users get the win.
     const direct =
       !fading && !useFeedback && !particlesActive && !mesh3dActive && this.postIsNeutral();
+    // M23: stamp which target groups this frame actually uses; anything idle
+    // past RT_IDLE_FRAMES is released after submit.
+    this.frameIndex++;
+    const feedbackTargetsInUse =
+      useFeedback ||
+      particlesActive ||
+      mesh3dActive ||
+      (fading && (this.presetUsesFeedback || this.transitionPresetUsesFeedback));
+    if (fading) this.fadeLastUsed = this.frameIndex;
+    if (feedbackTargetsInUse) this.feedbackLastUsed = this.frameIndex;
+    if (mesh3dActive) this.depthLastUsed = this.frameIndex;
+    if (!direct) this.graphLastUsed = this.frameIndex;
     if (!direct) this.ensureGraphTargets();
     // Particles + feedback both draw into visTex, then composite -> sceneTex.
     // A crossfade needs histTex too whenever either side of it uses feedback
     // (M14) — the fading branch below shares it exactly like the plain
     // feedback path does, instead of forcing the outgoing/incoming preset to
     // emptyFeedback or a stale pre-fade snapshot.
-    if (
-      useFeedback ||
-      particlesActive ||
-      mesh3dActive ||
-      (fading && (this.presetUsesFeedback || this.transitionPresetUsesFeedback))
-    )
-      this.ensureFeedbackTargets();
+    if (feedbackTargetsInUse) this.ensureFeedbackTargets();
     const scene = direct ? null : this.sceneTex!.createView();
 
     const encoder = this.device.createCommandEncoder();
@@ -2620,6 +2678,7 @@ export class WebGPURenderer implements Renderer {
     // Skipped on the direct path — the preset already drew the swapchain.
     if (!direct) this.runPost(encoder, time, clearA);
     this.device.queue.submit([encoder.finish()]);
+    this.releaseIdleTargets();
   }
 
   private getTransitionBindGroup(): GPUBindGroup {
