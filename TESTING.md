@@ -50,9 +50,11 @@ Mark each ✅ / ❌ with a note. Grouped by what it exercises.
 ## Projects, library, misc
 
 - [ ] Save/open `.avproj` round-trips: mode + params, styles, background (incl. **video-bg
-      Dim/Blur**), overlay layers and assets, aspect, mod routes, timeline, post and motion.
-      (Lyric style, MIDI bindings, quantize mode and the audiogram are **session settings**,
-      not part of the project file — they persist per install, not per project. Not a bug.)
+      Dim/Blur**), overlay layers and assets, aspect, mod routes, timeline, post and motion,
+      **lyric style and audiogram settings** (schema v9), and any **custom WGSL visual** the
+      project references (it should render on a machine that never imported the .avshader).
+      (MIDI bindings and quantize mode are **session settings**, not part of the project
+      file — they persist per install, not per project. Not a bug.)
 - [ ] Library folder scan + gapless auto-advance on a real music folder.
 - [ ] `.avtheme` import via drag-drop; a factory pack applies cleanly.
 - [ ] Undo/redo across a real editing session.

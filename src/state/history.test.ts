@@ -25,6 +25,22 @@ function doc(marker: number): ProjectDocument {
       chromatic: 0,
     },
     motion: { rotation: 1, pulse: 1, detail: 1, spectrumSmooth: 0 },
+    lyricStyle: {
+      enabled: true,
+      position: "bottom",
+      size: 1,
+      color: "#ffffff",
+      fadeSec: 0.15,
+      anim: "plain",
+    },
+    audiogram: {
+      progressBar: false,
+      timeReadout: false,
+      waveformStrip: false,
+      position: "bottom",
+      color: "#7c5cff",
+    },
+    customDefs: [],
   };
 }
 

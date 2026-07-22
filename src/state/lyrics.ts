@@ -49,6 +49,28 @@ export const DEFAULT_LYRIC_STYLE: LyricStyle = {
   anim: "plain",
 };
 
+/** Field-by-field validation + defaulting of an untrusted LyricStyle blob.
+ * Shared by the localStorage cache and the .avproj document validator. */
+export function validLyricStyle(v: unknown): LyricStyle {
+  const raw = (typeof v === "object" && v !== null ? v : {}) as Partial<LyricStyle>;
+  const d = DEFAULT_LYRIC_STYLE;
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : d.enabled,
+    position: raw.position === "center" || raw.position === "top" ? raw.position : d.position,
+    size:
+      typeof raw.size === "number" && Number.isFinite(raw.size)
+        ? Math.min(2, Math.max(0.5, raw.size))
+        : d.size,
+    color:
+      typeof raw.color === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.color) ? raw.color : d.color,
+    fadeSec:
+      typeof raw.fadeSec === "number" && Number.isFinite(raw.fadeSec)
+        ? Math.min(1, Math.max(0, raw.fadeSec))
+        : d.fadeSec,
+    anim: isLyricAnim(raw.anim) ? raw.anim : d.anim,
+  };
+}
+
 const LRC_TAG = /\[(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
 const LRC_META = /^\[(ar|ti|al|by|re|ve|length|au):/i;
 const LRC_OFFSET = /^\[offset:\s*([+-]?\d+)\s*\]/i;

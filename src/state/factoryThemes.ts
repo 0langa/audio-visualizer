@@ -1,4 +1,6 @@
 import { BG_PRESET, DEFAULT_MOTION, DEFAULT_POST } from "../render/types";
+import { DEFAULT_LYRIC_STYLE } from "./lyrics";
+import { DEFAULT_AUDIOGRAM } from "./audiogram";
 import type { ProjectDocument } from "./project";
 import type { ThemeMeta } from "./themes";
 import type { SyncSettings } from "../audio/types";
@@ -36,6 +38,9 @@ function doc(
     timeline: { enabled: false, scenes: [], lanes: [] },
     post: { ...DEFAULT_POST },
     motion: { ...DEFAULT_MOTION },
+    lyricStyle: { ...DEFAULT_LYRIC_STYLE },
+    audiogram: { ...DEFAULT_AUDIOGRAM },
+    customDefs: [],
     ...rest,
   };
 }

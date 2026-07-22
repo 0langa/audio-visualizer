@@ -27,6 +27,21 @@ export const DEFAULT_AUDIOGRAM: AudiogramSettings = {
   color: "#7c5cff",
 };
 
+/** Field-by-field validation + defaulting of an untrusted AudiogramSettings
+ * blob. Shared by the localStorage cache and the .avproj document validator. */
+export function validAudiogram(v: unknown): AudiogramSettings {
+  const raw = (typeof v === "object" && v !== null ? v : {}) as Partial<AudiogramSettings>;
+  const d = DEFAULT_AUDIOGRAM;
+  return {
+    progressBar: typeof raw.progressBar === "boolean" ? raw.progressBar : d.progressBar,
+    timeReadout: typeof raw.timeReadout === "boolean" ? raw.timeReadout : d.timeReadout,
+    waveformStrip: typeof raw.waveformStrip === "boolean" ? raw.waveformStrip : d.waveformStrip,
+    position: raw.position === "top" ? "top" : d.position,
+    color:
+      typeof raw.color === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.color) ? raw.color : d.color,
+  };
+}
+
 /** True when at least one element is on — cheap gate for the compositor. */
 export function audiogramActive(a: AudiogramSettings): boolean {
   return a.progressBar || a.timeReadout || a.waveformStrip;

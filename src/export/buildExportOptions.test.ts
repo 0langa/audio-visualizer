@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildExportOptions, resolveDocParams, type FormatPreset } from "./buildExportOptions";
 import { DEFAULT_POST, DEFAULT_MOTION } from "../render/types";
 import { DEFAULT_SYNC } from "../audio/types";
+import { DEFAULT_LYRIC_STYLE } from "../state/lyrics";
+import { DEFAULT_AUDIOGRAM } from "../state/audiogram";
 import type { ProjectDocument } from "../state/project";
 
 const FMT: FormatPreset = {
@@ -28,6 +30,9 @@ function doc(over: Partial<ProjectDocument> = {}): ProjectDocument {
     timeline: { enabled: false, scenes: [], lanes: [] },
     post: { ...DEFAULT_POST },
     motion: { ...DEFAULT_MOTION },
+    lyricStyle: { ...DEFAULT_LYRIC_STYLE },
+    audiogram: { ...DEFAULT_AUDIOGRAM },
+    customDefs: [],
     ...over,
   };
 }

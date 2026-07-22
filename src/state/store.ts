@@ -618,6 +618,16 @@ export const useVizStore = create<VizState>((set, get) => {
     noticeTimer = setTimeout(() => set({ notice: null }), 4000);
   };
 
+  /** The custom defs this document actually references (active preset +
+   * timeline scenes) — what travels in the .avproj so it renders identically
+   * elsewhere. Deliberately NOT the whole library: unreferenced defs would
+   * bloat every save and every history snapshot for no portability gain. */
+  const referencedCustomDefs = (s: VizState): PresetDef[] => {
+    const ids = new Set<string>([s.presetId]);
+    for (const scene of s.timeline.scenes) ids.add(scene.presetId);
+    return s.customDefs.filter((d) => ids.has(d.id));
+  };
+
   /** Current document slice as a ProjectDocument (history + save share it). */
   const docOf = (s: VizState): ProjectDocument => ({
     presetId: s.presetId,
@@ -632,6 +642,9 @@ export const useVizStore = create<VizState>((set, get) => {
     timeline: s.timeline,
     post: s.post,
     motion: s.motion,
+    lyricStyle: s.lyricStyle,
+    audiogram: s.audiogram,
+    customDefs: referencedCustomDefs(s),
   });
 
   /** Record the current document before a mutation (gesture-grouped). */
@@ -1733,6 +1746,7 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     setLyricStyle(patch) {
+      record("lyric-style"); // document state since schema v9 — undoable
       const lyricStyle = { ...get().lyricStyle, ...patch };
       set({ lyricStyle });
       saveStoredLyricStyle(lyricStyle);
@@ -1741,6 +1755,7 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     setAudiogram(patch) {
+      record("audiogram"); // document state since schema v9 — undoable
       const audiogram = { ...get().audiogram, ...patch };
       set({ audiogram });
       saveStoredAudiogram(audiogram);
@@ -2503,21 +2518,9 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     async saveProject() {
-      const s = get();
-      const doc: ProjectDocument = {
-        presetId: s.presetId,
-        paramsByPreset: s.paramsByPreset,
-        syncByPreset: s.syncByPreset,
-        bg: s.bg,
-        overlayLayers: s.overlayLayers,
-        assets: s.assets,
-        aspect: s.aspect,
-        modsByPreset: s.modsByPreset,
-        smoothSpectrum: s.smoothSpectrum,
-        timeline: s.timeline,
-        post: s.post,
-        motion: s.motion,
-      };
+      // docOf, not a hand-copied literal: the inline copy silently missed
+      // every new document field (it shipped v9 saves without lyricStyle).
+      const doc = docOf(get());
       try {
         const saved = await saveTextFile(
           `visualization.${PROJECT_EXTENSION}`,
@@ -2595,10 +2598,24 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     applyDocument(doc) {
+      // Embedded custom defs merge into the session library (replace-by-id):
+      // project open brings the visuals it references, and undo after
+      // deleteCustomPreset restores the def alongside the document that
+      // referenced it. Registration is idempotent.
+      let customDefs = get().customDefs;
+      if (doc.customDefs.length > 0) {
+        const incoming = new Set(doc.customDefs.map((d) => d.id));
+        customDefs = [...customDefs.filter((d) => !incoming.has(d.id)), ...doc.customDefs];
+        for (const def of doc.customDefs) registerCustomPreset(def);
+        saveCustomPresets(customDefs);
+      }
       const preset = presetById(doc.presetId);
       const activeParams = resolveParams(preset.id, doc.paramsByPreset);
       const sync = sanitizeSync(doc.syncByPreset[preset.id] ?? { ...DEFAULT_SYNC });
       set({
+        customDefs,
+        lyricStyle: doc.lyricStyle,
+        audiogram: doc.audiogram,
         // Keep the export resolution consistent with the incoming aspect
         // (covers project-open AND undo/redo of aspect changes).
         exportSettings: {
@@ -2635,6 +2652,11 @@ export const useVizStore = create<VizState>((set, get) => {
       getRenderer()?.setPost(doc.post);
       saveStoredMotion(doc.motion);
       getRenderer()?.setMotion(doc.motion);
+      saveStoredLyricStyle(doc.lyricStyle);
+      saveStoredAudiogram(doc.audiogram);
+      // Lyric style / audiogram feed the frame-keyed dynamic overlay — force
+      // a recompose so undo/open shows the incoming style immediately.
+      lastFrameKey = NULL_FRAME_KEY;
       pruneBitmapCache(new Set(Object.keys(doc.assets)));
       getRenderer()?.setPreset(preset);
       getRenderer()?.setBackground(doc.bg);

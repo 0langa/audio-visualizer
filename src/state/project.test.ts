@@ -72,6 +72,22 @@ const doc: ProjectDocument = {
     chromatic: 0.2,
   },
   motion: { rotation: 0.5, pulse: 1.5, detail: 0.7, spectrumSmooth: 0.4 },
+  lyricStyle: {
+    enabled: true,
+    position: "center" as const,
+    size: 1.4,
+    color: "#ffcc00",
+    fadeSec: 0.3,
+    anim: "wipe" as const,
+  },
+  audiogram: {
+    progressBar: true,
+    timeReadout: false,
+    waveformStrip: true,
+    position: "top" as const,
+    color: "#00ffaa",
+  },
+  customDefs: [],
 };
 
 describe("project files (.avproj)", () => {
@@ -83,7 +99,7 @@ describe("project files (.avproj)", () => {
   it("stamps metadata", () => {
     const file = JSON.parse(serializeProject(doc, "1.2.0"));
     expect(file.kind).toBe("avproj");
-    expect(file.schemaVersion).toBe(8);
+    expect(file.schemaVersion).toBe(9);
     expect(file.appVersion).toBe("1.2.0");
     expect(typeof file.savedAt).toBe("string");
   });
@@ -113,6 +129,9 @@ describe("project files (.avproj)", () => {
     delete file.document.timeline;
     delete file.document.post;
     delete file.document.motion;
+    delete file.document.lyricStyle;
+    delete file.document.audiogram;
+    delete file.document.customDefs;
     const parsed = parseProject(JSON.stringify(file));
     expect(parsed.overlayLayers).toEqual([]);
     expect(parsed.assets).toEqual({});
@@ -121,7 +140,55 @@ describe("project files (.avproj)", () => {
     expect(parsed.post.bloom).toBe(0); // pre-v5 default (neutral)
     expect(parsed.post.exposure).toBe(1);
     expect(parsed.motion).toEqual({ rotation: 1, pulse: 1, detail: 1, spectrumSmooth: 0 }); // pre-v6 default (neutral)
+    // pre-v9 defaults
+    expect(parsed.lyricStyle.position).toBe("bottom");
+    expect(parsed.lyricStyle.size).toBe(1);
+    expect(parsed.audiogram.progressBar).toBe(false);
+    expect(parsed.customDefs).toEqual([]);
     expect(parsed.presetId).toBe(doc.presetId);
+  });
+
+  it("v9: lyric style and audiogram round-trip; malformed values fall back", () => {
+    const json = serializeProject(doc, "x");
+    const parsed = parseProject(json);
+    expect(parsed.lyricStyle).toEqual(doc.lyricStyle);
+    expect(parsed.audiogram).toEqual(doc.audiogram);
+
+    const file = JSON.parse(json);
+    file.document.lyricStyle = { position: "sideways", size: 99, color: "purple", fadeSec: -1 };
+    file.document.audiogram = { progressBar: "yes", position: "left", color: 7 };
+    const repaired = parseProject(JSON.stringify(file));
+    expect(repaired.lyricStyle.position).toBe("bottom");
+    expect(repaired.lyricStyle.size).toBe(2); // clamped
+    expect(repaired.lyricStyle.color).toBe("#ffffff");
+    expect(repaired.lyricStyle.fadeSec).toBe(0);
+    expect(repaired.audiogram.progressBar).toBe(false);
+    expect(repaired.audiogram.position).toBe("bottom");
+    expect(repaired.audiogram.color).toBe("#7c5cff");
+  });
+
+  it("v9: an embedded custom def registers, so presetId and scenes survive", () => {
+    const customDef = {
+      id: "custom-projtest1",
+      name: "Proj Test",
+      params: [{ key: "hue", label: "Hue", min: 0, max: 360, step: 1, default: 200 }],
+      wgsl: "fn preset(uv: vec2f) -> vec4f { return vec4f(P_hue() / 360.0); }",
+    };
+    const file = JSON.parse(serializeProject(doc, "x"));
+    file.document.presetId = customDef.id;
+    file.document.customDefs = [customDef, { id: "bad id!", wgsl: "nope" }];
+    file.document.timeline = {
+      enabled: true,
+      scenes: [{ id: "sc-c", name: "Custom", presetId: customDef.id, start: 5 }],
+      lanes: [],
+    };
+    const parsed = parseProject(JSON.stringify(file));
+    // Without registration-before-validation the preset falls back to the
+    // default mode and the scene is dropped — both must survive.
+    expect(parsed.presetId).toBe(customDef.id);
+    expect(parsed.timeline.scenes).toHaveLength(1);
+    expect(parsed.customDefs).toHaveLength(1); // invalid def dropped
+    expect(parsed.customDefs[0].id).toBe(customDef.id);
   });
 
   it("sanitizes mod routes (bad sources/amounts dropped or clamped)", () => {
@@ -251,9 +318,9 @@ describe("project files (.avproj)", () => {
   // were both stamped schemaVersion 7 and indistinguishable. v8 gives the
   // current (video-capable) shape its own number; old files must still open.
   describe("schema v7 -> v8 (video backgrounds)", () => {
-    it("the current shape is stamped v8", () => {
+    it("the current shape is stamped with the current schema version", () => {
       const file = JSON.parse(serializeProject(doc, "2.35.0"));
-      expect(file.schemaVersion).toBe(8);
+      expect(file.schemaVersion).toBe(9);
     });
 
     it("still opens a real v7 file saved before video backgrounds existed", () => {
@@ -297,9 +364,9 @@ describe("project files (.avproj)", () => {
       expect(parsed.assets["vid-1"]?.dataUrl).toBe("data:video/mp4;base64,AA");
     });
 
-    it("still rejects a file from a schema newer than the current v8", () => {
+    it("still rejects a file from a schema newer than the current version", () => {
       const file = JSON.parse(serializeProject(doc, "x"));
-      file.schemaVersion = 9;
+      file.schemaVersion = 10;
       expect(() => parseProject(JSON.stringify(file))).toThrow(/newer app version/);
     });
   });

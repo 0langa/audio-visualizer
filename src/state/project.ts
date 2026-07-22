@@ -10,7 +10,14 @@ import {
   DEFAULT_POST,
 } from "../render/types";
 import { presets } from "../render/presets";
-import { customPresetById } from "../render/presets/custom";
+import {
+  customPresetById,
+  registerCustomPreset,
+  validCustomPreset,
+} from "../render/presets/custom";
+import type { PresetDef } from "../render/types";
+import { validLyricStyle, type LyricStyle } from "./lyrics";
+import { validAudiogram, type AudiogramSettings } from "./audiogram";
 import type { OverlayAsset, OverlayLayer, OverlayAnchor } from "../render/overlay";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
 import { validTimeline, type Timeline } from "./timeline";
@@ -40,9 +47,17 @@ import { validTimeline, type Timeline } from "./timeline";
  * below the schema-version gate changed, so older files of every prior
  * version keep loading exactly as before — the per-field validators are the
  * actual migration path, not a per-version branch.
+ *
+ * v9 (+) lyricStyle, audiogram, and the custom WGSL defs the document
+ *        references (presetId / timeline scenes). All three affect rendered
+ *        pixels but previously lived only in localStorage, so the same
+ *        .avproj rendered differently on another machine — and a project
+ *        using a custom visual silently fell back to the default mode for
+ *        anyone who hadn't separately imported the matching .avshader.
+ *        Older files simply lack the fields and the validators default them.
  */
 
-export const PROJECT_VERSION = 8;
+export const PROJECT_VERSION = 9;
 export const PROJECT_EXTENSION = "avproj";
 
 /** Frame aspect: "free" fills the window; fixed ratios letterbox the stage. */
@@ -68,6 +83,12 @@ export interface ProjectDocument {
   timeline: Timeline;
   post: PostSettings;
   motion: MotionSettings;
+  lyricStyle: LyricStyle;
+  audiogram: AudiogramSettings;
+  /** Custom WGSL defs the document references (active preset + timeline
+   * scenes) — embedded so the project renders identically on a machine that
+   * never imported the matching .avshader. NOT the user's whole library. */
+  customDefs: PresetDef[];
 }
 
 export interface ProjectFile {
@@ -128,6 +149,16 @@ export function parseProject(json: string): ProjectDocument {
  * default them. Shared by .avproj projects and .avtheme templates.
  */
 export function validateDocument(doc: Partial<ProjectDocument>): ProjectDocument {
+  // Custom defs FIRST, and registered immediately: validPresetId and
+  // validTimeline both resolve custom-* ids through the runtime registry, so
+  // a project that embeds the defs it references must have them registered
+  // before those validators run — otherwise the preset falls back to the
+  // default mode and timeline scenes are dropped. Registration is idempotent
+  // (a re-import of the same id replaces the entry) and deliberately a side
+  // effect of validation: every consumer (projects, themes, undo snapshots)
+  // needs the same guarantee.
+  const customDefs = validCustomDefs(doc.customDefs);
+  for (const def of customDefs) registerCustomPreset(def);
   const assets = validAssets(doc.assets);
   const bg = validBg(doc.bg);
   // Image/video background referencing a missing asset degrades to the
@@ -151,7 +182,25 @@ export function validateDocument(doc: Partial<ProjectDocument>): ProjectDocument
     timeline: validTimeline(doc.timeline),
     post: validPost(doc.post),
     motion: validMotion(doc.motion),
+    lyricStyle: validLyricStyle(doc.lyricStyle),
+    audiogram: validAudiogram(doc.audiogram),
+    customDefs,
   };
+}
+
+/** Whitelist-validate embedded custom defs; duplicates by id keep the first. */
+export function validCustomDefs(v: unknown): PresetDef[] {
+  if (!Array.isArray(v)) return [];
+  const out: PresetDef[] = [];
+  const seen = new Set<string>();
+  for (const raw of v) {
+    const def = validCustomPreset(raw);
+    if (def && !seen.has(def.id)) {
+      seen.add(def.id);
+      out.push(def);
+    }
+  }
+  return out;
 }
 
 export function validMotion(v: unknown): MotionSettings {
