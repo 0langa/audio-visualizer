@@ -12,6 +12,7 @@ import { Slider } from "./Slider";
 import { Switch } from "./Switch";
 import { useFocusTrap } from "./useFocusTrap";
 import { IconClose, IconExport } from "./Icons";
+import { Segmented } from "./kit";
 
 const CODEC_IDS: readonly VideoCodecId[] = ["h264", "hevc", "av1", "vp9a"];
 
@@ -74,84 +75,67 @@ export function ExportDialog() {
 
         <div className="field">
           <span>Type</span>
-          <div className="segmented">
-            <button
-              className={`segment ${!canvasMode ? "active" : ""}`}
-              disabled={!!exporting}
-              title="Export the whole track as a video"
-              onClick={() => store().setExportSettings({ mode: "video" })}
-            >
-              Video
-            </button>
-            <button
-              className={`segment ${canvasMode ? "active" : ""}`}
-              disabled={!!exporting}
-              title="3-8 s seamless loop at 1080×1920 — Spotify Canvas spec"
-              onClick={() => store().setExportSettings({ mode: "canvas" })}
-            >
-              Canvas loop
-            </button>
-          </div>
+          <Segmented
+            value={exportSettings.mode}
+            disabled={!!exporting}
+            ariaLabel="Export type"
+            onChange={(mode) => store().setExportSettings({ mode })}
+            options={[
+              { value: "video", label: "Video", hint: "Export the whole track as a video" },
+              {
+                value: "canvas",
+                label: "Canvas loop",
+                hint: "3-8 s seamless loop at 1080×1920 — Spotify Canvas spec",
+              },
+            ]}
+          />
         </div>
 
         <div className="field">
           <span>Format</span>
-          <div className="segmented">
-            <button
-              className={`segment ${exportSettings.format === "mp4" ? "active" : ""}`}
-              disabled={!!exporting}
-              title="One video file with audio: H.264/HEVC/AV1 (.mp4) or VP9 with alpha (.webm)"
-              onClick={() => store().setExportSettings({ format: "mp4" })}
-            >
-              MP4
-            </button>
-            <button
-              className={`segment ${exportSettings.format === "png" ? "active" : ""}`}
-              disabled={!!exporting || canvasMode}
-              title={
-                canvasMode
+          <Segmented
+            value={exportSettings.format}
+            disabled={!!exporting}
+            ariaLabel="Export format"
+            onChange={(format) => store().setExportSettings({ format })}
+            options={[
+              {
+                value: "mp4" as const,
+                label: "MP4",
+                hint: "One video file with audio: H.264/HEVC/AV1 (.mp4) or VP9 with alpha (.webm)",
+              },
+              {
+                value: "png" as const,
+                label: "PNG frames",
+                disabled: canvasMode,
+                hint: canvasMode
                   ? "Not available for Canvas loops (they upload as MP4)"
-                  : "A folder of numbered PNG frames — keeps transparency (set Background to Transparent). No audio; for editors."
-              }
-              onClick={() => store().setExportSettings({ format: "png" })}
-            >
-              PNG frames
-            </button>
-            {isTauri() && (
-              <button
-                className={`segment ${exportSettings.format === "prores" ? "active" : ""}`}
-                disabled={!!exporting || canvasMode}
-                title={
-                  canvasMode
-                    ? "Not available for Canvas loops (they upload as MP4)"
-                    : "One .mov file: ProRes 4444 with alpha + PCM audio — drops straight into Premiere/Resolve/After Effects"
-                }
-                onClick={() => store().setExportSettings({ format: "prores" })}
-              >
-                ProRes
-              </button>
-            )}
-            {isTauri() && (
-              <button
-                className={`segment ${exportSettings.format === "gif" ? "active" : ""}`}
-                disabled={!!exporting}
-                title="Animated .gif loop — no audio; pairs with Canvas loop mode for a seamless loop"
-                onClick={() => store().setExportSettings({ format: "gif" })}
-              >
-                GIF
-              </button>
-            )}
-            {isTauri() && (
-              <button
-                className={`segment ${exportSettings.format === "webp" ? "active" : ""}`}
-                disabled={!!exporting}
-                title="Animated .webp loop — much smaller than GIF, keeps alpha; no audio"
-                onClick={() => store().setExportSettings({ format: "webp" })}
-              >
-                WebP
-              </button>
-            )}
-          </div>
+                  : "A folder of numbered PNG frames — keeps transparency (set Background to Transparent). No audio; for editors.",
+              },
+              ...(isTauri()
+                ? [
+                    {
+                      value: "prores" as const,
+                      label: "ProRes",
+                      disabled: canvasMode,
+                      hint: canvasMode
+                        ? "Not available for Canvas loops (they upload as MP4)"
+                        : "One .mov file: ProRes 4444 with alpha + PCM audio — drops straight into Premiere/Resolve/After Effects",
+                    },
+                    {
+                      value: "gif" as const,
+                      label: "GIF",
+                      hint: "Animated .gif loop — no audio; pairs with Canvas loop mode for a seamless loop",
+                    },
+                    {
+                      value: "webp" as const,
+                      label: "WebP",
+                      hint: "Animated .webp loop — much smaller than GIF, keeps alpha; no audio",
+                    },
+                  ]
+                : []),
+            ]}
+          />
         </div>
 
         {exportSettings.format === "png" && (

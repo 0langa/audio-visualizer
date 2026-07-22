@@ -4,7 +4,6 @@ import type {
   BgMode,
   BgSettings,
   MotionSettings,
-  ParamSpec,
   ParamValues,
   PostSettings,
   PresetDef,
@@ -32,7 +31,7 @@ import { allParams, presetMasters } from "../render/types";
 import { QUANTIZE_MODES, type QuantizeMode } from "../state/quantize";
 import { bindingId, type MidiBinding, type MidiLearn } from "../state/midi";
 import { Slider } from "./Slider";
-import { Switch } from "./Switch";
+import { ParamRow, SliderRow, Segmented, ToggleRow } from "./kit";
 import { LayersPanel } from "./LayersPanel";
 import { IconChevronRight, IconClose } from "./Icons";
 
@@ -165,106 +164,6 @@ const POST_SLIDERS: Array<{
     hint: "Deterministic film grain — identical in preview and export",
   },
 ];
-
-function ParamRow(props: {
-  spec: ParamSpec;
-  value: number;
-  onChange: (v: number) => void;
-  onHint: (hint: string | null) => void;
-}) {
-  const { spec: p, value } = props;
-  const isToggle = p.step === 1 && p.min === 0 && p.max === 1;
-  const hintProps = {
-    title: p.hint,
-    onPointerEnter: () => props.onHint(p.hint ?? null),
-    onPointerLeave: () => props.onHint(null),
-    // H17: the footer hint was mouse-only — a keyboard user tabbing through
-    // never saw it. onFocus/onBlur fire when the row's Slider/Switch child
-    // receives/loses focus (React bubbles focus events), mirroring the
-    // pointer pair exactly.
-    onFocus: () => props.onHint(p.hint ?? null),
-    onBlur: () => props.onHint(null),
-  };
-  return isToggle ? (
-    <label className="row toggle-row" {...hintProps}>
-      <span className="row-label">{p.label}</span>
-      <button
-        className={`switch ${value > 0.5 ? "on" : ""}`}
-        role="switch"
-        aria-checked={value > 0.5}
-        onClick={() => props.onChange(value > 0.5 ? 0 : 1)}
-      >
-        <span className="knob" />
-      </button>
-    </label>
-  ) : (
-    <label className="row param-row" {...hintProps}>
-      <span className="row-label">{p.label}</span>
-      <Slider min={p.min} max={p.max} step={p.step} value={value} onChange={props.onChange} />
-      <span className="row-value">{value.toFixed(p.step < 1 ? 2 : 0)}</span>
-    </label>
-  );
-}
-
-/** Shared switch row — the single toggle control used across every section, so
- * lyrics/audiogram look identical to Motion/Post instead of raw checkboxes. */
-function ToggleRow(props: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  onHint?: (hint: string | null) => void;
-}) {
-  return (
-    <label
-      className="row toggle-row"
-      title={props.hint}
-      onPointerEnter={() => props.onHint?.(props.hint ?? null)}
-      onPointerLeave={() => props.onHint?.(null)}
-      onFocus={() => props.onHint?.(props.hint ?? null)}
-      onBlur={() => props.onHint?.(null)}
-    >
-      <span className="row-label">{props.label}</span>
-      <Switch checked={props.checked} onChange={props.onChange} label={props.label} />
-    </label>
-  );
-}
-
-/** Shared labelled slider row with a numeric readout — the single slider
- * control used across every section. */
-function SliderRow(props: {
-  label: string;
-  hint?: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  onChange: (v: number) => void;
-  format?: (v: number) => string;
-  onHint?: (hint: string | null) => void;
-}) {
-  const fmt = props.format ?? ((v: number) => v.toFixed(props.step < 1 ? 2 : 0));
-  return (
-    <label
-      className="row param-row"
-      title={props.hint}
-      onPointerEnter={() => props.onHint?.(props.hint ?? null)}
-      onPointerLeave={() => props.onHint?.(null)}
-      onFocus={() => props.onHint?.(props.hint ?? null)}
-      onBlur={() => props.onHint?.(null)}
-    >
-      <span className="row-label">{props.label}</span>
-      <Slider
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        value={props.value}
-        onChange={props.onChange}
-      />
-      <span className="row-value">{fmt(props.value)}</span>
-    </label>
-  );
-}
 
 export interface ParamsPanelProps {
   preset: PresetDef;
@@ -687,29 +586,20 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
           <div className="section-head">
             <span className="section-title">Live</span>
           </div>
-          <div className="segmented">
-            {QUANTIZE_MODES.map((m) => {
-              const label = m === "off" ? "Off" : m === "beat" ? "Beat" : "Bar";
-              const hint =
+          <Segmented
+            value={props.switchQuantize}
+            onChange={props.onSwitchQuantize}
+            onHint={setHint}
+            ariaLabel="Switch quantize"
+            options={QUANTIZE_MODES.map((m) => ({
+              value: m,
+              label: m === "off" ? "Off" : m === "beat" ? "Beat" : "Bar",
+              hint:
                 m === "off"
                   ? "Mode switches happen instantly"
-                  : `Mode switches wait for the next ${m} before taking over`;
-              return (
-                <button
-                  key={m}
-                  className={`segment ${props.switchQuantize === m ? "active" : ""}`}
-                  title={hint}
-                  onPointerEnter={() => setHint(hint)}
-                  onPointerLeave={() => setHint(null)}
-                  onFocus={() => setHint(hint)}
-                  onBlur={() => setHint(null)}
-                  onClick={() => props.onSwitchQuantize(m)}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+                  : `Mode switches wait for the next ${m} before taking over`,
+            }))}
+          />
           <p className="section-hint">
             Switch quantize — number keys 1–9 (or a mode chip) jump to a visual; with Beat/Bar the
             switch lands on the next boundary, Ableton-style. Live only; exports are unaffected.
@@ -1212,22 +1102,13 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
           <div className="section-head">
             <span className="section-title">Frame</span>
           </div>
-          <div className="segmented">
-            {ASPECTS.map((a) => (
-              <button
-                key={a.id}
-                className={`segment ${props.aspect === a.id ? "active" : ""}`}
-                title={a.hint}
-                onPointerEnter={() => setHint(a.hint)}
-                onPointerLeave={() => setHint(null)}
-                onFocus={() => setHint(a.hint)}
-                onBlur={() => setHint(null)}
-                onClick={() => props.onAspect(a.id)}
-              >
-                {a.label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            value={props.aspect}
+            onChange={props.onAspect}
+            onHint={setHint}
+            ariaLabel="Frame aspect"
+            options={ASPECTS.map((a) => ({ value: a.id, label: a.label, hint: a.hint }))}
+          />
           <p className="section-hint">
             Frame shape for preview and export — 9:16 for Canvas/Shorts, 1:1 for posts.
           </p>
@@ -1237,28 +1118,20 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
           <div className="section-head">
             <span className="section-title">Background</span>
           </div>
-          <div className="segmented">
-            {(props.showVideoBg ? [...BG_OPTIONS_BASE, BG_OPTION_VIDEO] : BG_OPTIONS_BASE).map(
-              (o) => (
-                <button
-                  key={o.mode}
-                  className={`segment ${props.bg.mode === o.mode ? "active" : ""}`}
-                  title={o.hint}
-                  onPointerEnter={() => setHint(o.hint)}
-                  onPointerLeave={() => setHint(null)}
-                  onFocus={() => setHint(o.hint)}
-                  onBlur={() => setHint(null)}
-                  onClick={() => {
-                    if (o.mode === BG_IMAGE && !props.bg.image) props.onPickBackgroundImage();
-                    else if (o.mode === BG_VIDEO && !props.bg.video) props.onPickVideoBackground();
-                    else props.onBg({ ...props.bg, mode: o.mode });
-                  }}
-                >
-                  {o.label}
-                </button>
-              ),
-            )}
-          </div>
+          <Segmented
+            value={props.bg.mode}
+            onHint={setHint}
+            ariaLabel="Background mode"
+            options={(props.showVideoBg
+              ? [...BG_OPTIONS_BASE, BG_OPTION_VIDEO]
+              : BG_OPTIONS_BASE
+            ).map((o) => ({ value: o.mode, label: o.label, hint: o.hint }))}
+            onChange={(mode) => {
+              if (mode === BG_IMAGE && !props.bg.image) props.onPickBackgroundImage();
+              else if (mode === BG_VIDEO && !props.bg.video) props.onPickVideoBackground();
+              else props.onBg({ ...props.bg, mode });
+            }}
+          />
           {props.bg.mode === BG_SOLID && (
             <div className="row color-row">
               <input

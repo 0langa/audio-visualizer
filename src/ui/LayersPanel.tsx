@@ -6,7 +6,7 @@ import type {
   OverlayLayer,
   TextLayer,
 } from "../render/overlay";
-import { Slider } from "./Slider";
+import { SliderRow } from "./kit";
 
 const ANCHOR_GRID: OverlayAnchor[] = ["tl", "tc", "tr", "cl", "cc", "cr", "bl", "bc", "br"];
 
@@ -40,29 +40,6 @@ function AnchorPicker(props: { value: OverlayAnchor; onChange: (a: OverlayAnchor
   );
 }
 
-function LayerSlider(props: {
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="row param-row">
-      <span className="row-label">{props.label}</span>
-      <Slider
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        value={props.value}
-        onChange={props.onChange}
-      />
-      <span className="row-value">{props.value.toFixed(2)}</span>
-    </label>
-  );
-}
-
 function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLayer>) => void }) {
   const l = props.layer;
   return (
@@ -77,7 +54,7 @@ function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLa
       <div className="layer-editor-grid">
         <AnchorPicker value={l.anchor} onChange={(anchor) => props.onChange({ anchor })} />
         <div className="layer-editor-col">
-          <LayerSlider
+          <SliderRow
             label="Size"
             min={0.01}
             max={0.3}
@@ -85,7 +62,7 @@ function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLa
             value={l.size}
             onChange={(size) => props.onChange({ size })}
           />
-          <LayerSlider
+          <SliderRow
             label="Opacity"
             min={0}
             max={1}
@@ -93,7 +70,7 @@ function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLa
             value={l.opacity}
             onChange={(opacity) => props.onChange({ opacity })}
           />
-          <LayerSlider
+          <SliderRow
             label="Glow"
             min={0}
             max={1}
@@ -103,7 +80,7 @@ function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLa
           />
         </div>
       </div>
-      <LayerSlider
+      <SliderRow
         label="Offset X"
         min={-0.5}
         max={0.5}
@@ -111,7 +88,7 @@ function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLa
         value={l.offset[0]}
         onChange={(x) => props.onChange({ offset: [x, l.offset[1]] })}
       />
-      <LayerSlider
+      <SliderRow
         label="Offset Y"
         min={-0.5}
         max={0.5}
@@ -119,7 +96,7 @@ function TextLayerEditor(props: { layer: TextLayer; onChange: (p: Partial<TextLa
         value={l.offset[1]}
         onChange={(y) => props.onChange({ offset: [l.offset[0], y] })}
       />
-      <LayerSlider
+      <SliderRow
         label="Spacing"
         min={-0.1}
         max={0.5}
@@ -171,7 +148,7 @@ function ImageLayerEditor(props: {
       <div className="layer-editor-grid">
         <AnchorPicker value={l.anchor} onChange={(anchor) => props.onChange({ anchor })} />
         <div className="layer-editor-col">
-          <LayerSlider
+          <SliderRow
             label="Size"
             min={0.02}
             max={1}
@@ -179,7 +156,7 @@ function ImageLayerEditor(props: {
             value={l.size}
             onChange={(size) => props.onChange({ size })}
           />
-          <LayerSlider
+          <SliderRow
             label="Opacity"
             min={0}
             max={1}
@@ -187,7 +164,7 @@ function ImageLayerEditor(props: {
             value={l.opacity}
             onChange={(opacity) => props.onChange({ opacity })}
           />
-          <LayerSlider
+          <SliderRow
             label="Corners"
             min={0}
             max={0.5}
@@ -197,7 +174,7 @@ function ImageLayerEditor(props: {
           />
         </div>
       </div>
-      <LayerSlider
+      <SliderRow
         label="Offset X"
         min={-0.5}
         max={0.5}
@@ -205,7 +182,7 @@ function ImageLayerEditor(props: {
         value={l.offset[0]}
         onChange={(x) => props.onChange({ offset: [x, l.offset[1]] })}
       />
-      <LayerSlider
+      <SliderRow
         label="Offset Y"
         min={-0.5}
         max={0.5}
