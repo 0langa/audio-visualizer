@@ -11,6 +11,22 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.43.0] - 2026-07-23
+
+The polish release — the audit's last open finding closed, and the docs
+caught up with everything the last five releases shipped.
+
+### Fixed
+
+- **Cancelled batch runs can resume.** Cancelling used to strand every
+  not-yet-run job as "queued" with no way back; the panel now offers
+  "Resume N queued" (and "Retry failed + resume queued" together).
+
+### Changed
+
+- Guide, README and the manual test checklist now cover Builder Studio, the
+  app-settings page, the tabbed panel and the auto-updater.
+
 ## [2.42.0] - 2026-07-23
 
 ### Added

@@ -26,17 +26,23 @@ Free and open source. Built to become a professional-grade tool for producers an
 
 - Local file playback (mp3/flac/wav/ogg/m4a) via Web Audio — drag & drop or file picker; gapless loop toggle
 - Log-spaced spectrum analysis, asymmetric smoothing, peak hold, band energies, spectral-flux beat detection, slow energy envelope, phase-locked waveform
-- **16 visual modes** (WebGPU shader presets): Spectrum Bars, Radial Burst,
+- **17 visual modes** (WebGPU shader presets): Spectrum Bars, Radial Burst,
   Oscilloscope, Particles, Tunnel, Kaleido Nebula, Metaballs, LED Matrix,
   Voice Orb (narration mode), Echo Trails (feedback), Particle Flow (120k GPU
   compute particles), Spectrum Scape (3D), Aurora, Synthwave,
-  **Bass Circle** (circular bass visualizer with album art), and **Builder** —
-  compose your own from six toggleable layers
+  **Bass Circle** (circular bass visualizer with album art), the classic **Builder**, and
+  **Builder Studio** — a real layer compositor: stack up to twelve layers,
+  each with its own blend mode, color and parameters; share stacks as
+  `.avbuilder` files
 - Every mode: 5-7 curated factory **styles**, curated params + full **Advanced** section
   (~300 knobs app-wide), plain-language **hint** for every setting (tooltip +
   live hint bar), all persisted per mode
 - **User looks**: save your own named looks per visual mode, share them as
   `.avpreset` files (import/export)
+- **Auto-updates**: the app checks GitHub Releases and installs new versions
+  in one click (signature-verified; no telemetry — the check is a plain fetch
+  of a static file). **App settings** (Ctrl+,): autosave delay, live frame
+  cap, GPU preference, update controls
 - **Project files**: save/open the whole setup (preset, params, sync,
   background, layers) as versioned `.avproj` files — Ctrl+S / Ctrl+O,
   native dialogs

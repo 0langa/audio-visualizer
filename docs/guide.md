@@ -6,13 +6,26 @@ B batch, Q library, L loop, F fullscreen, Ctrl+Z undo).
 
 ## Visual modes
 
-Sixteen modes on the strip: Spectrum Bars, Radial Burst, Oscilloscope,
+Seventeen modes on the strip: Spectrum Bars, Radial Burst, Oscilloscope,
 Particles, Tunnel, Kaleido Nebula, Metaballs, LED Matrix, Voice Orb, Echo
 Trails, Particle Flow (120k GPU particles), Spectrum Scape (3D), Aurora,
-Synthwave, Bass Circle, and Builder (a six-layer compositor you assemble
-yourself). Each mode has curated **styles** (one-click looks), main
-parameters, and an **Advanced** drawer exposing every internal constant
-worth touching. Hover any control for a plain-language hint.
+Synthwave, Bass Circle, the classic Builder, and **Builder Studio** (below).
+Each mode has curated **styles** (one-click looks), main parameters, and an
+**Advanced** drawer exposing every internal constant worth touching. Hover
+any control for a plain-language hint. The settings panel (G) is organized
+into **tabs** (Visual / Sync / Scene / Text / Live), every section
+collapses, the panel edge drags to resize — and the **search box** at the
+top finds any setting by name across all tabs.
+
+## Builder Studio
+
+A real layer compositor: stack up to twelve layers from nine types
+(background wash, particles, spectrum bars, radial ring, pulse rings,
+waveform circle, orb, wave line, vignette) — the same type as often as you
+like. Every layer has its own on/off, opacity, **blend mode**
+(Normal / Add / Screen), color (hue + spread) and parameters; reorder with
+▲▼, duplicate with ⧉. Stacks save inside your project, and
+**Export .avbuilder** shares a stack as a single file anyone can import.
 
 ## Sync — what drives the motion
 
@@ -133,6 +146,17 @@ yours; everything renders identically in exports.
 Exports render offline in a worker: the UI stays live, sync is sample-exact,
 and on desktop the file streams to disk so hour-long renders hold flat
 memory.
+
+## App settings & updates
+
+**Ctrl+,** opens the app-settings page — preferences about the app itself,
+separate from the per-visual panel: autosave delay, the remembered
+save-dialog folder, a **live-preview frame cap** (30/60 — exports always
+render every frame), a **GPU preference** for dual-GPU laptops, and updates.
+Beatform **updates itself**: it checks GitHub Releases shortly after launch
+(a plain fetch of a static file — no telemetry, ever) and installs new
+versions with one click and a restart. Turn the automatic check off there if
+you prefer manual.
 
 ## Projects, looks, templates
 
