@@ -146,6 +146,17 @@ body,
   pointer-events: none;
 }
 
+/* Keyboard focus can still land on idle-hidden chrome — opacity:0 stays
+   focusable and in the tab order, and pointer-events:none blocks only the
+   mouse. So a keyboard user tabbing during playback would land on invisible,
+   unreachable controls. When a control inside chrome takes focus, reveal that
+   chrome and re-enable interaction (paired with onFocus -> pokeChrome in App,
+   which also re-arms the idle timer). */
+.app.idle .chrome:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Stage mode: a clean, chrome-free full-bleed output for live performance,
    projecting or screen capture. Drive visuals via keys/MIDI; Esc exits. */
 .app.stage-mode {

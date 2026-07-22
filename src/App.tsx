@@ -925,6 +925,10 @@ export default function App() {
       className={`app ${dragOver ? "drag-over" : ""} ${idle ? "idle" : ""} ${stageMode ? "stage-mode" : ""}`}
       onMouseMove={() => store().pokeChrome()}
       onPointerDown={() => store().pokeChrome()}
+      // Keyboard focus (Tab) fires no pointer event, so without this a keyboard
+      // user tabbing during playback lands on idle-hidden chrome. onFocus
+      // bubbles (focusin), so focusing any control wakes the chrome.
+      onFocus={() => store().pokeChrome()}
       onDragOver={(e) => e.preventDefault()}
       onDragEnter={(e) => {
         e.preventDefault();
