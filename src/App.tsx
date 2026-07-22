@@ -6,6 +6,7 @@ import { APP_VERSION } from "./version";
 import { BatchPanel, type BatchPanelProps } from "./ui/BatchPanel";
 import { RESOLUTIONS, useVizStore } from "./state/store";
 import { installDevHooks } from "./devHooks";
+import { getPrefs, setPrefs } from "./state/prefs";
 import { PlayerBar, type PlayerBarProps } from "./ui/PlayerBar";
 import { LibraryPanel, type LibraryPanelProps } from "./ui/LibraryPanel";
 import { isTauri } from "./state/platform";
@@ -146,10 +147,7 @@ export default function App() {
   // Resizable settings/library panel width (v2.40 layout system). The value
   // drives the `--panel-w` CSS variable on the app root; every offset that
   // depends on it derives via calc() in App.css. Persisted per install.
-  const [panelW, setPanelW] = useState(() => {
-    const stored = Number(localStorage.getItem("viz.panelWidth.v1"));
-    return Number.isFinite(stored) && stored >= 240 && stored <= 440 ? stored : 280;
-  });
+  const [panelW, setPanelW] = useState(() => getPrefs().panelWidth);
   const startPanelResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const el = e.currentTarget;
@@ -163,13 +161,7 @@ export default function App() {
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
-      if (latest > 0) {
-        try {
-          localStorage.setItem("viz.panelWidth.v1", String(latest));
-        } catch {
-          // quota — width stays session-only
-        }
-      }
+      if (latest > 0) setPrefs({ panelWidth: latest });
     };
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);

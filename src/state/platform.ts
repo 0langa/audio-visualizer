@@ -6,6 +6,8 @@
  * Everything returns null on user cancel; real failures throw.
  */
 
+import { getPrefs, setPrefs } from "./prefs";
+
 export function isTauri(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -17,28 +19,18 @@ export interface FileFilter {
 
 /** Remember the folder of the last save/pick so every dialog opens where the
  * user actually works instead of the OS default, every single time. */
-const LS_LAST_SAVE_DIR = "viz.lastSaveDir.v1";
-
 function rememberSaveDir(path: string): void {
   const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
   if (cut <= 0) return;
-  try {
-    localStorage.setItem(LS_LAST_SAVE_DIR, path.slice(0, cut));
-  } catch {
-    // Quota — losing the remembered folder is harmless.
-  }
+  setPrefs({ lastSaveDir: path.slice(0, cut) });
 }
 
 /** defaultPath for a save dialog: last-used folder + suggested name. */
 function defaultSavePath(defaultName: string): string {
-  try {
-    const dir = localStorage.getItem(LS_LAST_SAVE_DIR);
-    if (!dir) return defaultName;
-    const sep = dir.includes("\\") ? "\\" : "/";
-    return `${dir}${sep}${defaultName}`;
-  } catch {
-    return defaultName;
-  }
+  const dir = getPrefs().lastSaveDir;
+  if (!dir) return defaultName;
+  const sep = dir.includes("\\") ? "\\" : "/";
+  return `${dir}${sep}${defaultName}`;
 }
 
 /** Save text to a user-chosen location. Returns the path/name, null on cancel. */

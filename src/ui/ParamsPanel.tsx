@@ -32,6 +32,7 @@ import { QUANTIZE_MODES, type QuantizeMode } from "../state/quantize";
 import { bindingId, type MidiBinding, type MidiLearn } from "../state/midi";
 import { Slider } from "./Slider";
 import { ParamRow, SliderRow, Segmented, ToggleRow } from "./kit";
+import { getPrefs, setPrefs } from "../state/prefs";
 import { LayersPanel } from "./LayersPanel";
 import { IconChevronRight, IconClose } from "./Icons";
 
@@ -258,9 +259,7 @@ export interface ParamsPanelProps {
  * from App.tsx to be reference-stable (see the useCallback block there); a
  * fresh arrow function per render would silently defeat this. */
 export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
-  const [showAdvanced, setShowAdvanced] = useState(
-    () => localStorage.getItem("viz.advancedOpen") === "1",
-  );
+  const [showAdvanced, setShowAdvanced] = useState(() => getPrefs().advancedOpen);
   const [hint, setHint] = useState<string | null>(null);
   const [savingLook, setSavingLook] = useState(false);
   const [lookName, setLookName] = useState("");
@@ -270,7 +269,7 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
   const [midiParam, setMidiParam] = useState("");
   const toggleAdvanced = () => {
     setShowAdvanced((v) => {
-      localStorage.setItem("viz.advancedOpen", v ? "0" : "1");
+      setPrefs({ advancedOpen: !v });
       return !v;
     });
   };

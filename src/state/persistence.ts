@@ -17,7 +17,8 @@ import { validCustomPreset } from "../render/presets/custom";
 import { validTimeline, type Timeline } from "./timeline";
 import { validLyricStyle, type LyricStyle } from "./lyrics";
 import { validAudiogram, type AudiogramSettings } from "./audiogram";
-import { isQuantizeMode, type QuantizeMode } from "./quantize";
+import type { QuantizeMode } from "./quantize";
+import { getPrefs, setPrefs } from "./prefs";
 import { validMidiBindings, type MidiBinding } from "./midi";
 import type { ExportSettings } from "./store";
 
@@ -30,9 +31,7 @@ import type { ExportSettings } from "./store";
 const LS_PRESET = "viz.activePreset";
 const LS_PARAMS = "viz.params.v1";
 const LS_BG = "viz.bg.v1";
-const LS_VOLUME = "viz.volume";
 const LS_SYNC = "viz.sync.v1";
-const LS_PANEL = "viz.panelOpen";
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -190,13 +189,11 @@ export function saveStoredBg(bg: BgSettings): void {
 }
 
 export function loadStoredVolume(): number {
-  const raw = localStorage.getItem(LS_VOLUME);
-  const v = Number(raw);
-  return raw !== null && Number.isFinite(v) && v >= 0 && v <= 1 ? v : 1;
+  return getPrefs().volume;
 }
 
 export function saveStoredVolume(v: number): void {
-  localStorage.setItem(LS_VOLUME, String(v));
+  setPrefs({ volume: v });
 }
 
 const LS_OVERLAY = "viz.overlay.v1";
@@ -380,21 +377,18 @@ export function saveStoredMidiBindings(bindings: MidiBinding[]): void {
   localStorage.setItem(LS_MIDI, JSON.stringify(bindings));
 }
 
-const LS_QUANTIZE = "viz.switchQuantize.v1";
-
 export function loadStoredQuantize(): QuantizeMode {
-  const v = localStorage.getItem(LS_QUANTIZE);
-  return isQuantizeMode(v) ? v : "off";
+  return getPrefs().switchQuantize;
 }
 
 export function saveStoredQuantize(mode: QuantizeMode): void {
-  localStorage.setItem(LS_QUANTIZE, mode);
+  setPrefs({ switchQuantize: mode });
 }
 
 export function loadStoredPanelOpen(): boolean {
-  return localStorage.getItem(LS_PANEL) === "1";
+  return getPrefs().panelOpen;
 }
 
 export function saveStoredPanelOpen(open: boolean): void {
-  localStorage.setItem(LS_PANEL, open ? "1" : "0");
+  setPrefs({ panelOpen: open });
 }
