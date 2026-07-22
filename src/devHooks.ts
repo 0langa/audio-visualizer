@@ -137,6 +137,7 @@ export function installDevHooks(store: typeof useVizStore.getState): void {
         ? { settings: s.audiogram, waveform: s.waveformOverview }
         : undefined,
       customPresets: s.customDefs,
+      builderStack: s.builderStack,
       mods: s.activeMods,
       smoothSpectrum: s.smoothSpectrum,
       // Merge onto DEFAULT_POST. A partial post object is a trap: `exposure`

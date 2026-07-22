@@ -1,4 +1,5 @@
 import { ArrayBufferTarget, Muxer, StreamTarget } from "mp4-muxer";
+import { packBuilderParams, rebuildBuilder2, validBuilderStack } from "../render/builder2";
 import {
   AudioSample,
   AudioSampleSource,
@@ -120,6 +121,8 @@ export interface ExportJob {
   /** User-authored WGSL presets — re-registered inside the worker so
    * presetById() resolves them there too. */
   customPresets?: PresetDef[];
+  /** Builder Studio stack (renders when a presetId resolves to "builder2"). */
+  builderStack?: import("../render/builder2").BuilderStack;
   /** Timeline (already shifted for segments) — scenes + automation. */
   timeline?: Timeline;
   /** Per-preset param overrides — scene switches resolve their own base. */
@@ -225,6 +228,12 @@ export async function runExportJob(
     const def = validCustomPreset(raw);
     if (def) registerCustomPreset(def);
   }
+
+  // Builder Studio: regenerate the def in THIS module instance (the worker's
+  // registry starts empty) so presetById("builder2") resolves to the job's
+  // stack. The layer-param upload happens after the renderer exists below.
+  const builderStack = job.builderStack ? validBuilderStack(job.builderStack) : null;
+  if (builderStack) rebuildBuilder2(builderStack);
 
   const pcm = job.pcm;
   const channels = Math.min(2, pcm.channels.length) as 1 | 2;
@@ -475,6 +484,7 @@ export async function runExportJob(
     renderer.setSmoothSpectrum(job.smoothSpectrum === true);
     if (job.post) renderer.setPost(job.post);
     if (job.motion) renderer.setMotion(job.motion);
+    if (builderStack) renderer.setBuilderParams(packBuilderParams(builderStack));
     // Cover art for presets that sample it — decoded here so the export matches
     // the live view. A missing/broken cover just leaves hasCover() false.
     if (job.coverArt) {

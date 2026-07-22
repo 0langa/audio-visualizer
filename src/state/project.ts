@@ -17,6 +17,7 @@ import {
 } from "../render/presets/custom";
 import type { PresetDef } from "../render/types";
 import { validLyricStyle, type LyricStyle } from "./lyrics";
+import { defaultBuilderStack, validBuilderStack, type BuilderStack } from "../render/builder2";
 import { validAudiogram, type AudiogramSettings } from "./audiogram";
 import type { OverlayAsset, OverlayLayer, OverlayAnchor } from "../render/overlay";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
@@ -55,9 +56,13 @@ import { validTimeline, type Timeline } from "./timeline";
  *        using a custom visual silently fell back to the default mode for
  *        anyone who hadn't separately imported the matching .avshader.
  *        Older files simply lack the fields and the validators default them.
+ *
+ * v10 (+) builderStack — Builder Studio's ordered layer list. Older files
+ *        default to the starter stack; the classic `builder` preset is
+ *        untouched and still renders identically.
  */
 
-export const PROJECT_VERSION = 9;
+export const PROJECT_VERSION = 10;
 export const PROJECT_EXTENSION = "avproj";
 
 /** Frame aspect: "free" fills the window; fixed ratios letterbox the stage. */
@@ -89,6 +94,8 @@ export interface ProjectDocument {
    * scenes) — embedded so the project renders identically on a machine that
    * never imported the matching .avshader. NOT the user's whole library. */
   customDefs: PresetDef[];
+  /** Builder Studio layer stack (renders when presetId === "builder2"). */
+  builderStack: BuilderStack;
 }
 
 export interface ProjectFile {
@@ -185,6 +192,8 @@ export function validateDocument(doc: Partial<ProjectDocument>): ProjectDocument
     lyricStyle: validLyricStyle(doc.lyricStyle),
     audiogram: validAudiogram(doc.audiogram),
     customDefs,
+    builderStack:
+      doc.builderStack === undefined ? defaultBuilderStack() : validBuilderStack(doc.builderStack),
   };
 }
 

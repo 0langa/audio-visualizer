@@ -63,6 +63,10 @@ export class Canvas2DRenderer implements Renderer {
     source?.close();
   }
 
+  setBuilderParams(_data: Float32Array): void {
+    // Builder Studio renders through WGSL codegen — WebGPU only.
+  }
+
   setTransitionPreset(_preset: PresetDef | null): void {
     // Fallback renderer hard-cuts between scenes.
   }

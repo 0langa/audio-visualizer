@@ -147,6 +147,7 @@ export function buildExportOptions(
     lyrics: track.lyrics,
     audiogram: track.audiogram,
     customPresets: track.customPresets,
+    builderStack: doc.builderStack,
     streamToPath: io.streamToPath,
     pngDir: io.pngDir,
     onPngFrame: io.onPngFrame,

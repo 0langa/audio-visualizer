@@ -1,5 +1,6 @@
 import type { PresetDef } from "../types";
 import { customPresetById } from "./custom";
+import { BUILDER2_ID, currentBuilder2Def } from "../builder2";
 import { spectrumBars } from "./spectrumBars";
 import { radialBurst } from "./radialBurst";
 import { oscilloscope } from "./oscilloscope";
@@ -35,6 +36,9 @@ export const presets: PresetDef[] = [
   synthwave,
   bassCircle,
   builder,
+  // Builder Studio: a stable strip entry; rendering resolves through
+  // presetById -> currentBuilder2Def() (the generated def).
+  currentBuilder2Def(),
 ];
 
 // Built-in id -> def, built once (the list is static). presetById runs in the
@@ -42,6 +46,10 @@ export const presets: PresetDef[] = [
 const builtinById = new Map(presets.map((p) => [p.id, p]));
 
 export function presetById(id: string): PresetDef {
+  // Builder Studio resolves to its CURRENT generated def — object identity
+  // changes only on structural stack edits, which is exactly the signal the
+  // render loop and pipeline cache key on.
+  if (id === BUILDER2_ID) return currentBuilder2Def();
   // Built-ins win; then the runtime registry of user-authored WGSL presets
   // (custom ids are prefixed "custom-", so collisions cannot occur).
   return builtinById.get(id) ?? customPresetById(id) ?? presets[0];

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseProject, ProjectParseError, serializeProject, type ProjectDocument } from "./project";
+import {
+  parseProject,
+  PROJECT_VERSION,
+  ProjectParseError,
+  serializeProject,
+  type ProjectDocument,
+} from "./project";
 import { BG_SOLID } from "../render/types";
 import { presets } from "../render/presets";
 
@@ -88,6 +94,7 @@ const doc: ProjectDocument = {
     color: "#00ffaa",
   },
   customDefs: [],
+  builderStack: { layers: [] },
 };
 
 describe("project files (.avproj)", () => {
@@ -99,7 +106,7 @@ describe("project files (.avproj)", () => {
   it("stamps metadata", () => {
     const file = JSON.parse(serializeProject(doc, "1.2.0"));
     expect(file.kind).toBe("avproj");
-    expect(file.schemaVersion).toBe(9);
+    expect(file.schemaVersion).toBe(PROJECT_VERSION);
     expect(file.appVersion).toBe("1.2.0");
     expect(typeof file.savedAt).toBe("string");
   });
@@ -320,7 +327,7 @@ describe("project files (.avproj)", () => {
   describe("schema v7 -> v8 (video backgrounds)", () => {
     it("the current shape is stamped with the current schema version", () => {
       const file = JSON.parse(serializeProject(doc, "2.35.0"));
-      expect(file.schemaVersion).toBe(9);
+      expect(file.schemaVersion).toBe(PROJECT_VERSION);
     });
 
     it("still opens a real v7 file saved before video backgrounds existed", () => {
@@ -366,7 +373,7 @@ describe("project files (.avproj)", () => {
 
     it("still rejects a file from a schema newer than the current version", () => {
       const file = JSON.parse(serializeProject(doc, "x"));
-      file.schemaVersion = 10;
+      file.schemaVersion = PROJECT_VERSION + 1;
       expect(() => parseProject(JSON.stringify(file))).toThrow(/newer app version/);
     });
   });

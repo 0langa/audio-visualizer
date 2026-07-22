@@ -84,6 +84,8 @@ import {
   loadStoredPost,
   loadStoredMotion,
   loadStoredTimeline,
+  loadStoredBuilderStack,
+  saveStoredBuilderStack,
   saveStoredMods,
   saveStoredPost,
   saveStoredMotion,
@@ -115,6 +117,12 @@ import {
   markSessionDirty,
 } from "./persistence";
 import { getPrefs, setPrefs } from "./prefs";
+import {
+  BUILDER2_ID,
+  packBuilderParams,
+  rebuildBuilder2,
+  type BuilderStack,
+} from "../render/builder2";
 import { crossedBoundary, hasFutureBoundary, type QuantizeMode } from "./quantize";
 import { type MidiBinding, type MidiLearn } from "./midi";
 import type { SliceCtx } from "./slices/ctx";
@@ -160,6 +168,8 @@ interface DocumentSlice {
   /** Spline-connected spectrum sampling (no hard bin corners), all visuals. */
   smoothSpectrum: boolean;
   timeline: Timeline;
+  /** Builder Studio layer stack (renders when presetId === "builder2"). */
+  builderStack: BuilderStack;
   post: PostSettings;
   motion: MotionSettings;
 }
@@ -307,6 +317,8 @@ interface Actions {
   setAspect(aspect: Aspect): void;
   setSmoothSpectrum(v: boolean): void;
   setTimeline(timeline: Timeline): void;
+  /** Replace the Builder Studio stack (undoable; recompiles only on structural change). */
+  setBuilderStack(stack: BuilderStack): void;
   setShowTimeline(v: boolean): void;
   setPost(patch: Partial<PostSettings>): void;
   setMotion(patch: Partial<MotionSettings>): void;
@@ -506,6 +518,7 @@ export const useVizStore = create<VizState>((set, get) => {
     lyricStyle: s.lyricStyle,
     audiogram: s.audiogram,
     customDefs: referencedCustomDefs(s),
+    builderStack: s.builderStack,
   });
 
   /** Record the current document before a mutation (gesture-grouped). */
@@ -745,6 +758,7 @@ export const useVizStore = create<VizState>((set, get) => {
     modsByPreset: initialMods,
     smoothSpectrum: localStorage.getItem("viz.smoothSpectrum") === "1",
     timeline: loadStoredTimeline(),
+    builderStack: loadStoredBuilderStack(),
     post: loadStoredPost(),
     motion: loadStoredMotion(),
 
@@ -877,6 +891,10 @@ export const useVizStore = create<VizState>((set, get) => {
           getRenderer()?.setSmoothSpectrum(get().smoothSpectrum);
           getRenderer()?.setPost(get().post);
           getRenderer()?.setMotion(get().motion);
+          // Builder Studio: a fresh renderer's layer-param buffer is zeroed —
+          // every layer would render at opacity 0 until the first stack edit.
+          rebuildBuilder2(get().builderStack);
+          getRenderer()?.setBuilderParams(packBuilderParams(get().builderStack));
           applyCoverArt(); // new renderer starts without a cover bound
           invalidateBgCaches(); // a fresh renderer holds no bitmap/frames
           applyBgImage(); // ...and without a background image
@@ -1196,6 +1214,19 @@ export const useVizStore = create<VizState>((set, get) => {
       getRenderer()?.setSmoothSpectrum(v);
     },
 
+    setBuilderStack(stack) {
+      record("builder2");
+      const builderStack = stack;
+      set({ builderStack });
+      saveStoredBuilderStack(builderStack);
+      const def = rebuildBuilder2(builderStack);
+      getRenderer()?.setBuilderParams(packBuilderParams(builderStack));
+      // Structural edits produce a NEW def object; installing it recompiles
+      // (cached by structure). Value-only edits keep the object, so this is
+      // a no-op for the pipeline and the buffer write above does the work.
+      if (get().presetId === BUILDER2_ID) getRenderer()?.setPreset(def);
+    },
+
     setTimeline(timeline) {
       record("timeline");
       set({ timeline });
@@ -1500,6 +1531,7 @@ export const useVizStore = create<VizState>((set, get) => {
         customDefs,
         lyricStyle: doc.lyricStyle,
         audiogram: doc.audiogram,
+        builderStack: doc.builderStack,
         // Keep the export resolution consistent with the incoming aspect
         // (covers project-open AND undo/redo of aspect changes).
         exportSettings: {
@@ -1538,6 +1570,12 @@ export const useVizStore = create<VizState>((set, get) => {
       getRenderer()?.setMotion(doc.motion);
       saveStoredLyricStyle(doc.lyricStyle);
       saveStoredAudiogram(doc.audiogram);
+      saveStoredBuilderStack(doc.builderStack);
+      // Builder Studio: regenerate the def (identity changes only on
+      // structural difference) and re-upload the value block. setPreset
+      // below picks up the new def when builder2 is the active preset.
+      rebuildBuilder2(doc.builderStack);
+      getRenderer()?.setBuilderParams(packBuilderParams(doc.builderStack));
       // Lyric style / audiogram feed the frame-keyed dynamic overlay — force
       // a recompose so undo/open shows the incoming style immediately.
       shared.lastFrameKey = NULL_FRAME_KEY;

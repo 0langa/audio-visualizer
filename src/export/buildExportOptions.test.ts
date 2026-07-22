@@ -33,6 +33,7 @@ function doc(over: Partial<ProjectDocument> = {}): ProjectDocument {
     lyricStyle: { ...DEFAULT_LYRIC_STYLE },
     audiogram: { ...DEFAULT_AUDIOGRAM },
     customDefs: [],
+    builderStack: { layers: [] },
     ...over,
   };
 }

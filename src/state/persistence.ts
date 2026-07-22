@@ -19,6 +19,7 @@ import { validLyricStyle, type LyricStyle } from "./lyrics";
 import { validAudiogram, type AudiogramSettings } from "./audiogram";
 import type { QuantizeMode } from "./quantize";
 import { getPrefs, setPrefs } from "./prefs";
+import { defaultBuilderStack, validBuilderStack, type BuilderStack } from "../render/builder2";
 import { validMidiBindings, type MidiBinding } from "./midi";
 import type { ExportSettings } from "./store";
 
@@ -341,7 +342,17 @@ export function saveStoredMotion(motion: MotionSettings): void {
   scheduleWrite(LS_MOTION, () => localStorage.setItem(LS_MOTION, JSON.stringify(motion)));
 }
 const LS_MODS = "viz.mods.v1";
+const LS_BUILDER = "viz.builderStack.v1";
 const LS_TIMELINE = "viz.timeline.v1";
+
+export function loadStoredBuilderStack(): BuilderStack {
+  const raw = readJson<unknown>(LS_BUILDER, null);
+  return raw === null ? defaultBuilderStack() : validBuilderStack(raw);
+}
+
+export function saveStoredBuilderStack(stack: BuilderStack): void {
+  scheduleWrite(LS_BUILDER, () => localStorage.setItem(LS_BUILDER, JSON.stringify(stack)));
+}
 
 export function loadStoredTimeline(): Timeline {
   return validTimeline(readJson(LS_TIMELINE, null));

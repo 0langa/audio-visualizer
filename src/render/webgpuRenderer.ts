@@ -248,6 +248,13 @@ struct Uniforms {
 @group(0) @binding(7) var feedbackTex: texture_2d<f32>;
 @group(0) @binding(8) var coverTex: texture_2d<f32>;
 @group(0) @binding(9) var bgTex: texture_2d<f32>;
+// Builder Studio per-layer parameters: 16 f32 slots per layer instance
+// (slot layout defined in render/builder2.ts). A storage buffer, not the
+// 48-lane params array, so a deep layer stack never hits the uniform cap.
+@group(0) @binding(10) var<storage, read> builderLayers: array<f32>;
+
+// Builder Studio: parameter slot s (0..15) of layer instance li.
+fn LP(li: u32, s: u32) -> f32 { return builderLayers[li * 16u + s]; }
 
 // Reserved (L24): raw-index param access, superseded by the generated
 // P_<key>() accessors (see setPreset()) which every built-in and custom
@@ -1220,6 +1227,7 @@ export class WebGPURenderer implements Renderer {
   private binsBuf: GPUBuffer | null = null;
   private peaksBuf: GPUBuffer | null = null;
   private paramsBuf: GPUBuffer;
+  private builderBuf: GPUBuffer;
   private waveBuf: GPUBuffer;
   private binCapacity = 0;
   /** 1x1 transparent stand-in bound when no overlay is set. */
@@ -1436,6 +1444,11 @@ export class WebGPURenderer implements Renderer {
       size: MAX_PARAMS * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
+    // Builder Studio layer params: BUILDER_MAX_LAYERS * 16 f32 slots.
+    this.builderBuf = device.createBuffer({
+      size: 16 * 16 * 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
     this.waveBuf = device.createBuffer({
       size: WAVE_POINTS * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -1541,6 +1554,7 @@ export class WebGPURenderer implements Renderer {
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
         { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
         { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: storage },
       ],
     });
     this.pipelineLayout = device.createPipelineLayout({
@@ -1671,6 +1685,12 @@ export class WebGPURenderer implements Renderer {
     this.post = post;
   }
 
+  /** Upload the Builder Studio per-layer parameter block (builder2.ts packs
+   * it). Cheap enough to call on every stack/param edit. */
+  setBuilderParams(data: Float32Array): void {
+    this.device.queue.writeBuffer(this.builderBuf, 0, data, 0, Math.min(data.length, 256));
+  }
+
   /** (Re)create the HDR scene target + half-res bloom targets + post pipelines. */
   private ensureGraphTargets(): void {
     const w = Math.max(1, this.canvas.width);
@@ -1786,6 +1806,7 @@ export class WebGPURenderer implements Renderer {
           { binding: 7, resource: this.visTex!.createView() },
           { binding: 8, resource: (this.coverTexture ?? this.emptyCover).createView() },
           { binding: 9, resource: (this.bgTexture ?? this.emptyBg).createView() },
+          { binding: 10, resource: { buffer: this.builderBuf } },
         ],
       });
     }
@@ -2715,6 +2736,7 @@ export class WebGPURenderer implements Renderer {
           },
           { binding: 8, resource: (this.coverTexture ?? this.emptyCover).createView() },
           { binding: 9, resource: (this.bgTexture ?? this.emptyBg).createView() },
+          { binding: 10, resource: { buffer: this.builderBuf } },
         ],
       });
     }
@@ -2798,6 +2820,7 @@ export class WebGPURenderer implements Renderer {
           },
           { binding: 8, resource: (this.coverTexture ?? this.emptyCover).createView() },
           { binding: 9, resource: (this.bgTexture ?? this.emptyBg).createView() },
+          { binding: 10, resource: { buffer: this.builderBuf } },
         ],
       });
     }

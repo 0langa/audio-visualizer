@@ -270,6 +270,8 @@ export interface Renderer {
    * null clears it, making hasCover() false.
    */
   setCoverArt(source: ImageBitmap | null): void;
+  /** Upload the Builder Studio per-layer parameter block (builder2.ts). */
+  setBuilderParams(data: Float32Array): void;
   /**
    * Baked background image (blur/dim already applied), cover-fit behind the
    * visualization when bg.mode is image. Takes ownership; null clears it.

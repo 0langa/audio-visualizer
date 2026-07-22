@@ -41,6 +41,7 @@ function doc(marker: number): ProjectDocument {
       color: "#7c5cff",
     },
     customDefs: [],
+    builderStack: { layers: [] },
   };
 }
 

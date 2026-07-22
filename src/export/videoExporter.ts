@@ -49,6 +49,8 @@ export interface ExportOptions {
   audiogram?: { settings: AudiogramSettings; waveform: Float32Array | null };
   /** User-authored WGSL presets (registered in the worker). */
   customPresets?: PresetDefLike[];
+  /** Builder Studio stack (renders when a presetId resolves to "builder2"). */
+  builderStack?: import("../render/builder2").BuilderStack;
   presetId: string;
   params: ParamValues;
   bg: BgSettings;
@@ -339,6 +341,7 @@ export async function exportVideo(audio: AudioBuffer, o: ExportOptions): Promise
         ? { ...o.audiogram, waveform: sliceWaveform(o.audiogram.waveform, o.segment, full) }
         : o.audiogram,
     customPresets: o.customPresets,
+    builderStack: o.builderStack,
     paramsByPreset: o.paramsByPreset,
     modsByPreset: o.modsByPreset,
     timeline:

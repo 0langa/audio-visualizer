@@ -1,6 +1,7 @@
 import { BG_PRESET, DEFAULT_MOTION, DEFAULT_POST } from "../render/types";
 import { DEFAULT_LYRIC_STYLE } from "./lyrics";
 import { DEFAULT_AUDIOGRAM } from "./audiogram";
+import { defaultBuilderStack } from "../render/builder2";
 import type { ProjectDocument } from "./project";
 import type { ThemeMeta } from "./themes";
 import type { SyncSettings } from "../audio/types";
@@ -41,6 +42,7 @@ function doc(
     lyricStyle: { ...DEFAULT_LYRIC_STYLE },
     audiogram: { ...DEFAULT_AUDIOGRAM },
     customDefs: [],
+    builderStack: defaultBuilderStack(),
     ...rest,
   };
 }
