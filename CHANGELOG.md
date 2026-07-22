@@ -11,6 +11,28 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.41.0] - 2026-07-23
+
+The settings release — the two UI structures the app had outgrown, rebuilt.
+
+### Added
+
+- **App settings page (Ctrl+,).** App-level preferences finally have a home,
+  separate from the per-visual panel: autosave delay, remembered save folder,
+  a live-preview frame cap (30/60/display — exports always render every
+  frame), a GPU preference for dual-GPU machines, and the updater controls
+  (moved from Help) with an auto-check toggle.
+- **The settings panel grew up.** Five tabs (Visual / Sync / Scene / Text /
+  Live) instead of one 13-section scroll, every section collapsible (both
+  remembered), and a search box that finds any setting across all tabs by
+  name — with ~300 parameters in the app, "type bloom" beats scrolling.
+
+### Changed
+
+- Small app preferences consolidated into one validated store
+  (`beatform.prefs.v1`) with automatic migration; heavy per-project caches
+  intentionally stay separate.
+
 ## [2.40.0] - 2026-07-22
 
 The foundation release: a consolidation pass the codebase had earned after
