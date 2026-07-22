@@ -1191,7 +1191,13 @@ export const useVizStore = create<VizState>((set, get) => {
     },
 
     setBg(bg) {
-      record("bg");
+      // A background MODE switch (Preset/Solid/Transparent) is a discrete action
+      // that must undo on its own; a colour/dim/blur drag routed through setBg is
+      // a gesture that should collapse into one entry. "bg-mode" is in history's
+      // UNGROUPABLE set and "bg" is not, so key by whether the mode changed —
+      // without this, toggling mode right after a colour drag folds both into a
+      // single undo.
+      record(get().bg.mode !== bg.mode ? "bg-mode" : "bg");
       set({ bg });
       saveStoredBg(bg);
       getRenderer()?.setBackground(bg);
@@ -1208,7 +1214,7 @@ export const useVizStore = create<VizState>((set, get) => {
         return;
       }
       if (!img) return;
-      record("bg");
+      record("bg-mode"); // picking an image always switches mode -> discrete undo
       const asset: OverlayAsset = {
         id: `as-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         name: img.name,
@@ -1255,7 +1261,7 @@ export const useVizStore = create<VizState>((set, get) => {
         return;
       }
       if (!vid) return;
-      record("bg");
+      record("bg-mode"); // picking a video always switches mode -> discrete undo
       const asset: OverlayAsset = {
         id: `as-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         name: vid.name,
@@ -1263,10 +1269,14 @@ export const useVizStore = create<VizState>((set, get) => {
       };
       const assets = { ...get().assets, [asset.id]: asset };
       const prev = get().bg;
-      // Orphan-GC the previous video/image asset (same as pickBackgroundImage).
-      const prevId = prev.video?.assetId ?? prev.image?.assetId;
-      if (prevId && !get().overlayLayers.some((l) => "assetId" in l && l.assetId === prevId)) {
-        delete assets[prevId];
+      // Orphan-GC BOTH the previous image and video asset, not just one: with an
+      // image bg and a video bg both set, `video ?? image` freed only one and the
+      // other (tens of MB) leaked in state, autosave, .avproj and localStorage
+      // forever — matching pickBackgroundImage / useAlbumArtBackground.
+      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
+        if (prevId && !get().overlayLayers.some((l) => "assetId" in l && l.assetId === prevId)) {
+          delete assets[prevId];
+        }
       }
       const bg: BgSettings = {
         ...prev,
@@ -1288,7 +1298,7 @@ export const useVizStore = create<VizState>((set, get) => {
         set({ error: "The loaded track has no embedded cover art" });
         return;
       }
-      record("bg");
+      record("bg-mode"); // switching to album-art bg is a mode change -> discrete undo
       const asset: OverlayAsset = {
         id: `as-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         name: "Album art",

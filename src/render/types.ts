@@ -128,7 +128,11 @@ const CPU_MOTION_CAPS: Record<string, Partial<MotionCaps>> = {
 };
 
 export function presetMasters(preset: PresetDef): MotionCaps {
-  const w = preset.wgsl;
+  // Match on comment-STRIPPED source: a `u.spin` mentioned only in a `//` or
+  // `/* */` comment must not switch on a UI master the shader never reads
+  // (same stringly-typed hazard usesFeedback was hardened against). WGSL has no
+  // string literals, so stripping both comment forms is sufficient.
+  const w = preset.wgsl.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
   const cpu = CPU_MOTION_CAPS[preset.id] ?? {};
   return {
     rotation: cpu.rotation ?? w.includes("u.spin"),
