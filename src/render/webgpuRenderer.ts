@@ -1256,7 +1256,15 @@ export class WebGPURenderer implements Renderer {
   private graphSize: [number, number] = [0, 0];
   /** Compiled fragment pipelines, keyed by preset def object (see setPreset).
    * Weak so an unregistered/edited custom preset's pipeline can be collected. */
-  private pipelineCache = new WeakMap<PresetDef, GPURenderPipeline>();
+  /** Per-preset compiled artifacts. `scene` targets the HDR scene texture
+   * (the multi-pass graph); `direct` targets the swapchain and exists only
+   * once the M24 fast path has needed it (all-neutral post, no multi-pass
+   * features). Both share one shader module, so the fast path never pays a
+   * second WGSL compile. */
+  private pipelineCache = new WeakMap<
+    PresetDef,
+    { module: GPUShaderModule; scene: GPURenderPipeline; direct?: GPURenderPipeline }
+  >();
   /** Previous render's track time, for the per-frame dt uniform (-1 = none). */
   private lastRenderTime = -1;
   private postUniform: GPUBuffer;
@@ -2309,7 +2317,7 @@ export class WebGPURenderer implements Renderer {
     // NEW object and correctly recompiles.
     const cached = this.pipelineCache.get(preset);
     if (cached) {
-      this.pipeline = cached;
+      this.pipeline = cached.scene;
       this.bindGroup = null;
       return;
     }
@@ -2334,8 +2342,44 @@ export class WebGPURenderer implements Renderer {
       },
       primitive: { topology: "triangle-list" },
     });
-    this.pipelineCache.set(preset, this.pipeline);
+    this.pipelineCache.set(preset, { module, scene: this.pipeline });
     this.bindGroup = null; // rebuild lazily (depends on bins buffers)
+  }
+
+  /** Swapchain-format variant of the active preset's pipeline, for the M24
+   * fast path (neutral post → no HDR intermediate, no fs_final pass). Built
+   * lazily from the cached module, then reused for the preset's lifetime. */
+  private directPipelineFor(preset: PresetDef): GPURenderPipeline {
+    const entry = this.pipelineCache.get(preset);
+    if (!entry) throw new Error("direct pipeline requested before setPreset");
+    if (!entry.direct) {
+      entry.direct = this.device.createRenderPipeline({
+        layout: this.pipelineLayout,
+        vertex: { module: entry.module, entryPoint: "vs_main" },
+        fragment: {
+          module: entry.module,
+          entryPoint: "fs_main",
+          targets: [{ format: this.format }],
+        },
+        primitive: { topology: "triangle-list" },
+      });
+    }
+    return entry.direct;
+  }
+
+  /** All-neutral post = fs_final is a pure copy, so the whole graph can be
+   * skipped (M24). bloomThreshold is ignored: it only feeds the bright pass,
+   * which bloom = 0 already disables. */
+  private postIsNeutral(): boolean {
+    const p = this.post;
+    return (
+      p.bloom <= 0 &&
+      p.exposure === 1 &&
+      !p.tonemap &&
+      p.vignette <= 0 &&
+      p.grain <= 0 &&
+      p.chromatic <= 0
+    );
   }
 
   resize(width: number, height: number, dpr: number): void {
@@ -2441,7 +2485,14 @@ export class WebGPURenderer implements Renderer {
       this.device.queue.writeBuffer(this.blendUniform, 0, this.blendData);
       this.ensureFadeTargets();
     }
-    this.ensureGraphTargets();
+    // M24 fast path: with an all-neutral post chain and none of the
+    // multi-pass features active, fs_final is a pure copy — draw the preset
+    // straight to the swapchain and skip the full-res HDR intermediate plus
+    // the extra fullscreen pass every frame. This is the app's DEFAULT state
+    // (DEFAULT_POST is neutral), so most users get the win.
+    const direct =
+      !fading && !useFeedback && !particlesActive && !mesh3dActive && this.postIsNeutral();
+    if (!direct) this.ensureGraphTargets();
     // Particles + feedback both draw into visTex, then composite -> sceneTex.
     // A crossfade needs histTex too whenever either side of it uses feedback
     // (M14) — the fading branch below shares it exactly like the plain
@@ -2454,7 +2505,7 @@ export class WebGPURenderer implements Renderer {
       (fading && (this.presetUsesFeedback || this.transitionPresetUsesFeedback))
     )
       this.ensureFeedbackTargets();
-    const scene = this.sceneTex!.createView();
+    const scene = direct ? null : this.sceneTex!.createView();
 
     const encoder = this.device.createCommandEncoder();
     const drawPass = (
@@ -2473,14 +2524,21 @@ export class WebGPURenderer implements Renderer {
       pass.end();
     };
 
-    if (particlesActive) {
+    if (direct) {
+      // M24: preset composites inline straight onto the swapchain.
+      drawPass(
+        this.directPipelineFor(this.preset),
+        this.getBindGroup(),
+        this.context.getCurrentTexture().createView(),
+      );
+    } else if (particlesActive) {
       // Sim + additive draw into visTex, then the shared composite -> sceneTex.
       this.renderParticles(encoder, time, f, params);
-      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene);
+      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene!);
     } else if (mesh3dActive) {
       // Depth-tested 3D bar grid into visTex, then the shared composite.
       this.renderMesh3d(encoder, time, f, params);
-      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene);
+      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene!);
     } else if (useFeedback) {
       // Fresh history holds garbage / a previous preset's trails — clear it
       // before the first feedback frame so trails start from black.
@@ -2488,7 +2546,7 @@ export class WebGPURenderer implements Renderer {
       // 1) preset draws its raw visual (samples histTex) into visTex.
       drawPass(this.pipeline, this.getBindGroup(), this.visTex!.createView());
       // 2) composite pass finishes visTex -> sceneTex (bg + overlay).
-      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene);
+      drawPass(this.compositePipeline!, this.getCompositeBindGroup(), scene!);
       // 3) capture this frame's raw visual as next frame's history.
       encoder.copyTextureToTexture({ texture: this.visTex! }, { texture: this.histTex! }, [
         this.feedbackSize[0],
@@ -2496,7 +2554,7 @@ export class WebGPURenderer implements Renderer {
       ]);
     } else if (!fading) {
       // Non-feedback: preset composites inline straight into the scene target.
-      drawPass(this.pipeline, this.getBindGroup(), scene);
+      drawPass(this.pipeline, this.getBindGroup(), scene!);
     } else {
       // M14: a feedback preset crossfading in/out shares histTex with the
       // plain feedback path instead of being forced to emptyFeedback (a
@@ -2555,11 +2613,12 @@ export class WebGPURenderer implements Renderer {
           ],
         });
       }
-      drawPass(this.blendPipeline!, this.blendBindGroup, scene);
+      drawPass(this.blendPipeline!, this.blendBindGroup, scene!);
     }
 
     // Post pass: bloom + tonemap/vignette/grain/chromatic -> swapchain.
-    this.runPost(encoder, time, clearA);
+    // Skipped on the direct path — the preset already drew the swapchain.
+    if (!direct) this.runPost(encoder, time, clearA);
     this.device.queue.submit([encoder.finish()]);
   }
 
