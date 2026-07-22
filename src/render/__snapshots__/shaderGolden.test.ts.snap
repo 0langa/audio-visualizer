@@ -1,0 +1,4130 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`shader golden baseline > aurora: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_bright() -> f32 { return params[1u]; }
+fn P_react() -> f32 { return params[2u]; }
+fn P_flow() -> f32 { return params[3u]; }
+fn P_thick() -> f32 { return params[4u]; }
+fn P_baseY() -> f32 { return params[5u]; }
+fn P_layers() -> f32 { return params[6u]; }
+fn P_specAmt() -> f32 { return params[7u]; }
+fn P_beatPulse() -> f32 { return params[8u]; }
+fn P_wave() -> f32 { return params[9u]; }
+fn P_hueStep() -> f32 { return params[10u]; }
+fn P_hueSpread() -> f32 { return params[11u]; }
+fn P_rays() -> f32 { return params[12u]; }
+fn P_sat() -> f32 { return params[13u]; }
+fn P_stars() -> f32 { return params[14u]; }
+fn P_bgGlow() -> f32 { return params[15u]; }
+fn P_mirror() -> f32 { return params[16u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  let y = uv.y;
+
+  // Optional left/right symmetry — folds curtains AND stars together using
+  // the shared club-mirror fold at its bilateral setting (2). 1 = off.
+  let cx = (uv.x - 0.5) * u.aspect;
+  let foldedX = kaleido(vec2f(cx, 0.0), P_mirror()).x;
+  let x = clamp(foldedX / u.aspect + 0.5, 0.0, 1.0);
+
+  // Deep night sky: near-black but hued, not grey, so the curtains have
+  // real darkness to glow against instead of sitting on flat mid-grey fog.
+  let skyPal = cosPalette(fract(P_hue() / 360.0 + 0.5), vec3f(0.025), vec3f(0.02), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+  var col = skyPal;
+
+  // Optional starfield behind everything (small round points, twinkling).
+  if (P_stars() > 0.5) {
+    let gp = vec2f(x * u.aspect, y) * 54.0;
+    let cell = floor(gp);
+    let h = hash21(cell);
+    if (h > 0.972) {
+      let sp = vec2f(hash21(cell + 0.37), hash21(cell + 0.71));
+      let star = smoothstep(0.13, 0.0, length(gp - cell - sp));
+      let tw = 0.5 + 0.5 * sin(u.time * (1.0 + h * 6.0) + h * 40.0);
+      col += vec3f(0.7, 0.82, 1.0) * star * (h - 0.972) * 20.0 * tw * (1.0 - y * 0.4);
+    }
+  }
+
+  // Sync-reactive envelope + beat pulse: switching the sync source (bass /
+  // treble / kicks / ...) visibly changes the drive here.
+  let drive = clamp(u.drive, 0.0, 1.5);
+  let layers = i32(P_layers());
+  for (var i = 0; i < 3; i++) {
+    if (i >= layers) { break; }
+    let fi = f32(i);
+
+    // Depth cue: back curtains (higher index) sit dimmer and drift slower —
+    // cheap parallax so the stack reads as depth, not three identical
+    // decals stacked at different heights.
+    let depthT = fi / f32(max(layers - 1, 1));
+    let fog = mix(1.0, 0.55, depthT);
+
+    // Per-layer beat stagger (golden-ratio conjugate, same shape as
+    // gridPulse()) so curtains don't all flash in perfect unison — identical
+    // phase across layers is what reads as one pulsing sheet, not three.
+    var pulse = 1.0 + u.driveBeat * P_beatPulse() * u.pulse;
+    if (u.bpm > 0.5) {
+      let bph = fract(u.beatPhase + fi * 0.6180339887);
+      let staggered = max(exp(-bph * 5.0) - 0.03, 0.0) / 0.97;
+      pulse = 1.0 + staggered * P_beatPulse() * u.pulse;
+    }
+
+    // Non-wrapping spectrum window per curtain (clamp, never fract) so there
+    // is no hard seam where the sample index would roll over.
+    let sx = clamp(x * 0.82 + fi * 0.09, 0.0, 1.0);
+    let spec = binAt(sx);
+    // Wavy vertical center of the curtain, drifting slower with depth.
+    let flowT = u.time * P_flow() * 0.15 * mix(1.0, 0.6, depthT);
+    let wob = fbm(vec2f(x * (2.0 + fi) + fi * 7.0, flowT + fi * 3.0));
+    let cy = P_baseY() + 0.15 * fi + (wob - 0.5) * 0.35 * P_wave();
+    // Capped so a loud, bass-heavy passage (spec and drive can both sit near
+    // their ceiling at once) can't run this away to the point every curtain
+    // pixel blows past the hot-core threshold below — it stays a strong,
+    // legible reaction instead of a flat white-out.
+    let react = min(0.32 + spec * P_specAmt() + drive * P_react(), 2.2);
+    let thick = P_thick() * (0.55 + react * 0.9) * pulse;
+    let d = (y - cy) / max(thick, 1e-3);
+    let band = exp(-d * d);
+    let ray = 1.0 - P_rays()
+            + P_rays() * (0.5 + 0.5 * sin(x * (60.0 + fi * 30.0) + fbm(vec2f(x * 8.0, u.time * 0.2)) * 8.0));
+
+    // Cosine palette keyed by curtain index + spectrum, instead of an hsl
+    // hue that could drift 400+ degrees through the desaturated middle of
+    // the wheel — this stays saturated at every hueStep/hueSpread setting.
+    let palT = fract(P_hue() / 360.0 + fi * (P_hueStep() / 360.0)
+             + (x - 0.5) * (P_hueSpread() / 360.0) + spec * 0.12);
+    let chroma = mix(0.08, 0.5, P_sat());
+    let pal = cosPalette(palT, vec3f(0.5), vec3f(chroma), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+
+    // Loudness is logarithmic: compress react through pow(.,0.6) before it
+    // drives brightness (doc guidance) so 3 stacked curtains overlapping
+    // during a loud passage tonemap into rich saturated colour instead of
+    // additively summing straight past white every time.
+    let reactGlow = pow(clamp(react / 2.2, 0.0, 1.0), 0.6) * 1.5;
+    var layerCol = pal * band * ray * reactGlow * pulse * P_bright() * fog;
+
+    // Hot core: only the curtain's exact vertical centerline, and only where
+    // the spectrum is genuinely loud there, desaturates toward white and
+    // pushes past 1.0 for tonemap() to roll off. Gating on band (which is a
+    // narrow Gaussian peak, naturally rare) rather than on react (which
+    // commonly sits above 1) is what keeps this a thin bright seam instead
+    // of blowing out the whole curtain — entirely missing before (flat
+    // hsl2rgb capped at l=0.55).
+    let hot = smoothstep(0.82, 0.98, band) * clamp(spec * 1.3, 0.0, 1.0) * fog;
+    layerCol = mix(layerCol, vec3f(1.0, 0.98, 0.95), hot * 0.6 * P_bright());
+    layerCol *= 1.0 + hot * 1.0;
+
+    col += layerCol;
+  }
+
+  // Soft sky glow rising from the horizon, lifted by the sync source.
+  let glowPal = cosPalette(fract(P_hue() / 360.0 + P_hueStep() / 360.0), vec3f(0.5), vec3f(mix(0.08, 0.4, P_sat())), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+  col += glowPal * smoothstep(0.0, 0.55, y) * P_bgGlow() * (0.3 + drive * 0.6) * 0.35;
+
+  col = tonemap(col * 1.1);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > aurora: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 140,
+    "key": "hue",
+  },
+  {
+    "default": 1,
+    "key": "bright",
+  },
+  {
+    "default": 0.8,
+    "key": "react",
+  },
+  {
+    "default": 1,
+    "key": "flow",
+  },
+  {
+    "default": 0.12,
+    "key": "thick",
+  },
+  {
+    "default": 0.5,
+    "key": "baseY",
+  },
+  {
+    "default": 3,
+    "key": "layers",
+  },
+  {
+    "default": 1.6,
+    "key": "specAmt",
+  },
+  {
+    "default": 0.4,
+    "key": "beatPulse",
+  },
+  {
+    "default": 1,
+    "key": "wave",
+  },
+  {
+    "default": 55,
+    "key": "hueStep",
+  },
+  {
+    "default": 60,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.6,
+    "key": "rays",
+  },
+  {
+    "default": 0.8,
+    "key": "sat",
+  },
+  {
+    "default": 0,
+    "key": "stars",
+  },
+  {
+    "default": 0.25,
+    "key": "bgGlow",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+]
+`;
+
+exports[`shader golden baseline > bass-circle: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_radius() -> f32 { return params[1u]; }
+fn P_pump() -> f32 { return params[2u]; }
+fn P_barLen() -> f32 { return params[3u]; }
+fn P_particles() -> f32 { return params[4u]; }
+fn P_rimBright() -> f32 { return params[5u]; }
+fn P_cover() -> f32 { return params[6u]; }
+fn P_symmetry() -> f32 { return params[7u]; }
+fn P_spin() -> f32 { return params[8u]; }
+fn P_hueSpread() -> f32 { return params[9u]; }
+fn P_beatPump() -> f32 { return params[10u]; }
+fn P_gap() -> f32 { return params[11u]; }
+fn P_barGlow() -> f32 { return params[12u]; }
+fn P_partDensity() -> f32 { return params[13u]; }
+fn P_partFill() -> f32 { return params[14u]; }
+fn P_partFloat() -> f32 { return params[15u]; }
+fn P_beatBurst() -> f32 { return params[16u]; }
+fn P_coverMix() -> f32 { return params[17u]; }
+fn P_coverBright() -> f32 { return params[18u]; }
+fn P_vignette() -> f32 { return params[19u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  let c = centered(uv);
+  let r = length(c);
+  let a = atan2(c.y, c.x);
+  var col = vec3f(0.0);
+
+  // Whole assembly pumps with the sync source (Motion->Pulse scales it).
+  // The beat part rides the tempo grid when the track has one — the pump
+  // lands on every metronome beat, not only on flux spikes — and max() lets
+  // strong off-grid hits still punch through.
+  let beatP = max(u.driveBeat, gridPulse(7.0));
+  let pump = 1.0 + (u.drive * P_pump() + beatP * P_beatPump()) * u.pulse;
+  // Frame-safety: cap the swollen disc so a loud beat (big u.drive/pulse) can't
+  // balloon it past the frame. The top/bottom edge is r=0.5.
+  let circleR = min(P_radius() * pump, 0.34);
+
+  // --- Background bokeh particles: each drifts along its own slow path and
+  // twinkles, independent of the circle (the classic floating-dust layer).
+  // Drawn first so the ring + circle sit on top. ---
+  if (P_particles() > 0.01) {
+    let beat = 0.5 + beatP * P_beatBurst() * 0.7;
+    for (var l = 0; l < 2; l++) {
+      let fl = f32(l);
+      let scale = P_partDensity() * (1.0 + fl * 0.7);
+      // Parallax layer drift + per-particle wander give independent motion.
+      let drift = vec2f(u.time * P_partFloat() * (0.05 - fl * 0.02),
+                        u.time * P_partFloat() * (0.03 + fl * 0.02));
+      let q = c * scale + drift;
+      let cell = floor(q);
+      let fq = q - cell;
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          let cc = cell + vec2f(f32(dx), f32(dy));
+          let h1 = hash21(cc + fl * 57.3);
+          if (h1 > P_partFill()) { continue; }
+          let h2 = hash21(cc + fl * 57.3 + 11.7);
+          let h3 = hash21(cc + fl * 57.3 + 23.1);
+          let ph = h2 * TAU;
+          let wob = vec2f(sin(u.time * P_partFloat() * (0.5 + h2) + ph),
+                          cos(u.time * P_partFloat() * (0.6 + h3) + ph * 1.4)) * 0.38;
+          let pos = vec2f(f32(dx), f32(dy)) + 0.5 + wob;
+          let d = length(fq - pos);
+          let sz = (0.06 + h1 * 0.12) * (1.0 - fl * 0.2);
+          let tw = 0.4 + 0.6 * sin(u.time * (0.8 + h2 * 3.0) + h1 * 40.0);
+          let core = smoothstep(sz, 0.0, d);
+          let halo = exp(-d * d / max(sz * sz * 3.0, 1e-6)) * 0.5;
+          col += hsl2rgb(P_hue() + (h2 - 0.5) * P_hueSpread(), 0.5, 0.72)
+               * (core + halo) * tw * P_particles() * beat * (1.0 - fl * 0.3);
+        }
+      }
+    }
+  }
+
+  // --- Radial spectrum bars, mirrored around the ring (optional slow spin) ---
+  let sym = max(1.0, P_symmetry());
+  let seg = fract(a / TAU * sym + u.time * P_spin() * 0.05 * u.spin + 0.5);
+  let xs = abs(seg * 2.0 - 1.0);
+  let v = binAt(xs);
+  let barInner = circleR + P_gap();
+  // Radial bars stay inside the frame too (tip <= ~0.47).
+  let barLenMax = max(0.0, 0.47 - barInner);
+  let barLen = min(v * P_barLen(), barLenMax);
+  let barHue = P_hue() + xs * P_hueSpread();
+  let inBar = step(barInner, r) * step(r, barInner + barLen);
+  let along = (r - barInner) / max(barLen, 1e-3);
+  col = mix(col, hsl2rgb(barHue, 0.9, 0.4 + along * 0.35), inBar);
+  col += hsl2rgb(barHue, 0.95, 0.6) * exp(-max(r - (barInner + barLen), 0.0) * 22.0)
+       * v * P_barGlow() * step(barInner + barLen, r);
+
+  // --- Centre circle: cover art (or a cool dark fill) + a bright glowing rim ---
+  let inner = smoothstep(circleR, circleR - 0.02, r);
+  var fill = hsl2rgb(P_hue(), 0.5, 0.04 + u.drive * 0.07);
+  if (P_cover() > 0.5 && hasCover()) {
+    // Map the disc to the image (0..1), so the art fills the circle. No flip on
+    // y: uv already arrives top-down from the vertex stage, so centered()'s y
+    // grows downward exactly like the texture's v does. Negating it here hung
+    // the cover upside down.
+    let cuv = vec2f(c.x / circleR, c.y / circleR) * 0.5 + vec2f(0.5);
+    let art = coverSample(cuv).rgb * P_coverBright();
+    fill = mix(fill, art, P_coverMix());
+  }
+  col = mix(col, fill, inner);
+  let rim = exp(-abs(r - circleR) * 90.0);
+  col += hsl2rgb(P_hue(), 0.9, 0.65) * rim * P_rimBright() * (0.7 + u.drive * 0.6 + beatP * 0.5);
+  col += hsl2rgb(P_hue() + 20.0, 0.8, 0.5) * smoothstep(circleR, 0.0, r) * (0.08 + u.drive * 0.3) * inner;
+
+  col *= 1.0 - r * r * P_vignette();
+  return vec4f(col, 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > bass-circle: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 280,
+    "key": "hue",
+  },
+  {
+    "default": 0.18,
+    "key": "radius",
+  },
+  {
+    "default": 0.18,
+    "key": "pump",
+  },
+  {
+    "default": 0.24,
+    "key": "barLen",
+  },
+  {
+    "default": 1,
+    "key": "particles",
+  },
+  {
+    "default": 0.8,
+    "key": "rimBright",
+  },
+  {
+    "default": 1,
+    "key": "cover",
+  },
+  {
+    "default": 2,
+    "key": "symmetry",
+  },
+  {
+    "default": 0,
+    "key": "spin",
+  },
+  {
+    "default": 60,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.16,
+    "key": "beatPump",
+  },
+  {
+    "default": 0.02,
+    "key": "gap",
+  },
+  {
+    "default": 0.5,
+    "key": "barGlow",
+  },
+  {
+    "default": 7,
+    "key": "partDensity",
+  },
+  {
+    "default": 0.45,
+    "key": "partFill",
+  },
+  {
+    "default": 0.6,
+    "key": "partFloat",
+  },
+  {
+    "default": 0.7,
+    "key": "beatBurst",
+  },
+  {
+    "default": 0.9,
+    "key": "coverMix",
+  },
+  {
+    "default": 0.85,
+    "key": "coverBright",
+  },
+  {
+    "default": 0.3,
+    "key": "vignette",
+  },
+]
+`;
+
+exports[`shader golden baseline > builder: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_hueSpread() -> f32 { return params[1u]; }
+fn P_bgGlow() -> f32 { return params[2u]; }
+fn P_beatFlash() -> f32 { return params[3u]; }
+fn P_bars() -> f32 { return params[4u]; }
+fn P_radial() -> f32 { return params[5u]; }
+fn P_waveLine() -> f32 { return params[6u]; }
+fn P_waveCircle() -> f32 { return params[7u]; }
+fn P_orb() -> f32 { return params[8u]; }
+fn P_stars() -> f32 { return params[9u]; }
+fn P_rings() -> f32 { return params[10u]; }
+fn P_barsHeight() -> f32 { return params[11u]; }
+fn P_barsGap() -> f32 { return params[12u]; }
+fn P_barsGlow() -> f32 { return params[13u]; }
+fn P_barsPeaks() -> f32 { return params[14u]; }
+fn P_radialR() -> f32 { return params[15u]; }
+fn P_radialLen() -> f32 { return params[16u]; }
+fn P_radialSym() -> f32 { return params[17u]; }
+fn P_lineY() -> f32 { return params[18u]; }
+fn P_lineAmp() -> f32 { return params[19u]; }
+fn P_lineGlow() -> f32 { return params[20u]; }
+fn P_circleR() -> f32 { return params[21u]; }
+fn P_circleAmp() -> f32 { return params[22u]; }
+fn P_orbSize() -> f32 { return params[23u]; }
+fn P_orbPump() -> f32 { return params[24u]; }
+fn P_orbWobble() -> f32 { return params[25u]; }
+fn P_starDensity() -> f32 { return params[26u]; }
+fn P_starSpeed() -> f32 { return params[27u]; }
+fn P_starStreak() -> f32 { return params[28u]; }
+fn P_ringStart() -> f32 { return params[29u]; }
+fn P_ringEnd() -> f32 { return params[30u]; }
+fn P_ringSharp() -> f32 { return params[31u]; }
+fn P_ringBright() -> f32 { return params[32u]; }
+fn P_orbBeat() -> f32 { return params[33u]; }
+fn P_vignette() -> f32 { return params[34u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  let p = centered(uv);
+  let r = length(p);
+  let a = atan2(p.y, p.x);
+
+  // --- Background wash + beat pulse (tempo-true when the track has a grid)
+  let beatP = max(u.driveBeat, gridPulse(6.0));
+  var col = hsl2rgb(P_hue() + 40.0, 0.5, 0.05 + u.bass * 0.04) * (1.0 - r * 0.8) * P_bgGlow() * 2.0;
+  col += hsl2rgb(P_hue(), 0.7, 0.5) * beatP * P_beatFlash() * (1.0 - r);
+
+  // --- Particles (behind everything else): same recipe as the Particles
+  // mode — per-particle wander + beat scatter, crisp cores, drifting field
+  if (P_stars() > 0.5) {
+    let pp = vec2f(uv.x * u.aspect, uv.y);
+    let spd = P_starSpeed() * (0.3 + u.drive * 0.9);
+    for (var l = 0; l < 2; l++) {
+      let fl = f32(l);
+      let n = P_starDensity() * (1.0 + fl * 0.4);
+      let q = pp * n - vec2f(0.0, -u.time * spd * n * 0.1); // gentle upward drift
+      let base = floor(q);
+      let f = q - base;
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          let cell = base + vec2f(f32(dx), f32(dy));
+          let h1 = hash21(cell + fl * 77.3);
+          if (h1 > 0.65) { continue; }
+          let h2 = hash21(cell + fl * 77.3 + 31.7);
+          let h3 = hash21(cell + fl * 77.3 + 63.1);
+          let ph = h2 * TAU;
+          let wob = vec2f(sin(u.time * 0.4 * (0.5 + h2) + ph),
+                          cos(u.time * 0.4 * (0.7 + h3) + ph * 1.7)) * 0.3;
+          let scat = normalize(vec2f(h2 - 0.5, h3 - 0.5) + 1e-4)
+                   * u.driveBeat * P_starStreak() * 0.5;
+          let d = f - (vec2f(f32(dx), f32(dy)) + 0.5 + wob + scat);
+          let s = 0.14 * (0.5 + h1) * (1.0 - fl * 0.25);
+          let dist = length(d);
+          let core = smoothstep(s * 0.38, s * 0.16, dist);
+          let halo = exp(-dot(d, d) / max(s * s * 0.5, 1e-5)) * 0.15;
+          col += hsl2rgb(P_hue() + (h2 - 0.5) * P_hueSpread(), 0.5, 0.8)
+               * (core + halo) * (1.0 - fl * 0.3) * 0.8;
+        }
+      }
+    }
+  }
+
+  // --- Bottom spectrum bars (same sampling as Spectrum Bars: honors the
+  // Motion->Detail master and the global Smooth-spectrum toggle)
+  if (P_bars() > 0.5) {
+    let n = round(mix(8.0, f32(u.binCount), u.detail));
+    let fi = clamp(uv.x * n, 0.0, n - 0.001);
+    let i = u32(fi);
+    let inBar = fract(fi);
+    let barCenter = (f32(i) + 0.5) / n;
+    var v = binAt(barCenter);
+    var pk = peakAt(barCenter);
+    var gapMask = step(P_barsGap() * 0.5, inBar) * step(inBar, 1.0 - P_barsGap() * 0.5);
+    if (u.smoothBins > 0.5) {
+      v = binAt(uv.x);
+      pk = peakAt(uv.x);
+      gapMask = 1.0;
+    }
+    let y = 1.0 - uv.y;
+    let barH = v * P_barsHeight();
+    let bHue = P_hue() + (fi / n) * P_hueSpread();
+    if (y < barH) {
+      let g = y / max(barH, 0.001);
+      col = mix(col, hsl2rgb(bHue, 0.85, 0.35 + g * 0.3), gapMask);
+    } else {
+      col += hsl2rgb(bHue, 0.9, 0.5) * exp(-(y - barH) * 12.0) * P_barsGlow() * v * gapMask;
+    }
+    if (P_barsPeaks() > 0.5) {
+      let capD = abs(y - pk * P_barsHeight());
+      col += hsl2rgb(bHue, 0.3, 0.9) * smoothstep(0.005, 0.0, capD) * gapMask * 0.8;
+    }
+  }
+
+  // --- Radial spectrum ring
+  if (P_radial() > 0.5) {
+    let seg = fract(a / TAU * P_radialSym() + 10.0);
+    let xs = abs(seg * 2.0 - 1.0);
+    let v = binAt(xs);
+    let inner = P_radialR() * (1.0 + u.bass * 0.1);
+    // Frame-safety: bar tips stay inside the frame (edge at r=0.5).
+    let len = min(v * P_radialLen(), max(0.0, 0.47 - inner));
+    let rHue = P_hue() + xs * P_hueSpread();
+    let inBar = step(inner, r) * step(r, inner + len);
+    let radial = (r - inner) / max(len, 0.001);
+    col = mix(col, hsl2rgb(rHue, 0.85, 0.35 + radial * 0.35), inBar);
+    col += hsl2rgb(rHue, 0.9, 0.5) * exp(-max(r - inner - len, 0.0) * 16.0) * 0.4 * v
+         * step(inner + len, r);
+  }
+
+  // --- Tempo pulse rings: born at the center on every beat, arriving at
+  // full reach exactly as the next beat lands (beatPhase). Falls back to the
+  // flux pulse's decay when the track has no grid yet.
+  if (P_rings() > 0.5) {
+    var pt = 1.0 - u.driveBeat;
+    var amp = u.driveBeat;
+    if (u.bpm > 0.5) {
+      pt = u.beatPhase;
+      amp = max(exp(-u.beatPhase * 2.5) - 0.08, 0.0) / 0.92;
+    }
+    if (amp > 0.005) {
+      let ringR = mix(P_ringStart(), P_ringEnd(), pt);
+      let d = abs(r - ringR);
+      let ringHue = P_hue() + 15.0 + pt * P_hueSpread() * 0.3;
+      col += hsl2rgb(ringHue, 0.8, 0.55)
+           * exp(-d * (30.0 + P_ringSharp() * 90.0)) * amp * P_ringBright();
+    }
+  }
+
+  // --- Waveform circle
+  if (P_waveCircle() > 0.5) {
+    let wv = waveAt(fract(a / TAU + 0.5));
+    // Frame-safety: the wave circle stays inside the frame at loud passages.
+    let cr = min(P_circleR() + wv * P_circleAmp() * (0.5 + u.drive * 1.2), 0.47);
+    let d = abs(r - cr);
+    let cHue = P_hue() + 30.0 + wv * 25.0;
+    col += hsl2rgb(cHue, 0.7, 0.55) * smoothstep(0.004, 0.0008, d) * 0.7;
+    col += hsl2rgb(cHue, 0.8, 0.5) * exp(-d * 110.0) * 0.25;
+  }
+
+  // --- Orb core
+  if (P_orb() > 0.5) {
+    // Sustained size rides energy; the beat kick is kept SEPARATE from the
+    // clamped level so it still pops the orb (radius + brightness) even when a
+    // loud passage has already driven level to its 1.0 ceiling.
+    let level = clamp(u.drive * 1.6, 0.0, 1.0);
+    let beatKick = clamp(gridPulse(7.0) * P_orbBeat(), 0.0, 1.0);
+    let spin = u.time * 0.35;
+    let amp = P_orbSize() * P_orbWobble() * (0.1 + level * 0.35);
+    let wob = sin(a * 3.0 + spin) * amp + sin(a * 6.0 - spin * 0.8 + 1.5) * amp * 0.4;
+    // Frame-safety: the orb can't balloon past the frame on a loud beat.
+    let orbR = min(P_orbSize() * (1.0 + level * P_orbPump() + beatKick * 0.4) + wob, 0.44);
+    let inside = smoothstep(orbR, orbR - 0.01, r);
+    let body = hsl2rgb(P_hue() + 20.0, 0.7, 0.18 + level * 0.3 + beatKick * 0.25 + exp(-r * 6.0) * 0.2);
+    col = mix(col, body, inside);
+    col += hsl2rgb(P_hue() + 20.0, 0.8, 0.6) * smoothstep(0.005, 0.0, abs(r - orbR)) * 0.6;
+  }
+
+  // --- Horizontal wave line (topmost)
+  if (P_waveLine() > 0.5) {
+    let w = (waveAt(uv.x) * 0.5 + waveAt(uv.x + 0.008) * 0.3 + waveAt(uv.x - 0.008) * 0.2)
+          / (0.35 + u.drive * 1.2);
+    let y = P_lineY() + clamp(w * P_lineAmp(), -0.4, 0.4);
+    let d = abs(uv.y - y);
+    let lHue = P_hue() + w * 30.0;
+    col += hsl2rgb(lHue, 0.85, 0.62) * smoothstep(0.003, 0.0007, d);
+    col += hsl2rgb(lHue, 0.9, 0.5) * exp(-d * (100.0 - P_lineGlow() * 60.0)) * (0.3 + P_lineGlow() * 0.5);
+  }
+
+  col *= 1.0 - r * r * P_vignette();
+  return vec4f(col, 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > builder: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 210,
+    "key": "hue",
+  },
+  {
+    "default": 90,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.35,
+    "key": "bgGlow",
+  },
+  {
+    "default": 0.15,
+    "key": "beatFlash",
+  },
+  {
+    "default": 1,
+    "key": "bars",
+  },
+  {
+    "default": 0,
+    "key": "radial",
+  },
+  {
+    "default": 1,
+    "key": "waveLine",
+  },
+  {
+    "default": 0,
+    "key": "waveCircle",
+  },
+  {
+    "default": 0,
+    "key": "orb",
+  },
+  {
+    "default": 0,
+    "key": "stars",
+  },
+  {
+    "default": 0,
+    "key": "rings",
+  },
+  {
+    "default": 0.5,
+    "key": "barsHeight",
+  },
+  {
+    "default": 0.25,
+    "key": "barsGap",
+  },
+  {
+    "default": 0.4,
+    "key": "barsGlow",
+  },
+  {
+    "default": 1,
+    "key": "barsPeaks",
+  },
+  {
+    "default": 0.22,
+    "key": "radialR",
+  },
+  {
+    "default": 0.25,
+    "key": "radialLen",
+  },
+  {
+    "default": 2,
+    "key": "radialSym",
+  },
+  {
+    "default": 0.5,
+    "key": "lineY",
+  },
+  {
+    "default": 0.25,
+    "key": "lineAmp",
+  },
+  {
+    "default": 0.5,
+    "key": "lineGlow",
+  },
+  {
+    "default": 0.3,
+    "key": "circleR",
+  },
+  {
+    "default": 0.05,
+    "key": "circleAmp",
+  },
+  {
+    "default": 0.14,
+    "key": "orbSize",
+  },
+  {
+    "default": 0.5,
+    "key": "orbPump",
+  },
+  {
+    "default": 0.4,
+    "key": "orbWobble",
+  },
+  {
+    "default": 6,
+    "key": "starDensity",
+  },
+  {
+    "default": 0.3,
+    "key": "starSpeed",
+  },
+  {
+    "default": 0.4,
+    "key": "starStreak",
+  },
+  {
+    "default": 0.1,
+    "key": "ringStart",
+  },
+  {
+    "default": 0.85,
+    "key": "ringEnd",
+  },
+  {
+    "default": 0.5,
+    "key": "ringSharp",
+  },
+  {
+    "default": 0.8,
+    "key": "ringBright",
+  },
+  {
+    "default": 0.25,
+    "key": "orbBeat",
+  },
+  {
+    "default": 0.5,
+    "key": "vignette",
+  },
+]
+`;
+
+exports[`shader golden baseline > covers exactly the registered preset set 1`] = `
+[
+  "spectrum-bars",
+  "radial-burst",
+  "oscilloscope",
+  "starfield",
+  "tunnel-rings",
+  "nebula",
+  "metaballs",
+  "led-matrix",
+  "voice-orb",
+  "echo-trails",
+  "particle-flow",
+  "spectrum-scape",
+  "aurora",
+  "synthwave",
+  "bass-circle",
+  "builder",
+]
+`;
+
+exports[`shader golden baseline > echo-trails: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_decay() -> f32 { return params[1u]; }
+fn P_zoom() -> f32 { return params[2u]; }
+fn P_swirl() -> f32 { return params[3u]; }
+fn P_radius() -> f32 { return params[4u]; }
+fn P_react() -> f32 { return params[5u]; }
+fn P_inject() -> f32 { return params[6u]; }
+fn P_beatZoom() -> f32 { return params[7u]; }
+fn P_flowSwirl() -> f32 { return params[8u]; }
+fn P_thick() -> f32 { return params[9u]; }
+fn P_hueSpin() -> f32 { return params[10u]; }
+fn P_hueDrift() -> f32 { return params[11u]; }
+fn P_kickFlash() -> f32 { return params[12u]; }
+fn P_vignette() -> f32 { return params[13u]; }
+fn P_mirror() -> f32 { return params[14u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  var c = centered(uv);              // aspect-corrected, centered at 0
+  c = kaleido(c, P_mirror());        // fold once; feedback re-samples the same fold every frame
+  let rad = length(c);
+  let ang = atan2(c.y, c.x);
+
+  // --- Feedback: inverse-warp the current coord back into the previous
+  // frame (zoom + swirl), sample it and decay. zoom>1 pulls content from
+  // nearer the center, so last frame's image grows outward = a tunnel. ---
+  // The whole feedback transform is per-RENDERED-FRAME, so it has to be scaled
+  // by dt like the decay below — otherwise a 30 fps export advects the trail
+  // half as many times as a 60 fps preview and the streaks are half as long.
+  // At 60 fps this factor is 1.0, so the tuned look is unchanged there.
+  let fpsComp = u.dt * 60.0;
+  let zoom = 1.0 + (P_zoom() * 0.06 + u.driveBeat * P_beatZoom() * 0.12 * u.pulse) * fpsComp;
+  let swirl = (P_swirl() * 0.15 + u.drive * P_flowSwirl() * 0.1) * u.spin * fpsComp;
+  let w = rot2(swirl) * (c / zoom);
+  let puv = vec2f(w.x / u.aspect + 0.5, w.y + 0.5);
+  // Decay expressed PER SECOND, not per rendered frame. P_decay() remains the
+  // per-frame factor at 60 fps (so the tuned look is unchanged there), but at
+  // 30 fps the exponent doubles and the trail fades over the same amount of
+  // TRACK time. Previously a 30 fps export held trails roughly twice as long
+  // as the preview, and a 144 Hz display diverged the other way.
+  var col = feedbackSample(puv).rgb * pow(P_decay(), u.dt * 60.0);
+
+  // --- Inject a fresh audio-driven source over the trails ---
+  // Spectrum ring: its radius per angle rides the spectrum + bass.
+  let spec = binAt(fract(ang / TAU + 0.5));
+  // Frame-safety: the FRESH ring is the source the feedback zoom streams
+  // outward from — inject it on-screen (r<=0.45), or a loud/bright master at
+  // high Ring size + Reactivity puts the whole source off-frame and the tunnel
+  // has nothing to echo. The trails still extend past this via feedback.
+  let ringR = min(P_radius() + spec * P_react() * (0.6 + u.bass * 0.8), 0.45);
+  let band = smoothstep(P_thick() + 0.02, 0.0, abs(rad - ringR));
+  // Cosine palette instead of a raw hsl2rgb hue rotated by angle and drifted
+  // by time: a continuously sweeping HSL hue walks through its desaturated
+  // middle and comes out muddy olive/brown. Hue spin/drift now phase a
+  // cosPalette cosine gradient instead — same two knobs, stays saturated.
+  // (The classic basis runs its rainbow opposite HSL, hence "1.0 - hue/360" —
+  // see the identical note in starfield.ts.)
+  let hueT = 1.0 - P_hue() / 360.0;
+  let ringT = fract(hueT + ang / TAU * P_hueSpin() + u.time * P_hueDrift() * (30.0 / 360.0));
+  // Peak-hold crown: the loudest angle on the ring desaturates toward white
+  // instead of just being light-colored — a hot core reads as EMITTING. This
+  // recolors the ring rather than adding a second term on top of it: this
+  // preset is a feedback ACCUMULATOR (every frame's output becomes next
+  // frame's input), so anything added here compounds indefinitely instead of
+  // settling — a second full-brightness layer, or pushing color past 1.0 for
+  // tonemap() to roll off (the usual move for a hot core elsewhere in this
+  // kit), was measured to wash the whole tunnel out to flat white/gray within
+  // a few seconds. Recoloring keeps the injected energy budget identical to
+  // the original ring term — bounded and provably as stable as before.
+  let pk = peakAt(fract(ang / TAU + 0.5));
+  let ringPal = cosPalette(ringT, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+  let ringHot = mix(ringPal, vec3f(1.0, 0.98, 0.95), pk * pk * 0.7);
+  col += ringHot * band * (0.5 + spec) * P_inject();
+
+  // Kick core: a bright central burst on kick hits, desaturating toward
+  // white for a hot-flash look (bounded — see the note above; no push past
+  // 1.0 here since this, too, feeds back into next frame's accumulator).
+  let corePal = mix(
+    cosPalette(hueT + 0.11, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67)),
+    vec3f(1.0),
+    0.55
+  );
+  col += corePal * smoothstep(P_radius() * 0.7, 0.0, rad) * u.kick * P_kickFlash();
+
+  // No tonemap() here: with a feedback accumulator, tonemap's own output
+  // feeds back in as next frame's input and compounds — measured to slowly
+  // ratchet the whole tunnel up to a flat white/gray wash over a few seconds
+  // instead of settling. vignette (a bounded <=1 multiply) and grain (a tiny
+  // bounded dither) are stable either way and stay.
+  col *= vignette(uv, P_vignette());
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > echo-trails: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 200,
+    "key": "hue",
+  },
+  {
+    "default": 0.92,
+    "key": "decay",
+  },
+  {
+    "default": 0.4,
+    "key": "zoom",
+  },
+  {
+    "default": 0.2,
+    "key": "swirl",
+  },
+  {
+    "default": 0.22,
+    "key": "radius",
+  },
+  {
+    "default": 0.25,
+    "key": "react",
+  },
+  {
+    "default": 1,
+    "key": "inject",
+  },
+  {
+    "default": 0.4,
+    "key": "beatZoom",
+  },
+  {
+    "default": 0.3,
+    "key": "flowSwirl",
+  },
+  {
+    "default": 0.03,
+    "key": "thick",
+  },
+  {
+    "default": 0.2,
+    "key": "hueSpin",
+  },
+  {
+    "default": 0.3,
+    "key": "hueDrift",
+  },
+  {
+    "default": 0.5,
+    "key": "kickFlash",
+  },
+  {
+    "default": 0.3,
+    "key": "vignette",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+]
+`;
+
+exports[`shader golden baseline > led-matrix: accessors + body are stable 1`] = `
+"fn P_cols() -> f32 { return params[0u]; }
+fn P_rows() -> f32 { return params[1u]; }
+fn P_gap() -> f32 { return params[2u]; }
+fn P_hueShift() -> f32 { return params[3u]; }
+fn P_dim() -> f32 { return params[4u]; }
+fn P_rounded() -> f32 { return params[5u]; }
+fn P_peaks() -> f32 { return params[6u]; }
+fn P_hueLow() -> f32 { return params[7u]; }
+fn P_hueHigh() -> f32 { return params[8u]; }
+fn P_gradStart() -> f32 { return params[9u]; }
+fn P_gradEnd() -> f32 { return params[10u]; }
+fn P_litLevel() -> f32 { return params[11u]; }
+fn P_hotBoost() -> f32 { return params[12u]; }
+fn P_beatBoost() -> f32 { return params[13u]; }
+fn P_bassGlow() -> f32 { return params[14u]; }
+fn P_peakBright() -> f32 { return params[15u]; }
+fn P_bloom() -> f32 { return params[16u]; }
+fn P_panelVariance() -> f32 { return params[17u]; }
+fn P_vignette() -> f32 { return params[18u]; }
+
+fn ledCell(l: vec2f, gap: f32, rounded: f32) -> f32 {
+  let c = l - 0.5;
+  if (rounded > 0.5) {
+    let d = length(c);
+    return smoothstep(0.5 - gap * 0.5, 0.35 - gap * 0.5, d);
+  }
+  let e = vec2f(0.5 - gap * 0.5);
+  let m = step(abs(c), e);
+  return m.x * m.y;
+}
+
+// Soft per-dot bloom: unlike ledCell's hard mask, this glows continuously
+// from the cell's center out into the gap — the difference between a
+// printed dot and one that is actually emitting light.
+fn ledGlow(l: vec2f) -> f32 {
+  let c = l - 0.5;
+  return exp(-dot(c, c) * 6.0);
+}
+
+fn preset(uv: vec2f) -> vec4f {
+  let cols = max(4.0, P_cols());
+  let rows = max(4.0, P_rows());
+
+  let cx = floor(uv.x * cols);
+  let lx = fract(uv.x * cols);
+  let yb = 1.0 - uv.y;
+  let cy = floor(yb * rows);
+  let ly = fract(yb * rows);
+
+  let v = binAt((cx + 0.5) / cols);
+  let pk = peakAt((cx + 0.5) / cols);
+
+  let level = v * rows;
+  let lit = step(cy + 0.5, level);
+  let frac = (cy + 0.5) / rows;
+
+  // Fixed per-LED identity: hashed once from the cell's own coordinate, so it
+  // never re-rolls frame to frame — manufacturing variance, not shimmer.
+  let cellId = vec2f(cx, cy);
+  let jBright = hash21(cellId) - 0.5; // +-0.5, brightness jitter
+  let jHue = hash21(cellId + 91.7) - 0.5; // +-0.5, colour-temperature jitter
+  let jSat = hash21(cellId + 173.3); // 0..1
+  let pv = P_panelVariance();
+
+  let beatP = max(u.driveBeat, gridPulse(9.0));
+
+  // low hue -> high hue as cells climb (default classic green -> red), plus a
+  // faint per-LED colour-temperature jitter so the wall doesn't read as one
+  // flat sheet of colour.
+  let cellHue = mix(P_hueLow(), P_hueHigh(), smoothstep(P_gradStart(), P_gradEnd(), frac))
+              + P_hueShift() + jHue * 6.0 * pv;
+
+  let mask = ledCell(vec2f(lx, ly), P_gap(), P_rounded());
+  let glow = ledGlow(vec2f(lx, ly));
+
+  // Panel brightness falloff: LED walls are built from physical tiles, and
+  // even within one tile output isn't perfectly even — a coarse per-tile
+  // band (not a smooth radial vignette) stands in for that construction.
+  let tileId = floor(vec2f(cx, cy) / 8.0);
+  let panelFalloff = mix(1.0, 0.82 + 0.22 * hash21(tileId * 3.7), pv);
+
+  var col = vec3f(0.006, 0.008, 0.01); // panel/PCB background
+  // A faint structural grid on the mounting board — reads as physical
+  // hardware instead of an empty void between LEDs.
+  let edge = min(min(lx, 1.0 - lx), min(ly, 1.0 - ly));
+  col += vec3f(0.01, 0.012, 0.014) * smoothstep(0.035, 0.0, edge) * (1.0 - mask);
+  // Panel backlight breathes with the bass — the wall reads the music even
+  // between columns, without touching the LED look itself.
+  col += hsl2rgb(P_hueLow() + P_hueShift(), 0.8, 0.3) * u.bass * P_bassGlow();
+  // Unlit LEDs faintly visible
+  col += hsl2rgb(cellHue, 0.5, 0.04) * mask * P_dim() * (1.0 - lit);
+
+  // Lit LEDs: flat mask body, brighter near the column's current top, plus
+  // beat boost — then a soft bloom that bleeds past the mask into the gap,
+  // which is what makes a dot read as EMITTING rather than printed.
+  let hot = P_litLevel() + P_hotBoost() * smoothstep(level - 2.0, level, cy + 0.5)
+          + beatP * P_beatBoost();
+  let litBright = hot * mix(1.0, panelFalloff * (0.82 + jBright * 0.36), pv);
+  var ledCol = hsl2rgb(cellHue, 0.9 - jSat * 0.15 * pv, litBright) * mask * lit;
+  ledCol += hsl2rgb(cellHue, 0.75, 0.62) * glow * lit * P_bloom() * (0.4 + v * 0.6)
+          * (0.6 + jBright * 0.5 * pv);
+  // Hot-core desaturation on the brightest cells (top of a loud column) so
+  // they read as genuinely emitting instead of merely "very saturated green".
+  let veryHot = smoothstep(0.8, 1.1, hot) * lit;
+  ledCol = mix(ledCol, vec3f(1.0, 0.98, 0.92), veryHot * 0.55 * mask);
+  ledCol *= 1.0 + veryHot * 0.6;
+  col += ledCol;
+
+  // Peak-hold dot (toggleable) — takes the column gradient's color at its
+  // own height, so it follows Cyan Wall/Purple Rain instead of staying the
+  // default red, plus the same soft bloom as the live cells.
+  let pkRow = floor(pk * rows);
+  if (cy == pkRow && pk > 0.02 && P_peaks() > 0.5) {
+    let pkFrac = (pkRow + 0.5) / rows;
+    let pkHue = mix(P_hueLow(), P_hueHigh(), smoothstep(P_gradStart(), P_gradEnd(), pkFrac))
+              + P_hueShift();
+    col += hsl2rgb(pkHue, 0.55, P_peakBright()) * mask;
+    col += hsl2rgb(pkHue, 0.4, 0.75) * glow * P_bloom() * 0.5;
+  }
+
+  // Subtle screen curvature vignette
+  let d = distance(uv, vec2f(0.5));
+  col *= 1.0 - d * d * P_vignette();
+  col = tonemap(col * 1.05);
+  col += grain(uv, 0.01);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > led-matrix: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 48,
+    "key": "cols",
+  },
+  {
+    "default": 24,
+    "key": "rows",
+  },
+  {
+    "default": 0.18,
+    "key": "gap",
+  },
+  {
+    "default": 0,
+    "key": "hueShift",
+  },
+  {
+    "default": 0.35,
+    "key": "dim",
+  },
+  {
+    "default": 1,
+    "key": "rounded",
+  },
+  {
+    "default": 1,
+    "key": "peaks",
+  },
+  {
+    "default": 120,
+    "key": "hueLow",
+  },
+  {
+    "default": 0,
+    "key": "hueHigh",
+  },
+  {
+    "default": 0.45,
+    "key": "gradStart",
+  },
+  {
+    "default": 0.92,
+    "key": "gradEnd",
+  },
+  {
+    "default": 0.45,
+    "key": "litLevel",
+  },
+  {
+    "default": 0.15,
+    "key": "hotBoost",
+  },
+  {
+    "default": 0.08,
+    "key": "beatBoost",
+  },
+  {
+    "default": 0.1,
+    "key": "bassGlow",
+  },
+  {
+    "default": 0.85,
+    "key": "peakBright",
+  },
+  {
+    "default": 0.8,
+    "key": "bloom",
+  },
+  {
+    "default": 0.4,
+    "key": "panelVariance",
+  },
+  {
+    "default": 0.5,
+    "key": "vignette",
+  },
+]
+`;
+
+exports[`shader golden baseline > metaballs: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_count() -> f32 { return params[1u]; }
+fn P_size() -> f32 { return params[2u]; }
+fn P_speed() -> f32 { return params[3u]; }
+fn P_glow() -> f32 { return params[4u]; }
+fn P_threshold() -> f32 { return params[5u]; }
+fn P_orbitX() -> f32 { return params[6u]; }
+fn P_orbitY() -> f32 { return params[7u]; }
+fn P_radiusFloor() -> f32 { return params[8u]; }
+fn P_energyGrow() -> f32 { return params[9u]; }
+fn P_radiusBand() -> f32 { return params[10u]; }
+fn P_beatSwell() -> f32 { return params[11u]; }
+fn P_rimStart() -> f32 { return params[12u]; }
+fn P_innerGrad() -> f32 { return params[13u]; }
+fn P_hueField() -> f32 { return params[14u]; }
+fn P_beatBright() -> f32 { return params[15u]; }
+fn P_bgLevel() -> f32 { return params[16u]; }
+fn P_vignette() -> f32 { return params[17u]; }
+fn P_mirror() -> f32 { return params[18u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  var p = centered(uv);
+  // Club mirror: fold the field before summing blobs so the orbit becomes a
+  // symmetric mandala. 1 = off.
+  p = kaleido(p, P_mirror());
+
+  let count = i32(P_count());
+
+  var field = 0.0;
+  var hueAcc = 0.0;
+  for (var i = 0; i < count; i++) {
+    let fi = f32(i);
+    let h = hash11(fi + 1.0);
+    let ph = fi * 2.399963; // golden angle spacing
+    // Band assignment round-robin
+    var band = u.bass;
+    if (i % 3 == 1) { band = u.mid; }
+    if (i % 3 == 2) { band = u.treble; }
+    let t = u.time * P_speed() * (0.5 + h * 0.6);
+    let pos = vec2f(
+      sin(t + ph) * (P_orbitX() + h * 0.1) * u.aspect * 0.8,
+      cos(t * 1.31 + ph * 1.7) * (P_orbitY() + h * 0.08),
+    );
+
+    // Per-blob beat response, staggered by the golden-ratio conjugate (same
+    // shape as gridPulse(), phase-shifted per blob) so blobs don't all
+    // swell in perfect lockstep on every hit — identical phase across N
+    // elements reads as one pulsing blob instead of N independent ones.
+    var beatMul = u.driveBeat;
+    if (u.bpm > 0.5) {
+      let bph = fract(u.beatPhase + fi * 0.6180339887);
+      beatMul = max(exp(-bph * 5.0) - 0.03, 0.0) / 0.97;
+    }
+
+    // Size = calm floor + smooth energy breathing (primary sync) + a gentle
+    // per-band accent + a staggered beat gulp. Capped so a loud beat can't
+    // inflate a single ball into a full-frame solid wash — it stays a blob
+    // that merges, not a fill.
+    let rad = min(P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
+            + band * P_radiusBand() + beatMul * P_beatSwell() * u.pulse), 0.34);
+    let d2 = dot(p - pos, p - pos);
+    let contrib = rad * rad / (d2 + 1e-5);
+    field += contrib;
+    hueAcc += contrib * fi * P_hueField();
+  }
+
+  // Cosine palette keyed by the same contribution-weighted blend that used
+  // to drive an hsl hue — stays saturated instead of drifting toward mud.
+  let paletteT = fract(P_hue() / 360.0 + (hueAcc / max(field, 1e-4)) / 360.0);
+  let pal = cosPalette(paletteT, vec3f(0.5), vec3f(0.42), vec3f(1.0, 1.0, 1.0), vec3f(0.0, 0.33, 0.67));
+
+  // Surface + rim
+  let surface = smoothstep(P_threshold(), P_threshold() * 1.12, field);
+  let rim = smoothstep(P_threshold() * P_rimStart(), P_threshold(), field) * (1.0 - surface);
+
+  // Background: dark complementary wash with a slow fbm texture so the void
+  // behind the blobs reads as atmosphere instead of a flat vector fill.
+  let r = length(p);
+  let bgN = fbm(p * 1.1 + u.time * 0.025);
+  let bgPal = cosPalette(fract(P_hue() / 360.0 + 0.5), vec3f(0.04), vec3f(0.03), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+  var col = bgPal * mix(0.7, 1.3, bgN) * (1.0 - r * 0.7) + vec3f(P_bgLevel());
+
+  // Blob body with inner gradient
+  let inner = clamp((field - P_threshold()) * 0.35, 0.0, P_innerGrad() + 0.1);
+  col = mix(col, pal * (0.55 + inner * 1.3 + u.driveBeat * P_beatBright()), surface);
+  // Rim glow
+  col += mix(pal, vec3f(1.0), 0.3) * rim * (0.4 + P_glow() * 0.9);
+
+  // Hot core: the field's own 1/d^2 falloff spikes to huge values only very
+  // near a blob's point-mass centre. The band must therefore start WELL above
+  // the surface threshold — at 1.15x it saturated across the entire blob
+  // interior (field >> threshold everywhere inside) and turned the whole blob
+  // into one white mass, the exact blow-out this was meant to avoid. 3x..10x
+  // isolates just the nucleus; the tone map then rolls it off as emission.
+  let hot = smoothstep(P_threshold() * 3.0, P_threshold() * 10.0, field);
+  col = mix(col, vec3f(1.0, 0.97, 0.92), hot * 0.6);
+  col += pal * hot * (0.5 + u.driveBeat * 0.5);
+
+  col *= vignette(uv, P_vignette());
+  col = tonemap(col * 1.05);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > metaballs: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 25,
+    "key": "hue",
+  },
+  {
+    "default": 5,
+    "key": "count",
+  },
+  {
+    "default": 0.14,
+    "key": "size",
+  },
+  {
+    "default": 0.3,
+    "key": "speed",
+  },
+  {
+    "default": 0.5,
+    "key": "glow",
+  },
+  {
+    "default": 1,
+    "key": "threshold",
+  },
+  {
+    "default": 0.28,
+    "key": "orbitX",
+  },
+  {
+    "default": 0.24,
+    "key": "orbitY",
+  },
+  {
+    "default": 0.5,
+    "key": "radiusFloor",
+  },
+  {
+    "default": 0.7,
+    "key": "energyGrow",
+  },
+  {
+    "default": 0.45,
+    "key": "radiusBand",
+  },
+  {
+    "default": 0.2,
+    "key": "beatSwell",
+  },
+  {
+    "default": 0.55,
+    "key": "rimStart",
+  },
+  {
+    "default": 0.35,
+    "key": "innerGrad",
+  },
+  {
+    "default": 24,
+    "key": "hueField",
+  },
+  {
+    "default": 0.08,
+    "key": "beatBright",
+  },
+  {
+    "default": 0.045,
+    "key": "bgLevel",
+  },
+  {
+    "default": 0.4,
+    "key": "vignette",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+]
+`;
+
+exports[`shader golden baseline > nebula: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_scale() -> f32 { return params[1u]; }
+fn P_flow() -> f32 { return params[2u]; }
+fn P_kaleido() -> f32 { return params[3u]; }
+fn P_contrast() -> f32 { return params[4u]; }
+fn P_sparkle() -> f32 { return params[5u]; }
+fn P_beatRipple() -> f32 { return params[6u]; }
+fn P_warp() -> f32 { return params[7u]; }
+fn P_hueRange() -> f32 { return params[8u]; }
+fn P_midHueShift() -> f32 { return params[9u]; }
+fn P_brightFloor() -> f32 { return params[10u]; }
+fn P_bassBright() -> f32 { return params[11u]; }
+fn P_saturation() -> f32 { return params[12u]; }
+fn P_sparkleScale() -> f32 { return params[13u]; }
+fn P_sparkleSharp() -> f32 { return params[14u]; }
+fn P_rippleWidth() -> f32 { return params[15u]; }
+fn P_rippleWarp() -> f32 { return params[16u]; }
+fn P_beatBloom() -> f32 { return params[17u]; }
+fn P_driveGlow() -> f32 { return params[18u]; }
+fn P_vignette() -> f32 { return params[19u]; }
+fn P_hotCore() -> f32 { return params[20u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  var p = centered(uv);
+
+  // Kaleidoscope fold (club mirror). The mirror axes spin slowly so a
+  // mandala reads as alive rather than a frozen sticker. 1 = off, matching
+  // the shared kaleido() convention used across every preset.
+  let mirrorN = P_kaleido();
+  if (mirrorN >= 1.5) {
+    p = rot2(u.time * P_flow() * 0.35 * u.spin) * p;
+    p = kaleido(p, mirrorN);
+  }
+
+  // Beat ripple: a distortion ring expands from center as the beat envelope
+  // decays (1 -> 0 maps to radius 0 -> edge). Makes the sync unmistakable
+  // without changing the field's character between beats.
+  let ripR = length(p);
+  if (u.driveBeat > 0.01 && ripR > 1e-4) {
+    let rippleR = (1.0 - u.driveBeat) * 1.1;
+    let wave = exp(-abs(ripR - rippleR) * P_rippleWidth()) * u.driveBeat * P_beatRipple();
+    p += (p / ripR) * wave * P_rippleWarp();
+  }
+
+  let q = p * P_scale();
+  let tFlow = u.time * P_flow();
+  let flowOff = vec2f(tFlow, -tFlow * 0.7);
+
+  // Domain-warped fbm (IQ): fbm of a position displaced by fbm turns smooth
+  // blobby noise into filament structure — the actual "fog" -> "nebula"
+  // difference the old version was missing entirely. Mid energy breathes
+  // the warp strength so filaments visibly writhe with the melody.
+  let warpAmt = P_warp() * (0.7 + u.mid * 0.6);
+  let densityRaw = warpFbm(q + flowOff, warpAmt);
+
+  // fbm (and warpFbm, which is built on it) is a sum of smoothed random
+  // octaves, so it clusters tightly in a narrow ~0.42-0.75 mid-gray band and
+  // almost never reaches true 0 or 1 (verified by rendering densityRaw
+  // directly as grayscale). Renormalizing that OBSERVED range before shaping
+  // is what actually produces black gaps and rare bright peaks — feeding the
+  // raw clustered value straight into pow() left the whole frame a uniform
+  // mid-tone wash (no black, no true peaks), which is exactly the muddy,
+  // low-contrast look this rewrite is fixing.
+  let density = clamp((densityRaw - 0.42) / 0.32, 0.0, 1.0);
+
+  // Contrast shaping pushes mid-density DOWN toward the dark field so gaps
+  // between filaments read as genuinely empty instead of a uniform haze.
+  // Softened from (2.0 + c*4.0): at the old strength pow() crushed everything
+  // but the top ~20% of density to black, so the nebula read as a few sparse
+  // specks on empty black rather than a cloud. vSoft is a gentle companion
+  // curve that keeps the mid-density filament STRUCTURE dimly visible
+  // everywhere, layered under the sharp bright peaks below.
+  let sharp = 1.4 + P_contrast() * 3.0;
+  let v = pow(density, sharp);
+  let vSoft = pow(density, 1.4);
+
+  // Cosine palette keyed off density + a mid-driven phase shift, instead of
+  // an hsl hue drifting across hueRange + midHueShift degrees (up to ~500
+  // degrees of travel) — exactly what walked the old version through the
+  // desaturated olive/brown middle of the HSL wheel. This stays saturated
+  // at every step.
+  let palT = fract(v * (P_hueRange() / 360.0) + P_hue() / 360.0
+           + (P_midHueShift() / 360.0) * u.mid * 0.5);
+  let chroma = mix(0.06, 0.5, P_saturation());
+  let pal = cosPalette(palT, vec3f(0.5), vec3f(chroma), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+
+  // Genuinely dark field: near-black but hued, not grey, so filaments have
+  // real darkness to glow against instead of sitting on a lit haze.
+  let bgT = fract(P_hue() / 360.0 + 0.5);
+  let bg = cosPalette(bgT, vec3f(0.03), vec3f(0.025), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+
+  // Density-driven brightness: audio multiplies the GAIN on the filaments
+  // rather than lifting the whole frame, so gaps stay dark even when bass
+  // is pumping hard — only lit structure gets brighter, never the void.
+  let energyGain = P_brightFloor() + u.bass * P_bassBright() + u.drive * P_driveGlow();
+  // Two layers: an always-on soft cloud (vSoft) so the nebula reads as a full
+  // structured cloud rather than sparse specks, plus the sharp bright peaks
+  // (v) that the audio gain drives. The soft layer is dim enough that gaps
+  // still fall to the dark field.
+  var col = bg + pal * vSoft * (0.35 + energyGain * 0.5) + pal * v * (0.5 + energyGain * 1.6);
+
+  // Hot core: filament peaks desaturate toward white and push past 1.0 so
+  // tonemap() gives them a real emissive rolloff instead of a flat clip —
+  // the single biggest thing missing from the old muddy version. Threshold
+  // sits high on the renormalized range so only genuine peaks blow out, not
+  // the common mid-density fill.
+  let hot = smoothstep(0.7, 0.97, density) * (0.5 + u.bass * 0.5 + u.driveBeat * 0.3);
+  col = mix(col, vec3f(1.0, 0.98, 0.95), hot * 0.8);
+  col *= 1.0 + hot * P_hotCore() * 1.8;
+
+  // Treble sparkle: pin-point glints from the noise field's own hash (never
+  // re-rolled per frame), riding on top of everything else.
+  let g = pow(noise2(q * P_sparkleScale() + vec2f(tFlow * 6.0, -tFlow * 4.0)), P_sparkleSharp());
+  col += vec3f(1.0, 0.95, 0.9) * g * u.treble * P_sparkle() * 2.2;
+
+  // A standing hot core at the very center, not just a beat flash: bass
+  // sets its baseline brightness (the doc's bass -> core-radius/wash
+  // mapping, slow and weighty) so there is always a small visible source at
+  // the nebula's heart, and driveBeat adds a flash on top. Falloff is steep
+  // (exp * 6) so this stays a tight pinpoint even at full bass + a beat
+  // peak, rather than blooming out to cover the whole frame.
+  let core = length(p);
+  let corePulse = 0.1 + u.bass * 0.2 + u.driveBeat * P_beatBloom() * 0.8;
+  col += mix(pal, vec3f(1.0), 0.55) * corePulse * exp(-core * 6.0) * 1.3;
+  if (u.driveBeat > 0.01) {
+    let rippleR2 = (1.0 - u.driveBeat) * 1.1;
+    let rim = exp(-abs(ripR - rippleR2) * 20.0) * u.driveBeat * P_beatRipple();
+    col += mix(pal, vec3f(1.0), 0.6) * rim * 0.7;
+  }
+
+  col *= vignette(uv, P_vignette());
+  col = tonemap(col * 1.1);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > nebula: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 60,
+    "key": "hue",
+  },
+  {
+    "default": 2.4,
+    "key": "scale",
+  },
+  {
+    "default": 0.12,
+    "key": "flow",
+  },
+  {
+    "default": 6,
+    "key": "kaleido",
+  },
+  {
+    "default": 0.5,
+    "key": "contrast",
+  },
+  {
+    "default": 0.5,
+    "key": "sparkle",
+  },
+  {
+    "default": 0.6,
+    "key": "beatRipple",
+  },
+  {
+    "default": 1.8,
+    "key": "warp",
+  },
+  {
+    "default": 110,
+    "key": "hueRange",
+  },
+  {
+    "default": 70,
+    "key": "midHueShift",
+  },
+  {
+    "default": 0.22,
+    "key": "brightFloor",
+  },
+  {
+    "default": 0.45,
+    "key": "bassBright",
+  },
+  {
+    "default": 0.75,
+    "key": "saturation",
+  },
+  {
+    "default": 9,
+    "key": "sparkleScale",
+  },
+  {
+    "default": 18,
+    "key": "sparkleSharp",
+  },
+  {
+    "default": 16,
+    "key": "rippleWidth",
+  },
+  {
+    "default": 0.09,
+    "key": "rippleWarp",
+  },
+  {
+    "default": 0.18,
+    "key": "beatBloom",
+  },
+  {
+    "default": 0.12,
+    "key": "driveGlow",
+  },
+  {
+    "default": 0.35,
+    "key": "vignette",
+  },
+  {
+    "default": 0.7,
+    "key": "hotCore",
+  },
+]
+`;
+
+exports[`shader golden baseline > oscilloscope: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_gain() -> f32 { return params[1u]; }
+fn P_calm() -> f32 { return params[2u]; }
+fn P_glow() -> f32 { return params[3u]; }
+fn P_fill() -> f32 { return params[4u]; }
+fn P_mirror() -> f32 { return params[5u]; }
+fn P_traceClamp() -> f32 { return params[6u]; }
+fn P_coreWidth() -> f32 { return params[7u]; }
+fn P_agFloor() -> f32 { return params[8u]; }
+fn P_agRange() -> f32 { return params[9u]; }
+fn P_hueWave() -> f32 { return params[10u]; }
+fn P_ghostDim() -> f32 { return params[11u]; }
+fn P_fillDim() -> f32 { return params[12u]; }
+fn P_gridLevel() -> f32 { return params[13u]; }
+fn P_scanline() -> f32 { return params[14u]; }
+fn P_beatLift() -> f32 { return params[15u]; }
+fn P_bgLevel() -> f32 { return params[16u]; }
+fn P_vignette() -> f32 { return params[17u]; }
+fn P_persist() -> f32 { return params[18u]; }
+fn P_kaleido() -> f32 { return params[19u]; }
+
+// Smoothed waveform sample: box blur over +/-4 taps scaled by calm
+fn calmWave(x: f32, calm: f32) -> f32 {
+  let spread = calm * 0.012;
+  var s = waveAt(x) * 0.30;
+  s += (waveAt(x - spread) + waveAt(x + spread)) * 0.22;
+  s += (waveAt(x - spread * 2.0) + waveAt(x + spread * 2.0)) * 0.13;
+  return s;
+}
+
+fn preset(uv: vec2f) -> vec4f {
+  // Kaleidoscope fold — a SEPARATE knob from Mirror (the vertical ghost
+  // trace below): this folds the whole screen left/right into a symmetric
+  // "vector scope" look. Capped at 2 (bilateral only, not a full radial
+  // kaleidoscope): the trace is a left-to-right sweep, not an inherently
+  // radial scene like Tunnel, so higher wedge counts would just chop it into
+  // arbitrary slices instead of reading as a designed pattern. At 1 (default)
+  // kaleido() passes p through unchanged, so fuv == uv exactly and the stock
+  // trace is byte-identical.
+  let kp = kaleido(centered(uv), P_kaleido());
+  let fuv = vec2f(kp.x / u.aspect + 0.5, kp.y + 0.5);
+
+  // Auto-gain: normalize display height against the slow envelope, so quiet
+  // and loud passages fill a similar, stable portion of the screen.
+  let gain = P_gain() / (P_agFloor() + u.drive * P_agRange());
+  // Tempo-locked pulse: lands on the beat grid when the track has one, real
+  // transients still punch through off-grid.
+  let beatP = max(u.driveBeat, gridPulse(8.0));
+
+  // Background: near-black, subtle bass tint. Scanlines are a DISPLAY
+  // property, not scene content, so they key off the raw screen uv, not the
+  // kaleido-folded one.
+  var col = hsl2rgb(P_hue() + 40.0, 0.4, P_bgLevel() + u.bass * 0.02);
+  // 0.5 + 0.5*sin, not raw sin: raw sin spans -1..1, so half of every scanline
+  // cycle drove the multiplier negative and clipped to black instead of
+  // modulating brightness.
+  col *= (1.0 - P_scanline()) + P_scanline() * (0.5 + 0.5 * sin(uv.y * 400.0));
+
+  // Graticule: real lab-scope convention is 10x8 divisions with the center
+  // row/column drawn brighter — not a flat even cross-hatch.
+  let dv = vec2f(fuv.x * 10.0, fuv.y * 8.0);
+  let gl = abs(fract(dv) - 0.5);
+  var grid = smoothstep(0.05, 0.0, gl.x) + smoothstep(0.05, 0.0, gl.y);
+  grid += smoothstep(0.006, 0.0, abs(fuv.x - 0.5)) * 1.6
+        + smoothstep(0.006, 0.0, abs(fuv.y - 0.5)) * 1.6;
+  col += hsl2rgb(P_hue(), 0.25, 0.32) * grid * P_gridLevel();
+
+  let w = calmWave(fuv.x, P_calm()) * gain;
+  // Trace height comes from Gain (× the fixed display scale); Height limit is
+  // the hard ceiling. (These were a redundant pair with a separate traceAmp
+  // multiplier — folded away so there's one amplitude knob, not two.)
+  let amp = clamp(w * 0.34, -P_traceClamp(), P_traceClamp());
+  let y = 0.5 + amp;
+
+  // Colour drifts gently along the sweep and with wave height — a bounded
+  // wobble around the user's hue rather than a full sweep, so it stays
+  // inside one saturated family instead of crossing HSL's muddy mid-tones.
+  let sweep = sin(fuv.x * 5.0 + u.time * 0.12) * 0.35
+            + sin(fuv.x * 1.7 - u.time * 0.05) * 0.65;
+  let traceHue = P_hue() + w * P_hueWave() + sweep * P_hueWave() * 0.4;
+
+  // Main trace: crisp coloured core, then a white-hot centre so the beam
+  // reads as EMITTING rather than merely being a coloured line.
+  let d = abs(fuv.y - y);
+  let core = smoothstep(P_coreWidth(), P_coreWidth() * 0.23, d);
+  let hot = smoothstep(0.45, 0.95, core) * (0.75 + beatP * 0.5);
+  var beam = hsl2rgb(traceHue, 0.85, 0.62) * core;
+  beam = mix(beam, vec3f(1.0), hot);
+  beam *= 1.0 + hot * 1.6;
+  col += beam;
+
+  // Two-tier glow: a tight bloom hugging the beam plus a much wider, softer
+  // halo — one exp() reads as an outline, two at different reach reads as an
+  // actual light source.
+  let glowTight = exp(-d * (170.0 - P_glow() * 90.0));
+  let glowWide = exp(-d * 22.0) * 0.45;
+  col += hsl2rgb(traceHue, 0.9, 0.55) * (glowTight * 0.6 + glowWide)
+       * (0.35 + P_glow() * 0.75) * (1.0 + beatP * 0.6);
+
+  // Mirrored ghost trace (dimmer, hue-shifted) — the vertical-flip toggle;
+  // unrelated to the Kaleido fold above.
+  if (P_mirror() > 0.5) {
+    let ym = 0.5 - amp;
+    let dm = abs(fuv.y - ym);
+    col += hsl2rgb(traceHue + 30.0, 0.7, 0.5) * exp(-dm * 160.0) * P_ghostDim();
+  }
+
+  // Soft fill from trace toward the center line
+  if (P_fill() > 0.5) {
+    let between = step(min(y, 0.5), fuv.y) * step(fuv.y, max(y, 0.5));
+    let fade = 1.0 - abs(fuv.y - 0.5) / max(abs(amp), 0.001);
+    col += hsl2rgb(traceHue, 0.7, 0.4) * between * clamp(fade, 0.0, 1.0) * P_fillDim();
+  }
+
+  // Gentle beat lift (no strobe)
+  col *= 1.0 + beatP * P_beatLift();
+
+  // Phosphor persistence: last frame's beam lingers and fades, like a real
+  // CRT's afterglow. max(), not +=, so a STABLE trace converges to its own
+  // fresh brightness instead of the trail re-brightening it forever — only a
+  // shape that's still changing leaves a visible ghost. Decay is expressed
+  // per SECOND (pow(.., dt*60)), not per rendered frame, so a 30 fps export
+  // fades at the same track-time rate as a 60 fps preview.
+  let decay = pow(clamp(P_persist(), 0.0001, 0.98), u.dt * 60.0);
+  col = max(col, feedbackSample(uv).rgb * decay);
+
+  let d2 = distance(uv, vec2f(0.5));
+  col *= 1.0 - d2 * d2 * P_vignette();
+  col = tonemap(col * 1.1);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > oscilloscope: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 160,
+    "key": "hue",
+  },
+  {
+    "default": 0.9,
+    "key": "gain",
+  },
+  {
+    "default": 0.55,
+    "key": "calm",
+  },
+  {
+    "default": 0.5,
+    "key": "glow",
+  },
+  {
+    "default": 1,
+    "key": "fill",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+  {
+    "default": 0.44,
+    "key": "traceClamp",
+  },
+  {
+    "default": 0.0035,
+    "key": "coreWidth",
+  },
+  {
+    "default": 0.35,
+    "key": "agFloor",
+  },
+  {
+    "default": 1.4,
+    "key": "agRange",
+  },
+  {
+    "default": 24,
+    "key": "hueWave",
+  },
+  {
+    "default": 0.35,
+    "key": "ghostDim",
+  },
+  {
+    "default": 0.16,
+    "key": "fillDim",
+  },
+  {
+    "default": 0.06,
+    "key": "gridLevel",
+  },
+  {
+    "default": 0.1,
+    "key": "scanline",
+  },
+  {
+    "default": 0.1,
+    "key": "beatLift",
+  },
+  {
+    "default": 0.028,
+    "key": "bgLevel",
+  },
+  {
+    "default": 0.55,
+    "key": "vignette",
+  },
+  {
+    "default": 0.4,
+    "key": "persist",
+  },
+  {
+    "default": 1,
+    "key": "kaleido",
+  },
+]
+`;
+
+exports[`shader golden baseline > particle-flow: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_flowStrength() -> f32 { return params[1u]; }
+fn P_swirl() -> f32 { return params[2u]; }
+fn P_beatBurst() -> f32 { return params[3u]; }
+fn P_size() -> f32 { return params[4u]; }
+fn P_brightness() -> f32 { return params[5u]; }
+fn P_density() -> f32 { return params[6u]; }
+fn P_flowScale() -> f32 { return params[7u]; }
+fn P_damping() -> f32 { return params[8u]; }
+fn P_gravity() -> f32 { return params[9u]; }
+fn P_audioFlow() -> f32 { return params[10u]; }
+fn P_sizePulse() -> f32 { return params[11u]; }
+fn P_hueSpread() -> f32 { return params[12u]; }
+fn P_speedColor() -> f32 { return params[13u]; }
+fn P_sat() -> f32 { return params[14u]; }
+fn P_spawnRadius() -> f32 { return params[15u]; }
+
+fn preset(uv: vec2f) -> vec4f { return vec4f(0.0); }
+"
+`;
+
+exports[`shader golden baseline > particle-flow: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 200,
+    "key": "hue",
+  },
+  {
+    "default": 1,
+    "key": "flowStrength",
+  },
+  {
+    "default": 0.3,
+    "key": "swirl",
+  },
+  {
+    "default": 1.4,
+    "key": "beatBurst",
+  },
+  {
+    "default": 0.007,
+    "key": "size",
+  },
+  {
+    "default": 0.62,
+    "key": "brightness",
+  },
+  {
+    "default": 0.45,
+    "key": "density",
+  },
+  {
+    "default": 1.6,
+    "key": "flowScale",
+  },
+  {
+    "default": 0.95,
+    "key": "damping",
+  },
+  {
+    "default": 0.05,
+    "key": "gravity",
+  },
+  {
+    "default": 2,
+    "key": "audioFlow",
+  },
+  {
+    "default": 0.5,
+    "key": "sizePulse",
+  },
+  {
+    "default": 50,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.3,
+    "key": "speedColor",
+  },
+  {
+    "default": 0.8,
+    "key": "sat",
+  },
+  {
+    "default": 0.55,
+    "key": "spawnRadius",
+  },
+]
+`;
+
+exports[`shader golden baseline > radial-burst: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_hueSpread() -> f32 { return params[1u]; }
+fn P_innerRadius() -> f32 { return params[2u]; }
+fn P_symmetry() -> f32 { return params[3u]; }
+fn P_rotSpeed() -> f32 { return params[4u]; }
+fn P_glow() -> f32 { return params[5u]; }
+fn P_peaks() -> f32 { return params[6u]; }
+fn P_barLen() -> f32 { return params[7u]; }
+fn P_ringBreathe() -> f32 { return params[8u]; }
+fn P_coreSize() -> f32 { return params[9u]; }
+fn P_corePump() -> f32 { return params[10u]; }
+fn P_coreBeat() -> f32 { return params[11u]; }
+fn P_wobBase() -> f32 { return params[12u]; }
+fn P_wobAmp() -> f32 { return params[13u]; }
+fn P_wobClamp() -> f32 { return params[14u]; }
+fn P_spinBase() -> f32 { return params[15u]; }
+fn P_spinEnergy() -> f32 { return params[16u]; }
+fn P_coreBright() -> f32 { return params[17u]; }
+fn P_detailRing() -> f32 { return params[18u]; }
+fn P_detailPos() -> f32 { return params[19u]; }
+fn P_beatBloom() -> f32 { return params[20u]; }
+fn P_vignette() -> f32 { return params[21u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  let p = centered(uv);
+  let r = length(p);
+  // Beat kicks ride the tempo grid when the track has one (gridPulse falls
+  // back to the flux pulse when it doesn't); real onsets still win via max.
+  let beatP = max(u.driveBeat, gridPulse(7.0));
+  var a = atan2(p.y, p.x) + (u.time * P_rotSpeed() * TAU * 0.1 + beatP * 0.12) * u.spin;
+
+  // Fold into symmetric segments, mirrored inside each for seamless wrap
+  let sym = max(1.0, P_symmetry());
+  let seg = fract(a / TAU * sym + 10.0);
+  let xs = abs(seg * 2.0 - 1.0);
+  let v = binAt(xs);
+  let pk = peakAt(xs);
+
+  let inner = P_innerRadius() * (1.0 + (u.bass * P_ringBreathe() + beatP * 0.06) * u.pulse);
+  // Frame-safety: the top/bottom edge sits at r=0.5, so a radial bar's tip must
+  // never pass ~0.47 or the burst spills out of frame at any loudness/setting.
+  let len = min(v * P_barLen(), max(0.0, 0.47 - inner));
+  let barHue = P_hue() + xs * P_hueSpread();
+
+  // Background wash
+  var col = hsl2rgb(P_hue() + 60.0, 0.5, 0.04 + u.mid * 0.04) * (1.0 - r * 0.8);
+
+  // Radial bar body
+  let inBar = step(inner, r) * step(r, inner + len);
+  let radial = (r - inner) / max(len, 0.001);
+  col = mix(col, hsl2rgb(barHue, 0.85, 0.35 + radial * 0.35), inBar);
+
+  // Glow beyond bar tip
+  let tip = inner + len;
+  let fall = exp(-max(r - tip, 0.0) * (18.0 - P_glow() * 12.0));
+  col += hsl2rgb(barHue, 0.9, 0.5) * fall * P_glow() * v * step(tip, r);
+
+  // Peak arc (toggleable)
+  let pkR = min(inner + pk * P_barLen(), 0.47);
+  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.005, 0.0, abs(r - pkR)) * 0.8
+       * step(0.5, P_peaks());
+
+  // Core disc: geometry rides only slow signals — fast bands jitter,
+  // energy glides. One slow-rotating dominant mode; amplitude on the slow
+  // envelope; hard clamp keeps the core inside the bar ring.
+  let pump = 1.0 + (u.drive * P_corePump() + beatP * P_coreBeat()) * u.pulse;
+  let coreR = inner * P_coreSize() * pump;
+  let spin = u.time * (P_spinBase() + u.drive * P_spinEnergy()) * u.spin;
+  let amp = inner * (P_wobBase() + u.drive * P_wobAmp());
+  var wob = sin(a * 3.0 + spin) * amp
+          + sin(a * 6.0 - spin * 0.7 + 1.3) * amp * 0.35;
+  let lim = inner * P_wobClamp();
+  wob = clamp(wob, -lim, lim);
+  let core = smoothstep(coreR + wob + 0.005, coreR + wob - 0.005, r);
+  let coreL = 0.12 + u.drive * P_coreBright() + beatP * P_beatBloom();
+  col = mix(col, hsl2rgb(P_hue() + 30.0, 0.75, coreL), core);
+
+  // Thin waveform detail ring inside the core: fast micro-motion reads as
+  // "alive" on a hairline without deforming the silhouette
+  if (P_detailRing() > 0.5) {
+    let wr = coreR * P_detailPos() + waveAt(fract(a / TAU + 0.5)) * 0.02;
+    col += hsl2rgb(P_hue() + 50.0, 0.6, 0.65) * smoothstep(0.004, 0.0, abs(r - wr)) * core * 0.5;
+  }
+
+  // Vignette
+  col *= 1.0 - r * r * P_vignette();
+  // NOTE: no global r=0.5 fade here. Frame-safety is enforced GEOMETRICALLY —
+  // bar length, peak arc and core are all hard-clamped to <=0.47 above — so a
+  // full-field multiply is redundant. It also cut the background wash and the
+  // tip glow off at r=0.5, which is well inside a 16:9 frame (corners reach
+  // r~1.02) and showed up as a hard black circle around the burst.
+  return vec4f(col, 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > radial-burst: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 280,
+    "key": "hue",
+  },
+  {
+    "default": 120,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.18,
+    "key": "innerRadius",
+  },
+  {
+    "default": 2,
+    "key": "symmetry",
+  },
+  {
+    "default": 0.12,
+    "key": "rotSpeed",
+  },
+  {
+    "default": 0.55,
+    "key": "glow",
+  },
+  {
+    "default": 1,
+    "key": "peaks",
+  },
+  {
+    "default": 0.3,
+    "key": "barLen",
+  },
+  {
+    "default": 0.12,
+    "key": "ringBreathe",
+  },
+  {
+    "default": 0.7,
+    "key": "coreSize",
+  },
+  {
+    "default": 0.08,
+    "key": "corePump",
+  },
+  {
+    "default": 0.04,
+    "key": "coreBeat",
+  },
+  {
+    "default": 0.03,
+    "key": "wobBase",
+  },
+  {
+    "default": 0.11,
+    "key": "wobAmp",
+  },
+  {
+    "default": 0.14,
+    "key": "wobClamp",
+  },
+  {
+    "default": 0.25,
+    "key": "spinBase",
+  },
+  {
+    "default": 0.35,
+    "key": "spinEnergy",
+  },
+  {
+    "default": 0.35,
+    "key": "coreBright",
+  },
+  {
+    "default": 1,
+    "key": "detailRing",
+  },
+  {
+    "default": 0.55,
+    "key": "detailPos",
+  },
+  {
+    "default": 0.1,
+    "key": "beatBloom",
+  },
+  {
+    "default": 0.5,
+    "key": "vignette",
+  },
+]
+`;
+
+exports[`shader golden baseline > shared prelude + standalone shader sources are stable 1`] = `
+{
+  "blend": "
+struct BlendU { mixv: f32, kind: f32, _p1: f32, _p2: f32 }
+@group(0) @binding(0) var fromTex: texture_2d<f32>;
+@group(0) @binding(1) var toTex: texture_2d<f32>;
+@group(0) @binding(2) var smp: sampler;
+@group(0) @binding(3) var<uniform> bu: BlendU;
+
+struct VSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
+  var pos = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var out: VSOut;
+  out.pos = vec4f(pos[vi], 0.0, 1.0);
+  out.uv = vec2f(pos[vi].x * 0.5 + 0.5, 1.0 - (pos[vi].y * 0.5 + 0.5));
+  return out;
+}
+
+fn bhash(p: vec2f) -> f32 {
+  return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453);
+}
+
+// Scene transitions — all pure functions of (from, to, uv, m). m is the
+// eased progress 0..1, so the result is deterministic (identical live/export).
+// kind: 0 crossfade, 1 wipe L->R, 2 wipe up, 3 radial, 4 zoom-through,
+// 5 glitch, 6 hard cut.
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4f {
+  let uv = in.uv;
+  let m = bu.mixv;
+  let a = textureSampleLevel(fromTex, smp, uv, 0.0);
+  let b = textureSampleLevel(toTex, smp, uv, 0.0);
+  let k = i32(bu.kind + 0.5);
+
+  if (k == 1) { // wipe left->right, soft edge
+    let e = smoothstep(m - 0.04, m + 0.04, uv.x);
+    return mix(b, a, e);
+  }
+  if (k == 2) { // wipe bottom->top
+    let e = smoothstep(m - 0.04, m + 0.04, 1.0 - uv.y);
+    return mix(b, a, e);
+  }
+  if (k == 3) { // radial iris from center
+    let d = distance(uv, vec2f(0.5, 0.5)) / 0.7071;
+    let e = smoothstep(m - 0.04, m + 0.04, d);
+    return mix(b, a, e);
+  }
+  if (k == 4) { // zoom-through: incoming zooms in from 1.4x, crossfade
+    let scale = mix(1.4, 1.0, m);
+    let zuv = (uv - vec2f(0.5)) * scale + vec2f(0.5);
+    let bz = textureSampleLevel(toTex, smp, clamp(zuv, vec2f(0.0), vec2f(1.0)), 0.0);
+    return mix(a, bz, m);
+  }
+  if (k == 5) { // glitch: block displacement peaking mid-transition + channel split
+    let g = sin(m * 3.14159265); // 0 at ends, 1 at middle
+    let row = floor(uv.y * 24.0);
+    let shift = (bhash(vec2f(row, 3.0)) - 0.5) * 0.25 * g;
+    let uvB = vec2f(fract(uv.x + shift), uv.y);
+    let sp = 0.01 * g;
+    let bCtr = textureSampleLevel(toTex, smp, uvB, 0.0);
+    let br = textureSampleLevel(toTex, smp, vec2f(fract(uvB.x + sp), uvB.y), 0.0).r;
+    let bb = textureSampleLevel(toTex, smp, vec2f(fract(uvB.x - sp), uvB.y), 0.0).b;
+    // Keep the incoming frame's alpha — hardcoding 1.0 made transparent
+    // (PNG/WebM-alpha) exports opaque for the whole glitch window.
+    let bGl = vec4f(br, bCtr.g, bb, bCtr.a);
+    return mix(a, bGl, smoothstep(0.0, 1.0, m));
+  }
+  if (k == 6) { // hard cut at the midpoint (beat-cut when fade is short)
+    return select(a, b, m >= 0.5);
+  }
+  return mix(a, b, m); // 0 crossfade
+}
+",
+  "composite": "
+fn composite(color: vec4f, uv: vec2f) -> vec4f {
+  var out = color;
+  if (u.bgMode == 0u) {
+    // The preset's own background is opaque by definition. Fragment presets
+    // already return a = 1, but the compute-particle and mesh3d paths clear
+    // visTex to a = 0 and emit per-sprite alpha — so without this a PNG
+    // sequence or VP9-alpha export on the DEFAULT background came out with a
+    // transparent sky behind Spectrum Scape and transparent gaps between
+    // Particle Flow's sprites.
+    out = vec4f(out.rgb, 1.0);
+  }
+  if (u.bgMode != 0u) {
+    let a = clamp(max(out.r, max(out.g, out.b)), 0.0, 1.0);
+    if (u.bgMode == 1u) {
+      out = vec4f(u.bgColor.rgb * (1.0 - a) + out.rgb, 1.0);
+    } else if (u.bgMode == 3u || u.bgMode == 4u) {
+      // Image/video background, cover-fit: fill the frame, crop the excess.
+      // For images blur/dim were baked into the bitmap on the CPU; for video
+      // the current frame is uploaded to bgTex each rendered frame.
+      let dims = vec2f(textureDimensions(bgTex));
+      let texAspect = dims.x / max(dims.y, 1.0);
+      var buv = uv - 0.5;
+      if (texAspect > u.aspect) {
+        buv.x *= u.aspect / texAspect;
+      } else {
+        buv.y *= texAspect / u.aspect;
+      }
+      let bg = textureSampleLevel(bgTex, overlaySmp, buv + 0.5, 0.0);
+      out = vec4f(bg.rgb * (1.0 - a) + out.rgb, 1.0);
+    } else {
+      out = vec4f(out.rgb, a); // premultiplied alpha
+    }
+  }
+  let ov = textureSampleLevel(overlayTex, overlaySmp, uv, 0.0);
+  out = vec4f(ov.rgb + out.rgb * (1.0 - ov.a), min(1.0, ov.a + out.a * (1.0 - ov.a)));
+  return out;
+}
+",
+  "fsMain": "
+@fragment
+fn fs_main(in: VSOut) -> @location(0) vec4f {
+  let out = preset(in.uv);
+  // Feedback path: emit the raw visual; a separate composite pass applies the
+  // background + overlay after the frame is captured for trails. Keeps the
+  // fed-back buffer free of background/overlay so trails don't accumulate them.
+  if (u.feedbackOn > 0.5) { return out; }
+  return composite(out, in.uv);
+}
+",
+  "header": "
+const TAU: f32 = 6.28318530718;
+
+struct Uniforms {
+  time: f32,
+  // Reserved (L24): no built-in preset reads this, but it's a "Legacy"-
+  // labeled field in the documented custom-preset ABI (docs/presets.md's
+  // audio-uniforms table), so it stays declared AND live rather than frozen
+  // — a saved custom preset may still reference it by name.
+  beatIntensity: f32,
+  rms: f32,
+  bass: f32,
+  mid: f32,
+  treble: f32,
+  binCount: u32,
+  aspect: f32,
+  waveCount: u32,
+  // Seconds of TRACK time this frame covers. Lets per-frame accumulations
+  // (feedback trails) be expressed per-second instead of per-frame, so they
+  // look the same at 30 fps, 60 fps and on a 144 Hz preview. Reuses what was
+  // the dead progress lane — no ABI size change.
+  dt: f32,
+  energy: f32,
+  bgMode: u32,
+  bgColor: vec4f,
+  drive: f32,
+  driveBeat: f32,
+  voice: f32,
+  width: f32, // Reserved (L24): documented ABI ("Stereo width"), unread by any built-in.
+  bpm: f32,
+  beatPhase: f32,
+  barPhase: f32,
+  kick: f32,
+  snare: f32, // Reserved (L24): documented ABI ("Per-drum onset envelope"), unread by any built-in.
+  hat: f32, // Reserved (L24): documented ABI ("Per-drum onset envelope"), unread by any built-in.
+  smoothBins: f32,
+  feedbackOn: f32,
+  spin: f32,
+  pulse: f32,
+  detail: f32,
+  specSmooth: f32,
+}
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var<storage, read> bins: array<f32>;
+@group(0) @binding(2) var<storage, read> peaks: array<f32>;
+@group(0) @binding(3) var<storage, read> params: array<f32>;
+@group(0) @binding(4) var<storage, read> waveform: array<f32>;
+@group(0) @binding(5) var overlayTex: texture_2d<f32>;
+@group(0) @binding(6) var overlaySmp: sampler;
+@group(0) @binding(7) var feedbackTex: texture_2d<f32>;
+@group(0) @binding(8) var coverTex: texture_2d<f32>;
+@group(0) @binding(9) var bgTex: texture_2d<f32>;
+
+// Reserved (L24): raw-index param access, superseded by the generated
+// P_<key>() accessors (see setPreset()) which every built-in and custom
+// preset now uses instead — zero call sites in this repo. Kept declared,
+// not removed: it's cheap (a function definition, not a per-frame cost) and
+// an existing hand-written custom preset could conceivably still call it.
+fn param(i: u32) -> f32 { return params[i]; }
+
+/** The track's embedded cover art. uv is 0..1 across the image. hasCover() is
+ * false when the track has none (a 1x1 stand-in is bound), so presets can fall
+ * back to a plain fill. */
+fn coverSample(uv: vec2f) -> vec4f {
+  return textureSampleLevel(coverTex, overlaySmp, clamp(uv, vec2f(0.0), vec2f(1.0)), 0.0);
+}
+fn hasCover() -> bool { return textureDimensions(coverTex).x > 1u; }
+
+/** Previous frame's raw visual (HDR), for trails/feedback. A preset that
+ * calls this opts into the feedback path: its output is captured and fed back
+ * next frame. Off-screen samples clamp to the edge. Deterministic — same
+ * frame sequence in live and export yields the same trails. */
+fn feedbackSample(uv: vec2f) -> vec4f {
+  return textureSampleLevel(feedbackTex, overlaySmp, clamp(uv, vec2f(0.0), vec2f(1.0)), 0.0);
+}
+
+fn catmullRom(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+  let t2 = t * t;
+  let t3 = t2 * t;
+  return max(0.0, 0.5 * ((2.0 * p1) + (-p0 + p2) * t
+    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3));
+}
+
+/** Amount of spatial spectrum smoothing: the "Smooth curve" toggle (full
+ * spline) OR the Motion "Spectrum smooth" amount, whichever is larger. */
+fn specAmt() -> f32 { return max(u.smoothBins, u.specSmooth); }
+
+/** Spectrum sampled at x in 0..1. Blends the raw nearest bin toward a
+ * Catmull-Rom spline by the smoothing amount (0 = hard bins / classic look,
+ * 1 = full curve). At amount 0 it returns the exact nearest bin.
+ *
+ * nearest and the spline share ONE bin-center anchor (L5): bin i's
+ * representative position is (i+0.5)/n, and fi below is x in that
+ * fractional-index space — already needed for the spline's own control
+ * points. nearest rounds that SAME fi to pick whichever of the spline's two
+ * active control points (i1/i2) x is closer to, instead of separately
+ * re-deriving a floor(x*n) index with no visible tie to the spline's
+ * anchor. Previously the two were only coincidentally equal (they agree
+ * almost everywhere on a uniform grid); now it is the same expression. */
+fn binAt(x: f32) -> f32 {
+  let n = f32(u.binCount);
+  let fi = clamp(x, 0.0, 0.999) * n - 0.5;
+  let nearest = bins[u32(clamp(round(fi), 0.0, n - 1.0))];
+  let amt = specAmt();
+  if (amt < 0.001) { return nearest; }
+  let i = floor(fi);
+  let t = fi - i;
+  let i0 = u32(clamp(i - 1.0, 0.0, n - 1.0));
+  let i1 = u32(clamp(i, 0.0, n - 1.0));
+  let i2 = u32(clamp(i + 1.0, 0.0, n - 1.0));
+  let i3 = u32(clamp(i + 2.0, 0.0, n - 1.0));
+  return mix(nearest, catmullRom(bins[i0], bins[i1], bins[i2], bins[i3], t), amt);
+}
+
+/** peaks[] counterpart to binAt() — same bin-center anchor, see above. */
+fn peakAt(x: f32) -> f32 {
+  let n = f32(u.binCount);
+  let fi = clamp(x, 0.0, 0.999) * n - 0.5;
+  let nearest = peaks[u32(clamp(round(fi), 0.0, n - 1.0))];
+  let amt = specAmt();
+  if (amt < 0.001) { return nearest; }
+  let i = floor(fi);
+  let t = fi - i;
+  let i0 = u32(clamp(i - 1.0, 0.0, n - 1.0));
+  let i1 = u32(clamp(i, 0.0, n - 1.0));
+  let i2 = u32(clamp(i + 1.0, 0.0, n - 1.0));
+  let i3 = u32(clamp(i + 2.0, 0.0, n - 1.0));
+  return mix(nearest, catmullRom(peaks[i0], peaks[i1], peaks[i2], peaks[i3], t), amt);
+}
+
+/** Waveform sampled at x in 0..1, linear interpolation, -1..1 */
+fn waveAt(x: f32) -> f32 {
+  let n = f32(u.waveCount);
+  let fi = clamp(x, 0.0, 0.999) * (n - 1.0);
+  let i = u32(fi);
+  let fr = fract(fi);
+  return mix(waveform[i], waveform[min(i + 1u, u.waveCount - 1u)], fr);
+}
+
+fn hsl2rgb(h: f32, s: f32, l: f32) -> vec3f {
+  let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+  let hp = fract(h / 360.0) * 6.0;
+  let x = c * (1.0 - abs(hp % 2.0 - 1.0));
+  var rgb = vec3f(0.0);
+  if (hp < 1.0) { rgb = vec3f(c, x, 0.0); }
+  else if (hp < 2.0) { rgb = vec3f(x, c, 0.0); }
+  else if (hp < 3.0) { rgb = vec3f(0.0, c, x); }
+  else if (hp < 4.0) { rgb = vec3f(0.0, x, c); }
+  else if (hp < 5.0) { rgb = vec3f(x, 0.0, c); }
+  else { rgb = vec3f(c, 0.0, x); }
+  return rgb + vec3f(l - c * 0.5);
+}
+
+/** Tempo-locked pulse: 1.0 exactly on every beat-grid beat, exponentially
+ * decaying toward 0 before the next (sharp ~4 = soft swell, ~8 = punchy).
+ * Falls back to the flux-driven driveBeat pulse when the track has no beat
+ * grid yet (u.bpm == 0), so one call stays musical either way. */
+fn gridPulse(sharp: f32) -> f32 {
+  if (u.bpm < 1.0) { return u.driveBeat; }
+  return max(exp(-u.beatPhase * sharp) - 0.018, 0.0) / 0.982;
+}
+
+/** Continuous beat counter within the bar: 0..4, advancing 1.0 per grid
+ * beat. fract() of integer multiples gives tempo-locked scroll/travel that
+ * stays continuous across the bar wrap. 0 when the track has no grid. */
+fn beatRamp() -> f32 { return u.barPhase * 4.0; }
+
+fn hash21(p: vec2f) -> f32 {
+  var q = fract(p * vec2f(123.34, 345.45));
+  q += dot(q, q + 34.345);
+  return fract(q.x * q.y);
+}
+
+fn hash11(p: f32) -> f32 {
+  return fract(sin(p * 127.1) * 43758.5453);
+}
+
+fn noise2(p: vec2f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let s = f * f * (3.0 - 2.0 * f);
+  let a = hash21(i);
+  let b = hash21(i + vec2f(1.0, 0.0));
+  let c = hash21(i + vec2f(0.0, 1.0));
+  let d = hash21(i + vec2f(1.0, 1.0));
+  return mix(mix(a, b, s.x), mix(c, d, s.x), s.y);
+}
+
+fn fbm(pIn: vec2f) -> f32 {
+  var p = pIn;
+  var v = 0.0;
+  var amp = 0.5;
+  for (var i = 0; i < 5; i++) {
+    v += amp * noise2(p);
+    p = p * 2.03 + vec2f(11.7, 5.3);
+    amp *= 0.5;
+  }
+  return v;
+}
+
+fn rot2(a: f32) -> mat2x2f {
+  let c = cos(a);
+  let s = sin(a);
+  return mat2x2f(c, -s, s, c);
+}
+
+// ---------------------------------------------------------------------------
+// Look kit. The difference between the presets that read as professional and
+// the ones that read as amateur was never the idea, it was the finishing —
+// so the finishing lives here, once, instead of being re-invented per preset.
+// ---------------------------------------------------------------------------
+
+/**
+ * Inigo Quilez's cosine gradient. Cheap, always-smooth, and it stays
+ * SATURATED across the whole ramp, which is what separates a designed palette
+ * from the muddy olive/brown you get by lerping two hues through grey.
+ * col(t) = a + b * cos(TAU * (c*t + d))
+ */
+fn cosPalette(t: f32, a: vec3f, b: vec3f, c: vec3f, d: vec3f) -> vec3f {
+  return a + b * cos(TAU * (c * t + d));
+}
+
+/**
+ * Domain warping (IQ): fbm of a position that is itself displaced by fbm.
+ * One extra octave of cost, but it turns smooth blobby noise into something
+ * with filaments and structure — the difference between "fog" and "nebula".
+ */
+fn warpFbm(p: vec2f, warp: f32) -> f32 {
+  let q = vec2f(fbm(p), fbm(p + vec2f(5.2, 1.3)));
+  return fbm(p + q * warp);
+}
+
+/**
+ * Filmic tone curve (ACES approximation, Krzysztof Narkowicz). Lets a preset
+ * push highlights way past 1.0 for a genuine hot core instead of flat-topping
+ * into a colour-shifted clipped mess. Feed it linear HDR, get displayable.
+ */
+fn tonemap(x: vec3f) -> vec3f {
+  let a = 2.51; let b = 0.03; let c = 2.43; let d = 0.59; let e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
+}
+
+/** Ordered-ish dither. Dark gradients band badly on 8-bit; +-1/255 of noise
+ * costs nothing and removes the stair-stepping that screams "cheap". */
+fn grain(uv: vec2f, amt: f32) -> f32 {
+  return (hash21(uv * 1024.0 + u.time * 60.0) - 0.5) * amt;
+}
+
+/** Radial vignette. 0.25-0.4 reads as "lit"; past ~0.6 it reads as a mistake. */
+fn vignette(uv: vec2f, amt: f32) -> f32 {
+  let d = distance(uv, vec2f(0.5));
+  return 1.0 - d * d * amt;
+}
+
+/**
+ * Kaleidoscope / club mirror. segments<=1 passes through, 2 is a plain left-
+ * right mirror, higher folds into radial wedges. Operates on CENTERED uv.
+ */
+fn kaleido(p: vec2f, segments: f32) -> vec2f {
+  if (segments < 1.5) { return p; }
+  if (segments < 2.5) { return vec2f(abs(p.x), p.y); }
+  let seg = TAU / segments;
+  var a = atan2(p.y, p.x);
+  a = abs(a - seg * floor(a / seg + 0.5));
+  return vec2f(cos(a), sin(a)) * length(p);
+}
+
+/** uv centered at 0, x corrected for aspect ratio */
+fn centered(uv: vec2f) -> vec2f {
+  return vec2f((uv.x - 0.5) * u.aspect, uv.y - 0.5);
+}
+
+struct VSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
+  // Fullscreen triangle
+  var pos = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var out: VSOut;
+  out.pos = vec4f(pos[vi], 0.0, 1.0);
+  out.uv = vec2f(pos[vi].x * 0.5 + 0.5, 1.0 - (pos[vi].y * 0.5 + 0.5));
+  return out;
+}
+",
+  "mesh3d": "
+struct M3U {
+  viewProj: mat4x4f,
+  grid: f32, spacing: f32, barWidth: f32, heightScale: f32,
+  hue: f32, hueRange: f32, light: f32, emissive: f32,
+  binCount: f32, time: f32, drive: f32, driveBeat: f32,
+}
+@group(0) @binding(0) var<uniform> m: M3U;
+@group(0) @binding(1) var<storage, read> bins: array<f32>;
+
+fn hsl2rgb(h: f32, s: f32, l: f32) -> vec3f {
+  let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+  let hp = fract(h / 360.0) * 6.0;
+  let x = c * (1.0 - abs(hp % 2.0 - 1.0));
+  var rgb = vec3f(0.0);
+  if (hp < 1.0) { rgb = vec3f(c, x, 0.0); }
+  else if (hp < 2.0) { rgb = vec3f(x, c, 0.0); }
+  else if (hp < 3.0) { rgb = vec3f(0.0, c, x); }
+  else if (hp < 4.0) { rgb = vec3f(0.0, x, c); }
+  else if (hp < 5.0) { rgb = vec3f(x, 0.0, c); }
+  else { rgb = vec3f(c, 0.0, x); }
+  return rgb + vec3f(l - c * 0.5);
+}
+
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) normal: vec3f,
+  @location(1) shade: vec3f,
+  @location(2) height: f32,
+  // Perspective w == view-space distance from the camera plane, a free fog
+  // depth with no extra uniforms. This is the cue that was missing: without
+  // it, distant bars cut straight to black instead of receding.
+  @location(3) fog: f32,
+  @location(4) heightNorm: f32,
+}
+
+fn m3_tonemap(x: vec3f) -> vec3f {
+  let a = 2.51; let b = 0.03; let c = 2.43; let d = 0.59; let e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
+}
+
+@vertex
+fn vs_mesh(
+  @location(0) inPos: vec3f,
+  @location(1) inNormal: vec3f,
+  @builtin(instance_index) ii: u32,
+) -> VOut {
+  let g = u32(m.grid);
+  let col = f32(ii % g);
+  let row = f32(ii / g);
+  let half = (m.grid - 1.0) * 0.5;
+  let dx = col - half;
+  let dz = row - half;
+  // Radial index into the spectrum -> concentric rings pulse with frequency.
+  let r = length(vec2f(dx, dz)) / max(m.grid * 0.5, 1.0);
+  let bi = u32(clamp(r, 0.0, 0.999) * m.binCount);
+  // Overall height rides the selected sync source so the Sync panel matters.
+  let h = bins[bi] * m.heightScale * (0.7 + m.drive * 0.7) + 0.03;
+  // Axis-only scale + translate => axis-aligned normals pass through.
+  let world = vec3f(
+    inPos.x * m.barWidth + dx * m.spacing,
+    inPos.y * h,
+    inPos.z * m.barWidth + dz * m.spacing,
+  );
+  var out: VOut;
+  out.pos = m.viewProj * vec4f(world, 1.0);
+  out.normal = inNormal;
+  out.shade = hsl2rgb(m.hue + r * m.hueRange + h * 24.0, 0.9, 0.55);
+  out.height = h;
+  out.fog = out.pos.w;
+  // 0 at the floor, 1 near the top of the tallest bar — drives the hot core.
+  out.heightNorm = clamp(h / max(m.heightScale * 0.6, 0.001), 0.0, 1.0);
+  return out;
+}
+
+@fragment
+fn fs_mesh(in: VOut) -> @location(0) vec4f {
+  let n = normalize(in.normal);
+
+  // Key light + a dimmer fill from the opposite side, plus a hemisphere
+  // ambient (cool from above, near-black from below). A single light over a
+  // flat 0.25 ambient is what made the city read as flat plastic; giving the
+  // shaded faces some cool sky bounce gives every bar visible form.
+  let key = max(dot(n, normalize(vec3f(0.4, 0.9, 0.3))), 0.0);
+  let fill = max(dot(n, normalize(vec3f(-0.5, 0.35, -0.6))), 0.0) * 0.35;
+  let sky = 0.5 + 0.5 * n.y;                       // 1 facing up, 0 facing down
+  let ambient = mix(vec3f(0.03, 0.04, 0.07), vec3f(0.10, 0.12, 0.18), sky);
+  var col = in.shade * (ambient + (key * m.light + fill));
+
+  // Hot tops: the tallest bars desaturate toward white and push past 1.0 so
+  // the tone map rolls them off as genuine emission rather than flat colour.
+  let hot = smoothstep(0.55, 1.0, in.heightNorm);
+  col = mix(col, vec3f(1.0), hot * 0.6);
+  col += in.shade * hot * (0.6 + m.drive * 0.6 + m.driveBeat * 0.6);
+
+  // Existing height emissive, kept.
+  col += in.shade * clamp(in.height, 0.0, m.heightScale * 0.5) * m.emissive
+       * (0.7 + m.drive * 0.6 + m.driveBeat * 0.5);
+
+  // Distance fog: recede into a dark blue haze rather than a hard black cut.
+  // Density chosen so the far edge of a default-distance camera softens
+  // without swallowing the near bars.
+  let fogAmt = 1.0 - exp(-in.fog * 0.045);
+  let haze = vec3f(0.02, 0.03, 0.06);
+  col = mix(col, haze, clamp(fogAmt, 0.0, 0.85));
+
+  col = m3_tonemap(col * 1.1);
+  return vec4f(col, 1.0);
+}
+",
+  "particleDraw": "
+struct Particle { pos: vec2f, vel: vec2f }
+struct PU {
+  dt: f32, time: f32, aspect: f32, count: u32,
+  bass: f32, drive: f32, driveBeat: f32, kick: f32,
+  hue: f32, flowScale: f32, flowStrength: f32, swirl: f32,
+  damping: f32, gravity: f32, size: f32, sizePulse: f32,
+  brightness: f32, beatBurst: f32, hueSpread: f32, speedColor: f32,
+  spawnRadius: f32, density: f32, audioFlow: f32, sat: f32,
+}
+@group(0) @binding(0) var<uniform> pu: PU;
+fn h11(p: f32) -> f32 { return fract(sin(p * 127.1) * 43758.5453); }
+
+@group(0) @binding(1) var<storage, read> parts: array<Particle>;
+
+fn hsl2rgb(h: f32, s: f32, l: f32) -> vec3f {
+  let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+  let hp = fract(h / 360.0) * 6.0;
+  let x = c * (1.0 - abs(hp % 2.0 - 1.0));
+  var rgb = vec3f(0.0);
+  if (hp < 1.0) { rgb = vec3f(c, x, 0.0); }
+  else if (hp < 2.0) { rgb = vec3f(x, c, 0.0); }
+  else if (hp < 3.0) { rgb = vec3f(0.0, c, x); }
+  else if (hp < 4.0) { rgb = vec3f(0.0, x, c); }
+  else if (hp < 5.0) { rgb = vec3f(x, 0.0, c); }
+  else { rgb = vec3f(c, 0.0, x); }
+  return rgb + vec3f(l - c * 0.5);
+}
+
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+  @location(1) shade: vec3f,
+}
+@vertex
+fn vs_draw(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var corners = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0),
+  );
+  let c = corners[vi];
+  let p = parts[ii];
+  let speed = length(p.vel);
+
+  // PER-PARTICLE constants, derived from the instance index alone. Never from
+  // time: a stochastic value re-rolled every frame gives persistence of vision
+  // nothing to lock onto, which is the single biggest reason a particle field
+  // reads as TV static instead of as moving matter.
+  let seed = f32(ii) * 0.61803 + 0.123;
+  // Fake depth. Uniform size + uniform brightness is what made this look like
+  // one flat sheet of noise; a spread of apparent distances gives the eye
+  // near/far layers to separate, which is most of the "3D" impression.
+  let depth = 0.35 + 0.65 * h11(seed * 2.7);
+  // Long-tailed brightness instead of a flat random range: most particles
+  // land in a modest band and only a rare few (the high tail of rnd^8) spike
+  // hot. That reads as a few genuinely bright points in the field instead of
+  // a uniform haze that clips to one flat white mass once enough of them
+  // additively overlap.
+  let rnd = h11(seed * 5.1);
+  let bright = 0.2 + 0.35 * rnd + 1.05 * pow(rnd, 8.0);
+
+  // Audio makes the whole field breathe: bass swells every particle, a beat
+  // pops them a little bigger. Kept modest so the smooth curl flow still
+  // dominates — this is "some reactiveness", not a strobe.
+  let sizeReact = 1.0 + pu.bass * 0.35 + pu.driveBeat * 0.6 * pu.beatBurst * 0.35;
+  let size = pu.size * depth * (1.0 + speed * pu.sizePulse) * sizeReact;
+
+  // Streak along the direction of travel. A round dot carries no motion
+  // information; an elongated one traces its own streamline, which is what
+  // makes a curl-noise field read as FLOW rather than as scatter.
+  let dir = select(vec2f(1.0, 0.0), p.vel / max(speed, 1e-6), speed > 1e-5);
+  let perp = vec2f(-dir.y, dir.x);
+  let stretch = 1.0 + min(speed * 26.0, 3.5);
+  let off = dir * (c.x * size * stretch) + perp * (c.y * size);
+
+  // pos is in NDC (-1..1 fills the frame); correct sprite x for aspect so
+  // dots stay round. y is flipped for clip space.
+  let clip = vec2f(p.pos.x + off.x / pu.aspect, -(p.pos.y + off.y));
+  let hue = pu.hue + seedHue(ii) * pu.hueSpread + speed * pu.speedColor * 400.0;
+  var out: VOut;
+  out.pos = vec4f(clip, 0.0, 1.0);
+  out.uv = c;
+  // Beat flash + bass pump on brightness — the field visibly pulses with the
+  // music instead of only its color drifting with speed. Scaled by beatBurst
+  // so the one "reactivity" knob drives both the sim scatter and the visual
+  // punch, and kept gentle so the flow reads as the main event.
+  let glowReact = 1.0 + pu.bass * 0.5 + pu.driveBeat * 1.4 * pu.beatBurst * 0.4;
+
+  // Nearer particles are brighter as well as bigger — the two cues together
+  // are what sell depth.
+  //
+  // Divided by the stretch factor to conserve energy: these sprites are
+  // ADDITIVELY blended, so a streak covering 4x the pixels of a dot deposits
+  // 4x the light. Without this the field clipped to a solid white blob the
+  // moment streaking was introduced (observed, not theorised).
+  out.shade = hsl2rgb(hue, pu.sat, 0.6) * pu.brightness * bright * depth * glowReact
+            / (0.45 + stretch * 0.75);
+  return out;
+}
+fn seedHue(ii: u32) -> f32 { return h11(f32(ii) * 0.61803 + 0.123) - 0.5; }
+
+@fragment
+fn fs_draw(in: VOut) -> @location(0) vec4f {
+  // Soft round sprite; additive so overlaps bloom into bright cores.
+  let d = length(in.uv);
+  let a = smoothstep(1.0, 0.0, d);
+  let core = smoothstep(0.5, 0.0, d);
+  let col = in.shade * (a + core * 1.5);
+  return vec4f(col, a);
+}
+",
+  "particleSim": "
+struct Particle { pos: vec2f, vel: vec2f }
+struct PU {
+  dt: f32, time: f32, aspect: f32, count: u32,
+  bass: f32, drive: f32, driveBeat: f32, kick: f32,
+  hue: f32, flowScale: f32, flowStrength: f32, swirl: f32,
+  damping: f32, gravity: f32, size: f32, sizePulse: f32,
+  brightness: f32, beatBurst: f32, hueSpread: f32, speedColor: f32,
+  spawnRadius: f32, density: f32, audioFlow: f32, sat: f32,
+}
+@group(0) @binding(0) var<uniform> pu: PU;
+fn h11(p: f32) -> f32 { return fract(sin(p * 127.1) * 43758.5453); }
+
+@group(0) @binding(1) var<storage, read_write> parts: array<Particle>;
+
+fn h21(p: vec2f) -> f32 {
+  var q = fract(p * vec2f(123.34, 345.45));
+  q += dot(q, q + 34.345);
+  return fract(q.x * q.y);
+}
+fn vnoise(p: vec2f) -> f32 {
+  let i = floor(p); let f = fract(p);
+  let s = f * f * (3.0 - 2.0 * f);
+  let a = h21(i); let b = h21(i + vec2f(1.0, 0.0));
+  let c = h21(i + vec2f(0.0, 1.0)); let d = h21(i + vec2f(1.0, 1.0));
+  return mix(mix(a, b, s.x), mix(c, d, s.x), s.y);
+}
+// Curl of a scalar noise field => divergence-free flow (no sources/sinks).
+fn curl(p: vec2f) -> vec2f {
+  let e = 0.02;
+  let dx = vnoise(p + vec2f(e, 0.0)) - vnoise(p - vec2f(e, 0.0));
+  let dy = vnoise(p + vec2f(0.0, e)) - vnoise(p - vec2f(0.0, e));
+  return vec2f(dy, -dx) / (2.0 * e);
+}
+
+// Overall force-budget multiplier. Before this existed, a particle's
+// terminal speed under damping (vel settles toward force*dt/(1-damping) at
+// steady state) worked out to roughly 0.03-0.05 NDC/sec at the default
+// knobs: crossing the ~0.6 NDC gap from the spawn disc to the 1.15 respawn
+// radius took 15-20+ seconds, so the field never had time to develop and
+// particles just sat on top of the spawn distribution. That is what actually
+// painted the "dense static blob" (confirmed by watching it render, not just
+// by theory); the respawn-radius fix further down is the other half of it.
+// This raises typical terminal speed into the ~0.15-0.3 NDC/sec range so
+// particles visibly traverse the frame in a few seconds.
+const FORCE_SCALE: f32 = 3.5;
+
+@compute @workgroup_size(64)
+fn cs_sim(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= pu.count) { return; }
+  var pos = parts[i].pos;
+  var vel = parts[i].vel;
+  let seed = h11(f32(i) * 0.61803 + 0.123);
+  // Per-particle burst direction; also reused below as the outward-drift
+  // fallback at the origin so that edge case doesn't carry a fixed +x bias.
+  let bdir = normalize(vec2f(h11(seed * 3.3) - 0.5, h11(seed * 7.7) - 0.5) + vec2f(1e-4));
+
+  // Curl-noise flow, drifting over time, amplified by bass. The fixed scale
+  // factors keep raw curl / positional terms in a sane velocity range so the
+  // exposed knobs read as intuitive 0..2 multipliers.
+  let fp = pos * pu.flowScale + vec2f(pu.time * 0.05, pu.time * 0.037);
+  // Flow rides both the bass and the selected sync source, so the Sync panel
+  // visibly changes how the field surges.
+  var force = curl(fp) * pu.flowStrength * 0.04
+            * (1.0 + pu.bass * pu.audioFlow * 0.4 + pu.drive * pu.audioFlow);
+  // Rotational swirl around center + gentle pull so the field stays framed.
+  force += vec2f(-pos.y, pos.x) * pu.swirl * 0.4;
+  force += -pos * pu.gravity * 0.3;
+  // Steady outward drift: with the center respawn this makes a fountain, so the
+  // curl field bends the outflow into visible radiating tendrils (a uniform
+  // fill would look like static under divergence-free flow). Loudness feeds it.
+  let r = length(pos);
+  var outward = pos * (1.0 / max(r, 1e-5));
+  if (r < 1e-4) { outward = bdir; }
+  force += outward * (0.03 + pu.drive * 0.05);
+  // Radial burst on the selected sync source's beats (falls back to kicks in
+  // Kick mode), weighted a bit above the continuous terms so a kick reads as
+  // a distinct scatter instead of blending into the ambient flow.
+  force += bdir * max(pu.driveBeat, pu.kick * 0.5) * pu.beatBurst * 0.5;
+  force *= FORCE_SCALE;
+
+  // Per-step velocity retention, written as a per-second rate raised to dt so
+  // its effective strength stays correct even if the sim's fixed step rate
+  // (SIM_FPS in webgpuRenderer.ts, currently 60) ever changes. At today's
+  // fixed dt=1/60 this is numerically identical to using pu.damping directly
+  // per step (pow(d, 1) == d): same behaviour, just frame-rate-honest.
+  let retention = pow(clamp(pu.damping, 0.001, 0.999), pu.dt * 60.0);
+  vel = vel * retention + force * pu.dt;
+  // Beat KICK: an instantaneous velocity impulse on the sync beat, on top of
+  // the (damped) burst force above. A force is smoothed away by the damping
+  // before it reads as motion; adding straight to velocity makes a kick
+  // visibly scatter the field outward, then the flow reclaims it. Gated on a
+  // fresh onset (driveBeat near its peak) so it fires once per beat, not every
+  // frame of the decay.
+  if (pu.driveBeat > 0.6) {
+    vel += bdir * pu.driveBeat * pu.beatBurst * 0.06;
+  }
+  pos += vel * pu.dt;
+
+  // Respawn once a particle drifts out of the framed region. sqrt() on the
+  // radius sample makes the respawn disc AREA-uniform, matching the CPU seed
+  // in initParticles(). Without it, sampling the radius uniformly instead of
+  // its square root packs particles near r=0 (equal-width rings near the
+  // centre cover less area but got the same particle count), which is what
+  // permanently reinforced a hot core: every respawn re-piled particles on
+  // the same spot instead of spreading across the disc. This is the other
+  // half of the "dense blob" bug, independent of the velocity fix above.
+  if (abs(pos.x) > 1.15 || abs(pos.y) > 1.15) {
+    let a = h11(seed * 13.1 + pu.time) * 6.28318530718;
+    let rr = sqrt(h11(seed * 5.5 + pu.time * 0.7));
+    pos = vec2f(cos(a), sin(a)) * pu.spawnRadius * rr;
+    vel = vec2f(0.0);
+  }
+  parts[i].pos = pos;
+  parts[i].vel = vel;
+}
+",
+  "post": "
+struct PostU {
+  bloom: f32,
+  bloomThreshold: f32,
+  exposure: f32,
+  tonemap: f32,
+  vignette: f32,
+  grain: f32,
+  chromatic: f32,
+  time: f32,
+  /** 1 when the frame is a transparent (premultiplied) delivery — PNG+alpha,
+   * VP9-alpha, ProRes 4444. The post chain then has to carry alpha alongside
+   * RGB instead of only modifying colour. */
+  transparent: f32,
+}
+@group(0) @binding(0) var srcTex: texture_2d<f32>;
+@group(0) @binding(1) var srcSmp: sampler;
+@group(0) @binding(2) var<uniform> p: PostU;
+@group(0) @binding(3) var bloomTex: texture_2d<f32>;
+
+struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
+  var pos = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var out: VSOut;
+  out.pos = vec4f(pos[vi], 0.0, 1.0);
+  out.uv = vec2f(pos[vi].x * 0.5 + 0.5, 1.0 - (pos[vi].y * 0.5 + 0.5));
+  return out;
+}
+
+fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
+
+// Bright-pass: keep the amount each pixel exceeds the threshold.
+@fragment
+fn fs_bright(in: VSOut) -> @location(0) vec4f {
+  let c = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0).rgb;
+  let l = luma(c);
+  let k = max(0.0, l - p.bloomThreshold);
+  let w = k / max(l, 1e-4);
+  return vec4f(c * w, 1.0);
+}
+
+// 9-tap separable Gaussian; horizontal and vertical are separate entry
+// points (fs_blur_h/fs_blur_v) so the direction is a compile-time constant.
+fn blur(in: VSOut, dir: vec2f) -> vec4f {
+  let dims = vec2f(textureDimensions(srcTex, 0));
+  let step = dir / dims;
+  let w = array<f32, 5>(0.227027, 0.194594, 0.121621, 0.054054, 0.016216);
+  var col = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0).rgb * w[0];
+  for (var i = 1; i < 5; i = i + 1) {
+    let o = step * f32(i);
+    col = col + textureSampleLevel(srcTex, srcSmp, in.uv + o, 0.0).rgb * w[i];
+    col = col + textureSampleLevel(srcTex, srcSmp, in.uv - o, 0.0).rgb * w[i];
+  }
+  return vec4f(col, 1.0);
+}
+@fragment
+fn fs_blur_h(in: VSOut) -> @location(0) vec4f { return blur(in, vec2f(1.0, 0.0)); }
+@fragment
+fn fs_blur_v(in: VSOut) -> @location(0) vec4f { return blur(in, vec2f(0.0, 1.0)); }
+
+// ACES filmic approximation (Narkowicz).
+fn aces(x: vec3f) -> vec3f {
+  let a = 2.51; let b = 0.03; let c = 2.43; let d = 0.59; let e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
+}
+fn hash(uv: vec2f) -> f32 {
+  return fract(sin(dot(uv, vec2f(12.9898, 78.233))) * 43758.5453);
+}
+
+@fragment
+fn fs_final(in: VSOut) -> @location(0) vec4f {
+  let center = vec2f(0.5, 0.5);
+  let toC = in.uv - center;
+  // Chromatic aberration: sample RGB along the radial, growing toward edges.
+  var col: vec3f;
+  var a: f32;
+  if (p.chromatic > 0.0) {
+    let off = toC * p.chromatic * 0.03 * dot(toC, toC) * 4.0;
+    let r = textureSampleLevel(srcTex, srcSmp, in.uv + off, 0.0);
+    let g = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0);
+    let bb = textureSampleLevel(srcTex, srcSmp, in.uv - off, 0.0);
+    col = vec3f(r.r, g.g, bb.b);
+    // Transparent delivery: RGB comes from three taps, so coverage must span
+    // them too or the fringe is clipped against the centre tap's alpha.
+    a = select(g.a, max(g.a, max(r.a, bb.a)), p.transparent > 0.5);
+  } else {
+    let s = textureSampleLevel(srcTex, srcSmp, in.uv, 0.0);
+    col = s.rgb;
+    a = s.a;
+  }
+  // Additive bloom.
+  var bloomAdd = vec3f(0.0);
+  if (p.bloom > 0.0) {
+    bloomAdd = textureSampleLevel(bloomTex, srcSmp, in.uv, 0.0).rgb * p.bloom;
+    col = col + bloomAdd;
+  }
+  // Exposure + tonemap.
+  col = col * p.exposure;
+  if (p.tonemap > 0.5) { col = aces(col); }
+  // Vignette.
+  if (p.vignette > 0.0) {
+    let d = length(toC) * 1.4142;
+    let v = 1.0 - p.vignette * smoothstep(0.4, 1.0, d);
+    col = col * v;
+    // Transparent delivery: fade coverage with the light, or the corners come
+    // out dark-AND-opaque instead of falling away.
+    if (p.transparent > 0.5) { a = a * v; }
+  }
+  // Deterministic film grain (track-time seeded, not Math.random).
+  if (p.grain > 0.0) {
+    let n = hash(in.uv + fract(p.time)) - 0.5;
+    // Premultiplied output divides by alpha on un-premultiply, which would
+    // scale grain by 1/a — several times too strong in semi-transparent areas.
+    col = col + n * p.grain * select(1.0, a, p.transparent > 0.5);
+  }
+  // Bloom adds emitted light; in premultiplied output the coverage has to rise
+  // with it or the halo is visible in the preview and gone from the file.
+  if (p.transparent > 0.5 && p.bloom > 0.0) {
+    a = clamp(a + max(bloomAdd.r, max(bloomAdd.g, bloomAdd.b)), 0.0, 1.0);
+  }
+  return vec4f(col, a);
+}
+",
+  "sceneComposite": "
+@fragment
+fn fs_composite(in: VSOut) -> @location(0) vec4f {
+  let raw = textureSampleLevel(feedbackTex, overlaySmp, in.uv, 0.0);
+  return composite(raw, in.uv);
+}
+",
+}
+`;
+
+exports[`shader golden baseline > spectrum-bars: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_hueSpread() -> f32 { return params[1u]; }
+fn P_glow() -> f32 { return params[2u]; }
+fn P_barGap() -> f32 { return params[3u]; }
+fn P_beatZoom() -> f32 { return params[4u]; }
+fn P_mirror() -> f32 { return params[5u]; }
+fn P_peaks() -> f32 { return params[6u]; }
+fn P_barHeight() -> f32 { return params[7u]; }
+fn P_barSat() -> f32 { return params[8u]; }
+fn P_barLift() -> f32 { return params[9u]; }
+fn P_glowReach() -> f32 { return params[10u]; }
+fn P_capBright() -> f32 { return params[11u]; }
+fn P_bgLevel() -> f32 { return params[12u]; }
+fn P_bgBassGlow() -> f32 { return params[13u]; }
+fn P_beatFlash() -> f32 { return params[14u]; }
+fn P_beatBright() -> f32 { return params[15u]; }
+fn P_vignette() -> f32 { return params[16u]; }
+
+fn preset(uvIn: vec2f) -> vec4f {
+  // Beat zoom: scale around center (Motion→Pulse master scales it)
+  var uv = (uvIn - 0.5) / (1.0 + u.driveBeat * P_beatZoom() * u.pulse) + 0.5;
+
+  // Optional mirror around center column
+  var x = uv.x;
+  if (P_mirror() > 0.5) { x = abs(uv.x - 0.5) * 2.0; }
+
+  // Bar count: Motion→Detail scales from a coarse minimum up to the full bin
+  // count. Each bar resamples the spectrum at its center so fewer bars still
+  // span the whole range. detail=1 -> binCount, identical to raw bins.
+  let n = round(mix(8.0, f32(u.binCount), u.detail));
+  let fi = clamp(x * n, 0.0, n - 0.001);
+  let i = u32(fi);
+  let inBar = fract(fi);
+  let barCenter = (f32(i) + 0.5) / n;
+  var v = binAt(barCenter);
+  var pk = peakAt(barCenter);
+  if (u.smoothBins > 0.5) {
+    // Smooth mode: continuous spline silhouette instead of discrete bars
+    v = binAt(x);
+    pk = peakAt(x);
+  }
+
+  // Background: dark radial wash breathing with bass + beat flash
+  let d = distance(uv, vec2f(0.5, 0.55));
+  let bgHue = P_hue() + 40.0;
+  var col = hsl2rgb(bgHue, 0.5, P_bgLevel() + u.bass * P_bgBassGlow()) * (1.0 - d * 0.9);
+  col += hsl2rgb(P_hue(), 0.7, 0.5) * u.driveBeat * P_beatFlash() * (1.0 - d);
+
+  let y = 1.0 - uv.y; // bars grow from bottom
+  let barH = v * P_barHeight();
+  var gapMask = step(P_barGap() * 0.5, inBar) * step(inBar, 1.0 - P_barGap() * 0.5);
+  if (u.smoothBins > 0.5) { gapMask = 1.0; }
+  let barHue = P_hue() + (fi / n) * P_hueSpread();
+
+  // Bar body with vertical gradient
+  if (y < barH) {
+    let g = y / max(barH, 0.001);
+    col = hsl2rgb(barHue, P_barSat(), 0.35 + g * P_barLift() + u.driveBeat * P_beatBright()) * gapMask
+        + col * (1.0 - gapMask);
+  } else {
+    // Glow above the bar
+    let fall = exp(-(y - barH) * (14.0 - P_glow() * P_glowReach()));
+    col += hsl2rgb(barHue, 0.9, 0.5) * fall * P_glow() * v * gapMask;
+  }
+
+  // Peak caps (toggleable)
+  let capD = abs(y - pk * P_barHeight());
+  col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.006, 0.0, capD) * gapMask * P_capBright()
+       * step(0.5, P_peaks());
+
+  // Vignette
+  col *= 1.0 - d * d * P_vignette();
+  return vec4f(col, 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > spectrum-bars: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 210,
+    "key": "hue",
+  },
+  {
+    "default": 80,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.45,
+    "key": "glow",
+  },
+  {
+    "default": 0.22,
+    "key": "barGap",
+  },
+  {
+    "default": 0.05,
+    "key": "beatZoom",
+  },
+  {
+    "default": 0,
+    "key": "mirror",
+  },
+  {
+    "default": 1,
+    "key": "peaks",
+  },
+  {
+    "default": 0.82,
+    "key": "barHeight",
+  },
+  {
+    "default": 0.85,
+    "key": "barSat",
+  },
+  {
+    "default": 0.35,
+    "key": "barLift",
+  },
+  {
+    "default": 10,
+    "key": "glowReach",
+  },
+  {
+    "default": 0.9,
+    "key": "capBright",
+  },
+  {
+    "default": 0.05,
+    "key": "bgLevel",
+  },
+  {
+    "default": 0.05,
+    "key": "bgBassGlow",
+  },
+  {
+    "default": 0.08,
+    "key": "beatFlash",
+  },
+  {
+    "default": 0.08,
+    "key": "beatBright",
+  },
+  {
+    "default": 0.55,
+    "key": "vignette",
+  },
+]
+`;
+
+exports[`shader golden baseline > spectrum-scape: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_heightScale() -> f32 { return params[1u]; }
+fn P_camPitch() -> f32 { return params[2u]; }
+fn P_camDist() -> f32 { return params[3u]; }
+fn P_camSpin() -> f32 { return params[4u]; }
+fn P_emissive() -> f32 { return params[5u]; }
+fn P_fov() -> f32 { return params[6u]; }
+fn P_hueRange() -> f32 { return params[7u]; }
+fn P_barWidth() -> f32 { return params[8u]; }
+fn P_spacing() -> f32 { return params[9u]; }
+fn P_light() -> f32 { return params[10u]; }
+fn P_camYaw() -> f32 { return params[11u]; }
+fn P_targetY() -> f32 { return params[12u]; }
+
+fn preset(uv: vec2f) -> vec4f { return vec4f(0.0); }
+"
+`;
+
+exports[`shader golden baseline > spectrum-scape: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 200,
+    "key": "hue",
+  },
+  {
+    "default": 6,
+    "key": "heightScale",
+  },
+  {
+    "default": 32,
+    "key": "camPitch",
+  },
+  {
+    "default": 15,
+    "key": "camDist",
+  },
+  {
+    "default": 12,
+    "key": "camSpin",
+  },
+  {
+    "default": 0.5,
+    "key": "emissive",
+  },
+  {
+    "default": 50,
+    "key": "fov",
+  },
+  {
+    "default": 120,
+    "key": "hueRange",
+  },
+  {
+    "default": 0.42,
+    "key": "barWidth",
+  },
+  {
+    "default": 0.6,
+    "key": "spacing",
+  },
+  {
+    "default": 0.9,
+    "key": "light",
+  },
+  {
+    "default": 30,
+    "key": "camYaw",
+  },
+  {
+    "default": 1,
+    "key": "targetY",
+  },
+]
+`;
+
+exports[`shader golden baseline > starfield: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_density() -> f32 { return params[1u]; }
+fn P_size() -> f32 { return params[2u]; }
+fn P_speed() -> f32 { return params[3u]; }
+fn P_direction() -> f32 { return params[4u]; }
+fn P_beatDance() -> f32 { return params[5u]; }
+fn P_sizePulse() -> f32 { return params[6u]; }
+fn P_fly() -> f32 { return params[7u]; }
+fn P_clump() -> f32 { return params[8u]; }
+fn P_streak() -> f32 { return params[9u]; }
+fn P_hotCore() -> f32 { return params[10u]; }
+fn P_energyDrive() -> f32 { return params[11u]; }
+fn P_wander() -> f32 { return params[12u]; }
+fn P_wanderSpeed() -> f32 { return params[13u]; }
+fn P_fill() -> f32 { return params[14u]; }
+fn P_layers() -> f32 { return params[15u]; }
+fn P_parallax() -> f32 { return params[16u]; }
+fn P_hueVariance() -> f32 { return params[17u]; }
+fn P_twinkle() -> f32 { return params[18u]; }
+fn P_glow() -> f32 { return params[19u]; }
+fn P_brightness() -> f32 { return params[20u]; }
+fn P_beatFlash() -> f32 { return params[21u]; }
+fn P_bgLevel() -> f32 { return params[22u]; }
+fn P_vignette() -> f32 { return params[23u]; }
+fn P_mirror() -> f32 { return params[24u]; }
+
+// Curl of a scalar noise field => a smooth divergence-free drift so neighbours
+// move as one current instead of on uncorrelated orbits (docs/VISUAL-DESIGN.md
+// section 4). Cheapened to noise2, this only needs to be smooth, not detailed.
+fn curlFlow(pp: vec2f) -> vec2f {
+  let e = 0.08;
+  let dx = (noise2(pp + vec2f(e, 0.0)) - noise2(pp - vec2f(e, 0.0))) / (2.0 * e);
+  let dy = (noise2(pp + vec2f(0.0, e)) - noise2(pp - vec2f(0.0, e))) / (2.0 * e);
+  return vec2f(dy, -dx);
+}
+
+fn preset(uv: vec2f) -> vec4f {
+  var p = kaleido(centered(uv), P_mirror());
+
+  // Dark hued field (a cosine tint stays saturated near black where an hsl hue
+  // would go grey), plus a faint warped nebula breathing with bass -- ambient
+  // wash only, safe to fill the frame.
+  let hueT = 1.0 - P_hue() / 360.0;
+  let bgPal = cosPalette(hueT + 0.08, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+  var col = bgPal * P_bgLevel() * (1.0 + u.bass * 0.6);
+  let nebT = warpFbm(p * 0.5 + u.time * 0.02, 0.7 + u.mid * 0.9);
+  col += bgPal * nebT * nebT * 0.05 * (0.4 + u.mid * 0.8);
+  col += bgPal * u.driveBeat * P_beatFlash() * u.pulse;
+
+  let energy = P_speed() * (0.4 + u.drive * P_energyDrive());
+
+  if (P_fly() > 0.5) {
+    // ---- TRUE 3D STARFIELD: discrete stars stream from far to the camera ----
+    // Each depth SHELL scrolls toward the viewer; a star spawns far (small,
+    // dim, near the vanishing point), approaches while growing/brightening and
+    // streaking outward, then the shell wraps = despawn + a fresh one far away.
+    // Flying THROUGH independent particles, not a zoomed image.
+    let gs = 2.0 + P_density() * 0.45;
+    let shells = i32(P_layers()) * 4;
+    for (var sI = 0; sI < shells; sI = sI + 1) {
+      let fs = f32(sI);
+      let rate = energy * (1.0 - P_parallax() * fract(fs * 0.37) * 0.45)
+               * (1.0 + u.driveBeat * P_beatDance() * 0.8 * u.pulse);
+      let phase = fract(fs * 0.6180339887 + u.time * rate * 0.28);
+      let Z = mix(1.25, 0.05, phase);           // far -> at the camera
+      // Rotate each shell's grid by a different angle. Otherwise every shell's
+      // naturally-sparse vanishing point (the grid origin) sits on the same
+      // screen axes and they STACK into a hard dark cross through the centre.
+      // Rotated, each shell's sparse region points a different way and they
+      // fill each other's gaps.
+      let rot = rot2(fs * 2.3994 + 0.5);
+      let rotT = transpose(rot);
+      let world = rot * (p * Z * gs);
+      let baseCell = floor(world);
+      for (var oy = -1; oy <= 1; oy = oy + 1) {
+        for (var ox = -1; ox <= 1; ox = ox + 1) {
+          let cell = baseCell + vec2f(f32(ox), f32(oy)) + fs * 17.0;
+          let clumpN = noise2(cell * 0.15 + fs * 7.0);
+          let h1 = hash21(cell + fs * 31.7);
+          let fillP = clamp(mix(P_fill(), P_fill() * (1.7 - 1.4 * clumpN), P_clump()), 0.0, 1.0);
+          if (h1 > fillP) { continue; }
+          let h2 = hash21(cell + 41.3 + fs * 3.1);
+          let h3 = hash21(cell + 77.7 + fs * 5.3);
+          let h4 = hash21(cell + 13.1 + fs * 9.7);
+          let starW = baseCell + vec2f(f32(ox), f32(oy)) + vec2f(0.2 + 0.6 * h2, 0.2 + 0.6 * h3);
+          let starScreen = (rotT * starW) / (Z * gs);   // un-rotate back to screen
+          let dvec = p - starScreen;
+          var band = u.bass;
+          if (h4 < 0.3333) { band = u.mid; } else if (h4 < 0.6666) { band = u.treble; }
+          // Small, crisp point; capped so a near star becomes a thin STREAK
+          // flying past rather than a fat soft blob.
+          let rad = min(P_size() * (0.3 + h1) / (Z * gs) * (1.0 + band * P_sizePulse()), 0.05);
+          let flight = normalize(starScreen + vec2f(1e-4, 0.0));
+          let perp = vec2f(-flight.y, flight.x);
+          let stretch = 1.0 + P_streak() * (1.0 - Z) * (2.5 + u.driveBeat * 3.0 * u.pulse);
+          let dl = dot(dvec, flight);
+          let dp = dot(dvec, perp);
+          let dist = sqrt(dl * dl / (stretch * stretch) + dp * dp);
+          let fade = smoothstep(1.25, 0.9, Z) * smoothstep(0.05, 0.17, Z);
+          let twP = u.time * (1.3 + h2 * 3.0) + h1 * 40.0;
+          let tw = 1.0 - P_twinkle() * (0.5 + 0.35 * sin(twP) + 0.15 * sin(twP * 1.618));
+          // Bright pinpoint + tight bloom -- a crisp point of light, not bokeh.
+          let cd = dist / max(rad, 1e-5);
+          let core = 1.0 / (1.0 + cd * cd * 10.0);
+          let halo = exp(-cd * cd * 1.3) * P_glow() * 0.4;
+          let hueOff = (h3 - 0.5) * P_hueVariance();
+          let sPal = cosPalette(1.0 - (P_hue() + hueOff) / 360.0, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+          let lum = (core * 1.6 + halo) * fade * tw * (0.5 + band * 0.9);
+          let hot = smoothstep(0.26, 0.06, Z) * P_hotCore() * (0.4 + h1);
+          col += mix(sPal, vec3f(1.0), hot * 0.7) * lum * P_brightness();
+        }
+      }
+    }
+    } else {
+    // ---- DRIFT MODE: independent particles drifting on a shared current ----
+    let baseSpd = energy * (1.0 + u.driveBeat * P_beatDance() * 0.8 * u.pulse);
+    let ang = radians(P_direction());
+    let dir = vec2f(cos(ang), -sin(ang));
+    let layerCount = i32(P_layers());
+    for (var l = 0; l < layerCount; l = l + 1) {
+      let fl = f32(l);
+      let scl = (P_density() + fl * 3.0) * 0.5;
+      let par = 1.0 - P_parallax() * fl * 0.3;
+      // Only a GENTLE overall drift in the chosen direction — the free
+      // per-particle float below is the dominant motion, so particles wander
+      // every which way instead of marching in formation.
+      let flow = dir * baseSpd * par * 0.06;
+      let q = p * scl - flow * u.time;
+      let base = floor(q);
+      // 3x3 neighbourhood so a jittered star near a cell edge still draws.
+      for (var oy = -1; oy <= 1; oy = oy + 1) {
+        for (var ox = -1; ox <= 1; ox = ox + 1) {
+          let cell = base + vec2f(f32(ox), f32(oy)) + fl * 93.17;
+          let h1 = hash21(cell);
+          let clumpN = noise2((base + vec2f(f32(ox), f32(oy))) * 0.1 + fl * 6.0);
+          let fillP = clamp(mix(P_fill(), P_fill() * (1.7 - 1.4 * clumpN), P_clump()), 0.0, 1.0);
+          if (h1 > fillP) { continue; }
+          let h2 = hash21(cell + 41.3);
+          let h3 = hash21(cell + 77.7);
+          let h4 = hash21(cell + 13.1);
+          // FREE ORGANIC FLOAT: each particle drifts on its own curved path —
+          // a slow curl-advected term plus two incommensurate sine pairs on
+          // this particle's own phase — so it wanders freely in its own
+          // direction instead of oscillating around a fixed home. Bounded to
+          // just under a cell so the 3x3 neighbour search still finds it.
+          let fph = h2 * TAU;
+          let wt = u.time * (0.25 + P_wanderSpeed() * 0.6);
+          let drift = vec2f(
+            sin(wt * (0.7 + 0.5 * h2) + fph) + 0.55 * sin(wt * (1.3 + 0.4 * h3) + fph * 1.7),
+            cos(wt * (0.6 + 0.5 * h3) + fph * 1.3) + 0.55 * cos(wt * (1.1 + 0.4 * h2) + fph * 0.7),
+          ) * 0.3;
+          let flowAdv = curlFlow(cell * 0.13 + u.time * 0.08) * 0.5;
+          let wob = (drift + flowAdv) * P_wander();
+          let scatDir = normalize(vec2f(h2 - 0.5, h3 - 0.5) + 1e-4);
+          let scat = scatDir * u.driveBeat * P_beatDance() * 0.35 * u.pulse;
+          let home = (base + vec2f(f32(ox), f32(oy)) + vec2f(0.5) + wob + scat) / scl;
+          let d = p - home;
+          var band = u.bass;
+          if (h4 < 0.3333) { band = u.mid; } else if (h4 < 0.6666) { band = u.treble; }
+          let depthV = mix(0.5, 1.4, h1);
+          // Small radius: a particle floating in space is a crisp point of
+          // light, not a fat soft bokeh disc. Shrunk hard from the old value.
+          let rad = P_size() * 0.4 / scl * depthV * (0.7 + band * P_sizePulse());
+          // Streak follows the particle's own drift; kept light in drift mode
+          // so free-floating particles stay mostly point-like, only stretching
+          // a little on a beat.
+          let vel = normalize(flowAdv + scatDir * u.driveBeat * 1.4 * u.pulse + vec2f(1e-4, 0.0));
+          let perp = vec2f(-vel.y, vel.x);
+          let stretch = 1.0 + P_streak() * (0.2 + u.driveBeat * 1.0 * u.pulse);
+          let dl = dot(d, vel);
+          let dp = dot(d, perp);
+          let dist = sqrt(dl * dl / (stretch * stretch) + dp * dp);
+          let twP = u.time * (1.3 + h2 * 3.0) + h1 * 40.0;
+          let tw = 1.0 - P_twinkle() * (0.5 + 0.35 * sin(twP) + 0.15 * sin(twP * 1.618));
+          // A bright PINPOINT (1/(1+r^2) has an intense centre and a fast
+          // falloff = a crisp glowing dot) plus a small tight bloom, instead
+          // of a soft-edged disc. This is what makes it read as a distinct
+          // particle rather than an out-of-focus light.
+          let cd = dist / max(rad, 1e-5);
+          let core = 1.0 / (1.0 + cd * cd * 10.0);
+          let bloom = exp(-cd * cd * 1.3) * P_glow() * 0.45;
+          let hueOff = (h3 - 0.5) * P_hueVariance();
+          let sPal = cosPalette(1.0 - (P_hue() + hueOff) / 360.0, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+          let lum = (core * 1.4 + bloom) * tw * depthV * (0.55 + band * 0.9);
+          let hot = smoothstep(0.6, 1.4, depthV) * P_hotCore() * (0.4 + h1);
+          col += mix(sPal, vec3f(1.0), hot * 0.7) * lum * P_brightness();
+        }
+      }
+    }
+  }
+
+  col *= vignette(uv, P_vignette());
+  col = tonemap(col * 1.2);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > starfield: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 210,
+    "key": "hue",
+  },
+  {
+    "default": 14,
+    "key": "density",
+  },
+  {
+    "default": 0.11,
+    "key": "size",
+  },
+  {
+    "default": 0.2,
+    "key": "speed",
+  },
+  {
+    "default": 90,
+    "key": "direction",
+  },
+  {
+    "default": 0.35,
+    "key": "beatDance",
+  },
+  {
+    "default": 0.8,
+    "key": "sizePulse",
+  },
+  {
+    "default": 0,
+    "key": "fly",
+  },
+  {
+    "default": 0.5,
+    "key": "clump",
+  },
+  {
+    "default": 0.5,
+    "key": "streak",
+  },
+  {
+    "default": 0.6,
+    "key": "hotCore",
+  },
+  {
+    "default": 0.6,
+    "key": "energyDrive",
+  },
+  {
+    "default": 0.7,
+    "key": "wander",
+  },
+  {
+    "default": 0.35,
+    "key": "wanderSpeed",
+  },
+  {
+    "default": 0.7,
+    "key": "fill",
+  },
+  {
+    "default": 3,
+    "key": "layers",
+  },
+  {
+    "default": 0.5,
+    "key": "parallax",
+  },
+  {
+    "default": 40,
+    "key": "hueVariance",
+  },
+  {
+    "default": 0.4,
+    "key": "twinkle",
+  },
+  {
+    "default": 0.35,
+    "key": "glow",
+  },
+  {
+    "default": 0.8,
+    "key": "brightness",
+  },
+  {
+    "default": 0.1,
+    "key": "beatFlash",
+  },
+  {
+    "default": 0.02,
+    "key": "bgLevel",
+  },
+  {
+    "default": 0.35,
+    "key": "vignette",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+]
+`;
+
+exports[`shader golden baseline > synthwave: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_gridHue() -> f32 { return params[1u]; }
+fn P_speed() -> f32 { return params[2u]; }
+fn P_react() -> f32 { return params[3u]; }
+fn P_sunR() -> f32 { return params[4u]; }
+fn P_gridGlow() -> f32 { return params[5u]; }
+fn P_beatPulse() -> f32 { return params[6u]; }
+fn P_mountains() -> f32 { return params[7u]; }
+fn P_stars() -> f32 { return params[8u]; }
+fn P_sunRays() -> f32 { return params[9u]; }
+fn P_sunY() -> f32 { return params[10u]; }
+fn P_gridScale() -> f32 { return params[11u]; }
+fn P_scan() -> f32 { return params[12u]; }
+fn P_gridLock() -> f32 { return params[13u]; }
+fn P_fog() -> f32 { return params[14u]; }
+fn P_vignette() -> f32 { return params[15u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  var col = vec3f(0.0);
+  let cx = (uv.x - 0.5) * u.aspect;
+  let horizon = 0.5;
+  let drive = clamp(u.drive, 0.0, 1.5);
+  // Pump on the tempo grid when the track has one (gridPulse falls back to
+  // the flux pulse when it doesn't); flux onsets still add on top via max.
+  let pulse = 1.0 + max(u.driveBeat, gridPulse(6.0)) * P_beatPulse() * u.pulse;
+
+  if (uv.y > horizon) {
+    // --- Floor: perspective grid receding to the horizon.
+    let fy = uv.y - horizon;                 // 0 at horizon .. 0.5 at bottom
+    let persp = 0.16 / max(fy, 0.004);
+    // Beat-locked scroll: exactly round(speed) grid lines cross per beat,
+    // riding the real beat grid (rubato and all). Continuous across the bar
+    // wrap because 4 beats always advance an integer number of cells. Falls
+    // back to free time-scroll when the track has no grid (u.bpm == 0) —
+    // at 120 BPM both modes move at the same average rate.
+    var scroll = u.time * P_speed() * 2.0;
+    if (P_gridLock() > 0.5 && u.bpm > 0.5) {
+      // Integer lines-per-beat keeps the scroll continuous across the bar wrap;
+      // ×2 before rounding makes each 0.5 of the Speed slider a distinct rate
+      // (1..6 lines/beat) instead of round() collapsing the lower half to 1.
+      scroll = beatRamp() * max(1.0, round(P_speed() * 2.0));
+    }
+    // Grid density: a plain 1/depth mapping only has ~3x dynamic range across
+    // the CLOSEST two-thirds of the floor (persp goes from 1.0 to 0.32 across
+    // that whole span), which is why the old grid read as two or three lonely
+    // lines instead of a floor. dens multiplies both axes up to a real
+    // density — rounded to an INTEGER so the beat-locked scroll's "integer
+    // cells per beat" guarantee above still lands on an integer number of
+    // sub-lines too, keeping fract(gz) continuous across the bar wrap.
+    let dens = max(1.0, round(P_gridScale() * 9.0));
+    let gz = (persp - scroll) * dens;
+    let gx = cx * persp * dens;
+    let lz = abs(fract(gz) - 0.5);
+    let lx = abs(fract(gx) - 0.5);
+    let lineW = 0.05 + fy * 0.05;
+    let grid = smoothstep(lineW, 0.0, lz) + smoothstep(lineW, 0.0, lx);
+    let fade = smoothstep(0.0, 0.06, fy);
+    let glow = P_gridGlow() * (0.4 + drive * P_react() + u.bass * 0.3) * pulse;
+    var gridCol = hsl2rgb(P_gridHue(), 0.9, 0.55) * grid * fade * glow;
+
+    // Atmospheric fog (IQ): brightness/saturation fall off with the TRUE
+    // optical depth (persp, not the density-scaled line coordinate), so the
+    // grid recedes into haze approaching the vanishing point instead of
+    // holding constant brightness all the way to the horizon — this was the
+    // single biggest reason the floor read as flat rather than deep.
+    let fogAmt = (1.0 - exp(-persp * 0.22)) * clamp(P_fog(), 0.0, 1.5);
+    let fogCol = mix(hsl2rgb(P_gridHue(), 0.5, 0.045), hsl2rgb(P_hue(), 0.55, 0.045), 0.5);
+    gridCol = mix(gridCol, fogCol * (grid * 0.7 + 0.3) * fade, clamp(fogAmt, 0.0, 1.0));
+    col += gridCol;
+  } else {
+    // --- Sky.
+    // Rolling mountain silhouette rising from the horizon (bass lifts it).
+    let hills = fbm(vec2f(uv.x * 3.0 + 4.0, 7.3));
+    let mh = (0.25 + hills * 0.6) * P_mountains() * (0.55 + u.bass * 0.9);
+    let ridgeTop = horizon - mh * 0.28;
+    let mtn = smoothstep(ridgeTop - 0.004, ridgeTop, uv.y);
+
+    // Sun with a vertical gradient + widening scanline gaps.
+    let sunCtr = vec2f(cx, uv.y - (horizon - P_sunY()));
+    let sd = length(sunCtr);
+    let sunBody = smoothstep(P_sunR(), P_sunR() - 0.008, sd);
+    let scanPos = horizon - uv.y;
+    let scanGap = P_scan() * step(0.5, fract(scanPos * (28.0 + scanPos * 70.0)));
+    let sunGrad = mix(
+      hsl2rgb(P_hue() + 45.0, 0.95, 0.62),
+      hsl2rgb(P_hue(), 0.95, 0.55),
+      clamp((uv.y - (horizon - P_sunY() - P_sunR())) / (2.0 * P_sunR()), 0.0, 1.0),
+    );
+    var sky = sunGrad * sunBody * (1.0 - scanGap);
+    // Hot core: a genuinely emissive centre that partially bleeds through the
+    // scan bands (real overexposed light does not get fully cut by them) —
+    // desaturating toward white and pushing past 1.0 for tonemap() to roll
+    // off is what reads as EMITTING rather than merely sun-coloured.
+    let core = exp(-sd * sd * (9.0 / max(P_sunR() * P_sunR(), 1e-4)));
+    let hot = smoothstep(0.3, 0.85, core) * sunBody;
+    sky = mix(sky, vec3f(1.0, 0.97, 0.9), hot * 0.75);
+    sky += vec3f(1.0, 0.95, 0.85) * hot * hot * 0.7 * (1.0 - scanGap * 0.6);
+    sky += hsl2rgb(P_hue() + 30.0, 0.8, 0.45) * smoothstep(P_sunR() * 2.3, 0.0, sd) * (0.35 + drive * 0.35);
+    // Rotating sun rays (optional).
+    if (P_sunRays() > 0.01) {
+      let ang = atan2(sunCtr.y, sunCtr.x);
+      let rays = 0.5 + 0.5 * sin(ang * 16.0 + u.time * 0.6);
+      sky += hsl2rgb(P_hue() + 40.0, 0.9, 0.5) * rays
+           * smoothstep(P_sunR() * 3.2, P_sunR(), sd) * P_sunRays() * (0.4 + drive * 0.6);
+    }
+    // Sky gradient darkening upward.
+    sky += hsl2rgb(P_hue() + 60.0, 0.6, 0.12) * (horizon - uv.y) * 1.2;
+    // Stars (small round points behind the sun, above the mountains).
+    if (P_stars() > 0.5) {
+      let gp = vec2f(uv.x * u.aspect, uv.y) * 60.0;
+      let cell = floor(gp);
+      let h = hash21(cell);
+      if (h > 0.972) {
+        let sp = vec2f(hash21(cell + 0.37), hash21(cell + 0.71));
+        let star = smoothstep(0.13, 0.0, length(gp - cell - sp));
+        sky += vec3f(0.9, 0.92, 1.0) * star * (h - 0.972) * 22.0
+             * (0.5 + 0.5 * sin(u.time * 2.0 + h * 40.0)) * smoothstep(horizon, 0.0, uv.y);
+      }
+    }
+    // Mountains are a dark silhouette over the sky.
+    col += mix(sky, sky * 0.1, mtn);
+    // Rim light: a thin warm highlight along the ridge, as if backlit by the
+    // sun behind it — sells the silhouette as a shape instead of a flat cutout.
+    let ridgeDist = abs(uv.y - ridgeTop);
+    col += hsl2rgb(P_hue() + 20.0, 0.85, 0.6) * smoothstep(0.007, 0.0, ridgeDist)
+         * (0.5 + drive * 0.4) * P_mountains();
+  }
+  // Horizon bloom: a tight crisp line plus a wider soft halo, pumped by the
+  // sync source — two exp() reaches read as an actual light source instead
+  // of a single flat bar.
+  let hEdge = abs(uv.y - horizon);
+  col += hsl2rgb(P_gridHue(), 0.85, 0.65) * exp(-hEdge * 90.0)
+       * (0.5 + u.energy * 0.3 + drive * 0.5) * pulse;
+  col += hsl2rgb(P_gridHue(), 0.7, 0.6) * exp(-hEdge * 16.0) * 0.22 * (0.4 + drive * 0.4) * pulse;
+
+  col *= vignette(uv, P_vignette());
+  col = tonemap(col * 1.15);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > synthwave: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 20,
+    "key": "hue",
+  },
+  {
+    "default": 300,
+    "key": "gridHue",
+  },
+  {
+    "default": 1,
+    "key": "speed",
+  },
+  {
+    "default": 0.8,
+    "key": "react",
+  },
+  {
+    "default": 0.28,
+    "key": "sunR",
+  },
+  {
+    "default": 1,
+    "key": "gridGlow",
+  },
+  {
+    "default": 0.5,
+    "key": "beatPulse",
+  },
+  {
+    "default": 0.35,
+    "key": "mountains",
+  },
+  {
+    "default": 1,
+    "key": "stars",
+  },
+  {
+    "default": 0,
+    "key": "sunRays",
+  },
+  {
+    "default": 0.3,
+    "key": "sunY",
+  },
+  {
+    "default": 0.7,
+    "key": "gridScale",
+  },
+  {
+    "default": 0.6,
+    "key": "scan",
+  },
+  {
+    "default": 1,
+    "key": "gridLock",
+  },
+  {
+    "default": 0.8,
+    "key": "fog",
+  },
+  {
+    "default": 0.3,
+    "key": "vignette",
+  },
+]
+`;
+
+exports[`shader golden baseline > tunnel-rings: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_hueSpread() -> f32 { return params[1u]; }
+fn P_speed() -> f32 { return params[2u]; }
+fn P_rings() -> f32 { return params[3u]; }
+fn P_spokes() -> f32 { return params[4u]; }
+fn P_beatPulse() -> f32 { return params[5u]; }
+fn P_cruiseFloor() -> f32 { return params[6u]; }
+fn P_cruiseEnergy() -> f32 { return params[7u]; }
+fn P_beatSpeed() -> f32 { return params[8u]; }
+fn P_tileLevel() -> f32 { return params[9u]; }
+fn P_tileSpectrum() -> f32 { return params[10u]; }
+fn P_pulseWidth() -> f32 { return params[11u]; }
+fn P_tileSat() -> f32 { return params[12u]; }
+fn P_checker() -> f32 { return params[13u]; }
+fn P_groutWidth() -> f32 { return params[14u]; }
+fn P_groutLevel() -> f32 { return params[15u]; }
+fn P_fogNear() -> f32 { return params[16u]; }
+fn P_fogFar() -> f32 { return params[17u]; }
+fn P_centerGlow() -> f32 { return params[18u]; }
+fn P_vignette() -> f32 { return params[19u]; }
+fn P_mirror() -> f32 { return params[20u]; }
+fn P_twist() -> f32 { return params[21u]; }
+fn P_roundness() -> f32 { return params[22u]; }
+fn P_surfaceWarp() -> f32 { return params[23u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  // Club mirror folds the tube into radial wedges. 1 = off.
+  var p = kaleido(centered(uv), P_mirror());
+  let r = max(length(p), 2e-3);
+  let a = atan2(p.y, p.x);
+
+  // Forward speed: a cruising floor plus the sync envelope, kicked on beats.
+  let kickP = max(u.driveBeat, gridPulse(6.0));
+  let spd = P_speed() * (P_cruiseFloor() + u.drive * P_cruiseEnergy())
+          * (1.0 + kickP * P_beatSpeed() * u.pulse);
+
+  // Depth. 1/r is the pinhole distance down the axis of a cylinder: the centre
+  // of the frame (r -> 0) is infinitely far, the frame edge is the near mouth
+  // of the tube. Adding time streams every wall feature from the vanishing
+  // point OUTWARD toward the viewer -- the actual motion of flying down a
+  // pipe, not a texture being zoomed.
+  let depth = 1.0 / r;
+  let travel = depth + u.time * spd * 2.2;
+  // Corkscrew: flutes spiral with depth like a waterslide auger.
+  let aTwist = a + travel * P_twist() * 0.15;
+
+  // Spectrum around the circumference, keyed to the true screen angle so it
+  // sits where the ear expects regardless of the corkscrew.
+  let xs = abs(fract(a / TAU + 0.5) * 2.0 - 1.0);
+  let v = binAt(xs);
+  let pk = peakAt(xs);
+
+  // Cosine palette by depth -- consecutive rings are related, saturated
+  // colours instead of a drifting hue (a drifting hue is how this went muddy).
+  let t = fract(travel * 0.05 + P_hue() / 360.0);
+  let spread = max(P_hueSpread() / 360.0, 0.08);
+  let pal = cosPalette(t, vec3f(0.5), vec3f(0.5), vec3f(1.0) * spread, vec3f(0.0, 0.33, 0.67));
+
+  // Circular rings stacked in depth, rushing outward past the viewer. Thin
+  // BRIGHT bands on a dark wall (high contrast) read as pipe segments flying
+  // by -- the previous version summed everything to a flat wash.
+  let ringF = travel * P_rings() * 0.35;
+  let ringD = fract(ringF);
+  let ringLine = smoothstep(P_groutWidth() * 1.6, 0.0, min(ringD, 1.0 - ringD));
+  let ringParity = f32(i32(floor(ringF)) & 1);
+
+  // Longitudinal flutes running down the tube LENGTH and converging at the
+  // vanishing point. Converging perspective lines are the single strongest
+  // "this is a round 3D tube" cue.
+  let fluteF = aTwist / TAU * P_spokes();
+  let fluteD = fract(fluteF);
+  let fluteLine = smoothstep(P_groutWidth() * 2.2, 0.0, min(fluteD, 1.0 - fluteD));
+  let fluteShade = 0.5 + 0.5 * cos(fluteF * TAU);
+
+  // Wall surface texture, scrolling WITH the wall so it reads as a worn/wet
+  // surface rather than a flat gradient.
+  let surf = warpFbm(vec2f(a / TAU * 5.0, travel * 0.4), P_surfaceWarp() * (0.4 + u.mid * 0.8));
+
+  // Cylinder shading: light the round cross-section from one side so there is
+  // a lit stripe and a shadowed stripe around the circumference -- the wall
+  // curves away instead of reading flat.
+  let round = mix(1.0, 0.3 + 0.7 * (0.5 + 0.5 * cos(a - 2.2)), P_roundness());
+
+  // Wall base: DARK, lifted by structure + spectrum. Alternating ring parity
+  // (checker) gives neighbouring segments distinct tone so travel reads.
+  var lit = P_tileLevel() * (0.55 + ringParity * P_checker())
+          + fluteShade * 0.22
+          + surf * 0.3
+          + v * P_tileSpectrum();
+  var col = pal * lit * (0.35 + P_tileSat() * 0.9) * round;
+
+  // Bright seams (ring + flute lines), spectrum-lit; the loudest angle's seams
+  // flare near-white (a hot desaturated core reads as emitting).
+  let seam = max(ringLine, fluteLine);
+  col += pal * seam * P_groutLevel() * (0.6 + v * 1.6);
+  col += vec3f(1.0, 0.98, 0.94) * seam * pk * pk * P_groutLevel() * 1.4;
+
+  // Depth cue: near (frame edge) bright, far (centre) recedes into haze. This
+  // is what turns a flat disc into a tube you are flying INTO.
+  let near = smoothstep(P_fogNear() * 0.4, 0.6, r);
+  let far = 1.0 - exp(-depth * P_fogFar() * 0.35);
+  col *= near;
+  col = mix(col, pal * 0.05, clamp(far, 0.0, 0.9));
+
+  // Travelling beat ring, launched at the viewer and receding to the core.
+  var pt = 1.0 - u.driveBeat;
+  var amp = u.driveBeat;
+  if (u.bpm > 0.5) {
+    pt = u.beatPhase;
+    amp = max(exp(-u.beatPhase * 3.0) - 0.05, 0.0) / 0.95;
+  }
+  if (amp > 0.01) {
+    let ringR = mix(0.62, 0.05, pt);
+    col += mix(pal, vec3f(1.0), 0.5) * exp(-abs(r - ringR) * P_pulseWidth()) * amp * P_beatPulse() * 1.6;
+  }
+
+  // Hot vanishing core: the bright far point you are flying toward.
+  col += mix(pal, vec3f(1.0), 0.6) * exp(-r * 14.0)
+       * (P_centerGlow() + u.drive * 0.5 + kickP * 0.4);
+
+  col *= vignette(uv, P_vignette());
+  col = tonemap(col * 1.25);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > tunnel-rings: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 15,
+    "key": "hue",
+  },
+  {
+    "default": 70,
+    "key": "hueSpread",
+  },
+  {
+    "default": 0.15,
+    "key": "speed",
+  },
+  {
+    "default": 7,
+    "key": "rings",
+  },
+  {
+    "default": 12,
+    "key": "spokes",
+  },
+  {
+    "default": 0.7,
+    "key": "beatPulse",
+  },
+  {
+    "default": 0.35,
+    "key": "cruiseFloor",
+  },
+  {
+    "default": 0.9,
+    "key": "cruiseEnergy",
+  },
+  {
+    "default": 0.08,
+    "key": "beatSpeed",
+  },
+  {
+    "default": 0.1,
+    "key": "tileLevel",
+  },
+  {
+    "default": 0.25,
+    "key": "tileSpectrum",
+  },
+  {
+    "default": 9,
+    "key": "pulseWidth",
+  },
+  {
+    "default": 0.75,
+    "key": "tileSat",
+  },
+  {
+    "default": 0.06,
+    "key": "checker",
+  },
+  {
+    "default": 0.055,
+    "key": "groutWidth",
+  },
+  {
+    "default": 0.1,
+    "key": "groutLevel",
+  },
+  {
+    "default": 0.012,
+    "key": "fogNear",
+  },
+  {
+    "default": 0.7,
+    "key": "fogFar",
+  },
+  {
+    "default": 0.2,
+    "key": "centerGlow",
+  },
+  {
+    "default": 0.3,
+    "key": "vignette",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+  {
+    "default": 0.8,
+    "key": "twist",
+  },
+  {
+    "default": 0.6,
+    "key": "roundness",
+  },
+  {
+    "default": 1.2,
+    "key": "surfaceWarp",
+  },
+]
+`;
+
+exports[`shader golden baseline > voice-orb: accessors + body are stable 1`] = `
+"fn P_hue() -> f32 { return params[0u]; }
+fn P_size() -> f32 { return params[1u]; }
+fn P_response() -> f32 { return params[2u]; }
+fn P_wobble() -> f32 { return params[3u]; }
+fn P_ring() -> f32 { return params[4u]; }
+fn P_sparkle() -> f32 { return params[5u]; }
+fn P_rmsBlend() -> f32 { return params[6u]; }
+fn P_voiceFocus() -> f32 { return params[7u]; }
+fn P_growth() -> f32 { return params[8u]; }
+fn P_idleBreath() -> f32 { return params[9u]; }
+fn P_wobScale() -> f32 { return params[10u]; }
+fn P_mode1() -> f32 { return params[11u]; }
+fn P_mode2() -> f32 { return params[12u]; }
+fn P_mode3() -> f32 { return params[13u]; }
+fn P_coreGlow() -> f32 { return params[14u]; }
+fn P_rimGlow() -> f32 { return params[15u]; }
+fn P_ringDist() -> f32 { return params[16u]; }
+fn P_ringWave() -> f32 { return params[17u]; }
+fn P_sparkleScale() -> f32 { return params[18u]; }
+fn P_bgLevel() -> f32 { return params[19u]; }
+fn P_vignette() -> f32 { return params[20u]; }
+fn P_flare() -> f32 { return params[21u]; }
+fn P_mirror() -> f32 { return params[22u]; }
+
+fn preset(uv: vec2f) -> vec4f {
+  var p = centered(uv);
+  p = kaleido(p, P_mirror());
+  let r = length(p);
+  let a = atan2(p.y, p.x);
+
+  // Speech level: mostly the slow envelope, a touch of instantaneous —
+  // keeps the orb's size calm instead of pumping on every syllable. u.voice
+  // (the dedicated 300-3400 Hz band) anchors it to actual speech energy, so
+  // music bleed (bass, cymbals) moves the orb far less than a voice does.
+  let raw = mix(u.drive, u.rms, P_rmsBlend());
+  let speech = mix(raw, u.voice, P_voiceFocus());
+  let level = clamp(speech * (0.6 + P_response() * 1.4), 0.0, 1.0);
+  // Idle breathing keeps the orb alive during pauses, fades out when talking
+  let idle = (1.0 - smoothstep(0.03, 0.12, level)) * sin(u.time * 1.3) * P_idleBreath();
+
+  // Surface wobble: three slowly-rotating sinusoidal modes whose amplitudes
+  // track wide formant-band averages (~200 Hz - 3 kHz). The shape itself is
+  // always smooth — voice only modulates how much each mode swells, so the
+  // edge undulates organically instead of twitching per-bin.
+  let f1 = (binAt(0.32) + binAt(0.36) + binAt(0.40)) / 3.0;
+  let f2 = (binAt(0.44) + binAt(0.48) + binAt(0.52)) / 3.0;
+  let f3 = (binAt(0.55) + binAt(0.58) + binAt(0.61)) / 3.0;
+  let m1 = sin(a * 3.0 + u.time * 0.6);
+  let m2 = sin(a * 5.0 - u.time * 0.8 + 1.7);
+  let m3 = sin(a * 8.0 + u.time * 1.1 + 4.1);
+  let disp = (m1 * f1 * P_mode1() + m2 * f2 * P_mode2() + m3 * f3 * P_mode3())
+           * P_wobble() * P_wobScale() * (0.25 + level * 0.75);
+
+  // Frame-safety: the orb (and its ring below) must stay inside the frame —
+  // the top/bottom edge is r=0.5 — however loud the voice or high the growth.
+  let radius = min(P_size() * (1.0 + level * P_growth()) + idle, 0.4);
+  let edge = min(radius + disp, 0.46);
+
+  // Cosine palette instead of flat hsl2rgb fills — stays saturated at low
+  // brightness (the background wash) and gives the hot-white pushes below
+  // clean room to exceed 1.0 without a per-channel clip.
+  // The classic cosPalette basis runs its rainbow opposite HSL (red still
+  // lands at t=0, but t increasing walks red->magenta->blue->cyan->green->
+  // yellow->red) — "1.0 - hue/360" un-reverses it so Hue keeps its label.
+  let baseT = 1.0 - P_hue() / 360.0;
+  let pal = cosPalette(baseT, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+
+  // Background: quiet radial wash that warms slightly with speech
+  var col = mix(pal, vec3f(1.0), 0.15) * (P_bgLevel() + level * 0.02) * (1.0 - r * 0.75);
+
+  // Orb body: soft inner gradient, brighter core as level rises
+  let inside = smoothstep(edge, edge - 0.012, r);
+  let coreGlow = exp(-r * (7.0 - level * 2.0));
+  let bodyLevel = 0.16 + level * 0.30 + coreGlow * (P_coreGlow() + level * 0.25);
+  var body = pal * bodyLevel;
+  // Hot core: loud speech desaturates the very center toward white and pushes
+  // it past 1.0 — the difference between "brighter" and actually emitting.
+  let hot = smoothstep(0.5, 0.95, coreGlow * level) * P_flare();
+  body = mix(body, vec3f(1.0), hot) * (1.0 + hot * 1.4);
+  col = mix(col, body, inside);
+
+  // Rim: bright line at the orb edge + soft outer halo, flaring hot on peaks
+  let rimD = abs(r - edge);
+  let rimHot = smoothstep(0.3, 0.9, level) * P_flare();
+  let rimCol = mix(pal, vec3f(1.0), 0.35 + rimHot * 0.5);
+  col += rimCol * smoothstep(0.006, 0.0, rimD) * (0.5 + level * 0.5) * (1.0 + rimHot * 1.2);
+  col += pal * exp(-max(r - edge, 0.0) * 22.0) * P_rimGlow() * (0.3 + level);
+
+  // Sibilance sparkles: treble noise riding the rim band
+  let rimBand = exp(-rimD * 40.0);
+  let sparkleN = pow(noise2(p * P_sparkleScale() + vec2f(u.time * 5.0, -u.time * 3.0)), 10.0);
+  col += vec3f(1.0, 0.98, 0.95) * sparkleN * rimBand * u.treble * P_sparkle() * 2.2;
+
+  // Circular waveform ring
+  if (P_ring() > 0.5) {
+    let wv = waveAt(fract(a / TAU + 0.5));
+    let ringR = min(radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2), 0.47);
+    let dRing = abs(r - ringR);
+    let ringT = fract(baseT + 0.07 + wv * 0.05);
+    let ringPal = cosPalette(ringT, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));
+    col += ringPal * smoothstep(0.004, 0.0008, dRing) * (0.35 + level * 0.5);
+    col += ringPal * exp(-dRing * 120.0) * 0.18;
+  }
+
+  // Vignette is the shared smooth full-field falloff (never a hard-edged
+  // circle — the orb/rim/ring above are already clamped to r<=0.47).
+  col *= vignette(uv, P_vignette());
+  col = tonemap(col * 1.15);
+  col += grain(uv, 0.012);
+  return vec4f(max(col, vec3f(0.0)), 1.0);
+}
+"
+`;
+
+exports[`shader golden baseline > voice-orb: param ABI (key + default, in order) is stable 1`] = `
+[
+  {
+    "default": 195,
+    "key": "hue",
+  },
+  {
+    "default": 0.16,
+    "key": "size",
+  },
+  {
+    "default": 0.6,
+    "key": "response",
+  },
+  {
+    "default": 0.5,
+    "key": "wobble",
+  },
+  {
+    "default": 1,
+    "key": "ring",
+  },
+  {
+    "default": 0.5,
+    "key": "sparkle",
+  },
+  {
+    "default": 0.3,
+    "key": "rmsBlend",
+  },
+  {
+    "default": 0.5,
+    "key": "voiceFocus",
+  },
+  {
+    "default": 0.85,
+    "key": "growth",
+  },
+  {
+    "default": 0.012,
+    "key": "idleBreath",
+  },
+  {
+    "default": 0.03,
+    "key": "wobScale",
+  },
+  {
+    "default": 1,
+    "key": "mode1",
+  },
+  {
+    "default": 0.7,
+    "key": "mode2",
+  },
+  {
+    "default": 0.45,
+    "key": "mode3",
+  },
+  {
+    "default": 0.18,
+    "key": "coreGlow",
+  },
+  {
+    "default": 0.3,
+    "key": "rimGlow",
+  },
+  {
+    "default": 1.45,
+    "key": "ringDist",
+  },
+  {
+    "default": 0.045,
+    "key": "ringWave",
+  },
+  {
+    "default": 34,
+    "key": "sparkleScale",
+  },
+  {
+    "default": 0.035,
+    "key": "bgLevel",
+  },
+  {
+    "default": 0.45,
+    "key": "vignette",
+  },
+  {
+    "default": 0.5,
+    "key": "flare",
+  },
+  {
+    "default": 1,
+    "key": "mirror",
+  },
+]
+`;

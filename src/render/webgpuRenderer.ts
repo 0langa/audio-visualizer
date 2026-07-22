@@ -1150,6 +1150,51 @@ function usesFeedback(preset: PresetDef): boolean {
   return /feedbackSample\s*\(/.test(code);
 }
 
+/**
+ * The shared WGSL prefix for a fragment preset: prelude + composite + FS entry
+ * + the generated `P_<key>()` accessors in ABI (param-list) order, terminated
+ * with a newline so the preset body starts on its own line. Kept separate from
+ * the body so `compilePresetCheck` can measure the prefix line count and remap
+ * compiler line numbers back onto the preset source.
+ */
+function presetPrefix(preset: PresetDef): string {
+  const accessors = allParams(preset)
+    .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
+    .join("\n");
+  return HEADER + COMPOSITE_BODY + FS_MAIN + accessors + "\n";
+}
+
+/**
+ * The exact WGSL module source handed to `createShaderModule` for a fragment
+ * preset. Single source of truth for `setPreset`, the transition-pipeline
+ * build, and `compilePresetCheck` — and the anchor of the golden shader test
+ * (shaderGolden.test.ts), which snapshots this per built-in preset so any
+ * accidental change to a preset body, the shared prelude, or the accessor ABI
+ * fails a fast, GPU-free test instead of silently shipping a visual regression.
+ */
+export function assemblePresetModule(preset: PresetDef): string {
+  return presetPrefix(preset) + preset.wgsl;
+}
+
+/**
+ * The standalone WGSL sources that never pass through {@link assemblePresetModule}
+ * (the compute/instanced-particle, 3D-mesh, crossfade-blend, post, and
+ * scene-composite pipelines). Frozen by the golden test alongside the per-preset
+ * modules so the whole compiled shader surface is covered, not just fragment
+ * presets. These are the literal strings compiled at runtime.
+ */
+export const SHADER_SOURCES = {
+  header: HEADER,
+  composite: COMPOSITE_BODY,
+  fsMain: FS_MAIN,
+  particleSim: PARTICLE_SIM_WGSL,
+  particleDraw: PARTICLE_DRAW_WGSL,
+  mesh3d: MESH3D_WGSL,
+  blend: BLEND_WGSL,
+  post: POST_WGSL,
+  sceneComposite: COMPOSITE_WGSL,
+} as const;
+
 export class WebGPURenderer implements Renderer {
   readonly kind = "webgpu" as const;
 
@@ -1542,12 +1587,8 @@ export class WebGPURenderer implements Renderer {
       return;
     }
     if (this.transitionPipelineFor === preset.id) return; // cached
-    const specs = allParams(preset);
-    const accessors = specs
-      .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
-      .join("\n");
     const module = this.device.createShaderModule({
-      code: HEADER + COMPOSITE_BODY + FS_MAIN + accessors + "\n" + preset.wgsl,
+      code: assemblePresetModule(preset),
     });
     this.transitionPipeline = this.device.createRenderPipeline({
       layout: this.pipelineLayout,
@@ -2229,10 +2270,7 @@ export class WebGPURenderer implements Renderer {
     if (specs.length > MAX_PARAMS) {
       return [`too many params: ${specs.length} (max ${MAX_PARAMS})`];
     }
-    const accessors = specs
-      .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
-      .join("\n");
-    const prefix = HEADER + COMPOSITE_BODY + FS_MAIN + accessors + "\n";
+    const prefix = presetPrefix(preset);
     const prefixLines = prefix.split("\n").length - 1;
     this.device.pushErrorScope("validation");
     const module = this.device.createShaderModule({ code: prefix + preset.wgsl });
@@ -2275,11 +2313,8 @@ export class WebGPURenderer implements Renderer {
       this.bindGroup = null;
       return;
     }
-    const accessors = specs
-      .map((p, i) => `fn P_${p.key}() -> f32 { return params[${i}u]; }`)
-      .join("\n");
     const module = this.device.createShaderModule({
-      code: HEADER + COMPOSITE_BODY + FS_MAIN + accessors + "\n" + preset.wgsl,
+      code: assemblePresetModule(preset),
     });
     // Surface WGSL mistakes during preset development
     void module.getCompilationInfo().then((info) => {
