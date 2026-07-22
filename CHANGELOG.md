@@ -11,6 +11,35 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.37.0] - 2026-07-22
+
+The visuals pass, part two — three modes reworked from the ground up, plus two
+audit fixes.
+
+### Changed
+
+- **Tunnel** is a real tube you fly down, not a zoomed disc. Rings rush past in
+  depth and longitudinal flutes converge at a dark vanishing point with a hot
+  core; a corkscrew twist reads as a waterslide, and the wall is shaded like a
+  round pipe. (Added: corkscrew, roundness and surface-texture controls.)
+- **Particles** are real particles floating in space now, not a flat field
+  warped to the music. Each one has its own depth, frequency band, twinkle and
+  drift, floating freely on its own organic path. **Fly mode** is a true
+  perspective starfield — stars stream from far away, grow and streak past you.
+- **Particle Flow** now reacts to the music: a bass pump and a beat flash on
+  brightness, and a velocity kick that scatters the field on beats, while the
+  smooth curl flow is preserved.
+
+### Fixed
+
+- Feedback presets are detected by an actual call to the ABI helper, not any
+  mention of it — a preset that only referenced it in a comment no longer pays
+  for an unused extra render pass.
+
+### Docs
+
+- `THIRD_PARTY_LICENSES.md` now documents the statically-linked Rust crates.
+
 ## [2.36.1] - 2026-07-22
 
 ### Changed
@@ -494,7 +523,8 @@ Initial public release.
 - Onboarding UI, keyboard shortcuts, auto-hiding chrome.
 - Three synthesized demo tracks.
 
-[Unreleased]: https://github.com/0langa/beatform/compare/v2.36.1...HEAD
+[Unreleased]: https://github.com/0langa/beatform/compare/v2.37.0...HEAD
+[2.37.0]: https://github.com/0langa/beatform/compare/v2.36.1...v2.37.0
 [2.36.1]: https://github.com/0langa/beatform/compare/v2.36.0...v2.36.1
 [2.36.0]: https://github.com/0langa/beatform/compare/v2.35.0...v2.36.0
 [2.35.0]: https://github.com/0langa/beatform/compare/v2.34.1...v2.35.0
