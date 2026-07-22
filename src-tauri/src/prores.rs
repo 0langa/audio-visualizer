@@ -46,6 +46,11 @@ pub struct ProresState {
     /// reverse. `prores_write` takes `stdin` alone.
     pub stdin: Mutex<Option<ChildStdin>>,
     pub pending_wav: Mutex<Option<PathBuf>>,
+    /// In-progress chunked audio staging (M10): the open temp file between
+    /// `prores_audio_begin` and `prores_audio_end`. Chunking keeps the IPC
+    /// bodies small — the old single-invoke path materialized the whole WAV
+    /// (691 MB for an hour of stereo) a second time across the boundary.
+    pub pending_wav_file: Mutex<Option<(File, PathBuf)>>,
 }
 
 /// Monotonic suffix so two sessions in one process never collide.
@@ -245,20 +250,68 @@ fn spawn_sidecar(args: Vec<String>) -> Result<(Child, PathBuf), String> {
     Ok((child, log_path))
 }
 
-/// Stash the finished track's PCM audio (a complete WAV file, raw body) in a
-/// temp file — ffmpeg needs a seekable audio input at spawn time.
+/// Drop any staged-but-unconsumed audio (both the finished WAV and a
+/// half-written staging file) so nothing orphans in %TEMP%.
+fn drop_stale_audio(state: &ProresState) {
+    if let Ok(mut w) = state.pending_wav.lock() {
+        if let Some(p) = w.take() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    if let Ok(mut w) = state.pending_wav_file.lock() {
+        if let Some((f, p)) = w.take() {
+            drop(f);
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+/// Start staging the finished track's PCM audio (a complete WAV file) into a
+/// temp file — ffmpeg needs a seekable audio input at spawn time. The WAV
+/// arrives in chunks (`prores_audio_chunk`) and is sealed by
+/// `prores_audio_end`; a fresh begin replaces any stale staging.
 #[tauri::command]
-pub fn prores_set_audio(
+pub fn prores_audio_begin(state: tauri::State<'_, ProresState>) -> Result<(), String> {
+    drop_stale_audio(&state);
+    // create_new + explicit writes, NOT fs::write: the latter truncates
+    // through a symlink planted at this predictable path. See create_temp_new.
+    let (f, path) = create_temp_new("audio.wav")?;
+    *state
+        .pending_wav_file
+        .lock()
+        .map_err(|_| "state poisoned")? = Some((f, path));
+    Ok(())
+}
+
+/// Append one chunk of the WAV being staged (raw body).
+#[tauri::command]
+pub fn prores_audio_chunk(
     state: tauri::State<'_, ProresState>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<(), String> {
     let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
         return Err("expected raw audio body".into());
     };
-    // create_new + explicit write, NOT fs::write: the latter truncates through
-    // a symlink planted at this predictable path. See create_temp_new.
-    let (mut f, path) = create_temp_new("audio.wav")?;
-    f.write_all(data).map_err(|e| e.to_string())?;
+    let mut guard = state
+        .pending_wav_file
+        .lock()
+        .map_err(|_| "state poisoned")?;
+    let Some((f, _)) = guard.as_mut() else {
+        return Err("No audio staging in progress — call prores_audio_begin first".into());
+    };
+    f.write_all(data).map_err(|e| e.to_string())
+}
+
+/// Seal the staged WAV; `prores_begin` consumes it.
+#[tauri::command]
+pub fn prores_audio_end(state: tauri::State<'_, ProresState>) -> Result<(), String> {
+    let mut guard = state
+        .pending_wav_file
+        .lock()
+        .map_err(|_| "state poisoned")?;
+    let Some((f, path)) = guard.take() else {
+        return Err("No audio staging in progress — call prores_audio_begin first".into());
+    };
     drop(f);
     *state.pending_wav.lock().map_err(|_| "state poisoned")? = Some(path);
     Ok(())
@@ -286,7 +339,7 @@ pub fn prores_begin(
         .lock()
         .map_err(|_| "state poisoned")?
         .take()
-        .ok_or("No audio staged — call prores_set_audio first")?;
+        .ok_or("No audio staged — call prores_audio_begin/chunk/end first")?;
 
     // From here the staged WAV is this function's to clean up: a spawn
     // failure must not leak it in %TEMP% (pending_wav was already taken).
@@ -324,13 +377,9 @@ pub fn anim_begin(
     if job_guard.is_some() {
         return Err("A sidecar export is already running".into());
     }
-    // GIF/WebP carry no audio: drop any WAV a prior prores_set_audio staged so
-    // it can't orphan in %TEMP% when the user switches ProRes -> GIF/WebP.
-    if let Ok(mut w) = state.pending_wav.lock() {
-        if let Some(p) = w.take() {
-            let _ = std::fs::remove_file(p);
-        }
-    }
+    // GIF/WebP carry no audio: drop any staged (or half-staged) WAV so it
+    // can't orphan in %TEMP% when the user switches ProRes -> GIF/WebP.
+    drop_stale_audio(&state);
     if !(1..=240).contains(&fps) {
         return Err(format!("Unreasonable fps: {fps}"));
     }

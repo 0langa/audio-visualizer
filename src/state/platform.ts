@@ -139,9 +139,19 @@ export async function stopLoopback(): Promise<void> {
 // The Rust side owns the process and builds all arguments; these wrappers
 // move bytes. Raw payloads (Uint8Array) skip JSON serialization entirely.
 
+/** Stage the mezzanine WAV in bounded chunks (M10). One raw invoke used to
+ * carry the whole file — 691 MB for an hour of stereo — materializing it a
+ * second time across the IPC boundary; 8 MB bodies keep that flat. */
+const WAV_CHUNK_BYTES = 8 * 1024 * 1024;
+
 export async function proresSetAudio(wav: Uint8Array): Promise<void> {
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("prores_set_audio", wav);
+  await invoke("prores_audio_begin");
+  for (let off = 0; off < wav.length; off += WAV_CHUNK_BYTES) {
+    // slice(), not subarray(): the invoke body must start at byte offset 0.
+    await invoke("prores_audio_chunk", wav.slice(off, Math.min(wav.length, off + WAV_CHUNK_BYTES)));
+  }
+  await invoke("prores_audio_end");
 }
 
 export async function proresBegin(fps: number, outPath: string): Promise<void> {
