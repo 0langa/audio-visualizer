@@ -11,6 +11,25 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.44.0] - 2026-07-23
+
+### Fixed
+
+- **No more hard circular edges at extreme settings** (reported live on Bass
+  Circle and Radial Burst). Frame safety is now soft and frame-shaped: maxed
+  geometry compresses smoothly toward the actual frame border instead of
+  clipping at a fixed circle, engine-wide (Radial Burst, Bass Circle, Voice
+  Orb, Metaballs, Echo Trails, all Builder layers). Radial elements now reach
+  further sideways than vertically on wide frames — like the frame itself.
+  Several size/reach sliders gained wider ranges now that extremes are safe,
+  and the rule is codified in the preset-authoring docs.
+
+### Changed
+
+- **One Builder.** The strip shows a single Builder (the layer compositor);
+  the classic Builder is retired from the strip but old projects and scenes
+  that use it keep rendering exactly as before.
+
 ## [2.43.0] - 2026-07-23
 
 The polish release — the audit's last open finding closed, and the docs
