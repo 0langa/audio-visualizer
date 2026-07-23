@@ -332,7 +332,8 @@ fn preset(uv: vec2f) -> vec4f {
   // Circular waveform ring
   if (P_ring() > 0.5) {
     let wv = waveAt(fract(a / TAU + 0.5));
-    let ringR = min(radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2), 0.47);
+    let ringR = softLimit(radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2),
+                          frameCircle());
     let dRing = abs(r - ringR);
     let ringT = fract(baseT + 0.07 + wv * 0.05);
     let ringPal = cosPalette(ringT, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));

@@ -9,12 +9,8 @@ import {
   DEFAULT_MOTION,
   DEFAULT_POST,
 } from "../render/types";
-import { presets } from "../render/presets";
-import {
-  customPresetById,
-  registerCustomPreset,
-  validCustomPreset,
-} from "../render/presets/custom";
+import { knownPresetId, presets } from "../render/presets";
+import { registerCustomPreset, validCustomPreset } from "../render/presets/custom";
 import type { PresetDef } from "../render/types";
 import { validLyricStyle, type LyricStyle } from "./lyrics";
 import { defaultBuilderStack, validBuilderStack, type BuilderStack } from "../render/builder2";
@@ -245,10 +241,11 @@ export function validAspect(v: unknown): Aspect {
 
 function validPresetId(v: unknown): string {
   if (typeof v !== "string") return presets[0].id;
-  if (presets.some((p) => p.id === v)) return v;
-  // User-authored WGSL presets resolve through the runtime registry — a
-  // project referencing one the user deleted falls back to the default mode.
-  if (customPresetById(v)) return v;
+  // knownPresetId covers strip presets, HIDDEN built-ins (the classic
+  // builder left the strip in v2.44 but old projects keep rendering it),
+  // Builder Studio and registered custom defs. A custom id whose def the
+  // user deleted falls back to the default mode.
+  if (knownPresetId(v)) return v;
   return presets[0].id;
 }
 

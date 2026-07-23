@@ -206,7 +206,8 @@ fn layer_radial(uv: vec2f, li: u32, colIn: vec3f) -> vec3f {
   let xs = abs(seg * 2.0 - 1.0);
   let v = binAt(xs);
   let inner = TP(li, 0u) * (1.0 + u.bass * 0.1);
-  let len = min(v * TP(li, 1u), max(0.0, 0.47 - inner));
+  let tipSoft = softLimit(inner + v * TP(li, 1u), frameReach(a));
+  let len = max(tipSoft - inner, 0.0);
   let rHue = LH(li) + xs * LSp(li);
   let inBar = step(inner, r) * step(r, inner + len);
   let radial = (r - inner) / max(len, 0.001);
@@ -263,7 +264,7 @@ fn layer_wavecircle(uv: vec2f, li: u32, colIn: vec3f) -> vec3f {
   let r = length(p);
   let a = atan2(p.y, p.x);
   let wv = waveAt(fract(a / TAU + 0.5));
-  let cr = min(TP(li, 0u) + wv * TP(li, 1u) * (0.5 + u.drive * 1.2), 0.47);
+  let cr = softLimit(TP(li, 0u) + wv * TP(li, 1u) * (0.5 + u.drive * 1.2), frameCircle());
   let d = abs(r - cr);
   let cHue = LH(li) + 30.0 + wv * 25.0;
   col += hsl2rgb(cHue, 0.7, 0.55) * smoothstep(0.004, 0.0008, d) * 0.7;
@@ -293,7 +294,7 @@ fn layer_orb(uv: vec2f, li: u32, colIn: vec3f) -> vec3f {
   let spin = u.time * 0.35;
   let amp = TP(li, 0u) * TP(li, 2u) * (0.1 + level * 0.35);
   let wob = sin(a * 3.0 + spin) * amp + sin(a * 6.0 - spin * 0.8 + 1.5) * amp * 0.4;
-  let orbR = min(TP(li, 0u) * (1.0 + level * TP(li, 1u) + beatKick * 0.4) + wob, 0.44);
+  let orbR = softLimit(TP(li, 0u) * (1.0 + level * TP(li, 1u) + beatKick * 0.4) + wob, frameCircle() * 0.92);
   let inside = smoothstep(orbR, orbR - 0.01, r);
   let body = hsl2rgb(LH(li) + 20.0, 0.7, 0.18 + level * 0.3 + beatKick * 0.25 + exp(-r * 6.0) * 0.2);
   col = mix(col, body, inside);
@@ -537,7 +538,7 @@ function makeDef(stack: BuilderStack): PresetDef {
   if (cached) return cached;
   const def: PresetDef = {
     id: BUILDER2_ID,
-    name: "Builder Studio",
+    name: "Builder",
     description: "Layer-based compositor — stack, blend and tune elements freely",
     params: [],
     wgsl: buildStackWgsl(stack),

@@ -476,6 +476,48 @@ fn centered(uv: vec2f) -> vec2f {
   return vec2f((uv.x - 0.5) * u.aspect, uv.y - 0.5);
 }
 
+// ---- Frame-aware soft limiting (v2.44) ----------------------------------
+// The frame in centered() space is the RECTANGLE |x| <= u.aspect*0.5,
+// |y| <= 0.5 — not a circle. The old frame-safety rule hard-capped radial
+// geometry at a fixed circle (r <= ~0.47, the half-HEIGHT), which sliced
+// maxed-out settings along a visible circular edge on wide frames.
+// These helpers replace clipping with COMPRESSION: below the knee the
+// mapping is identity (defaults render exactly as before), above it the
+// value approaches the frame border asymptotically — a hard edge cannot
+// exist at ANY setting, by construction. Presets must use these instead of
+// min(x, 0.47)-style caps.
+
+// Distance from center to the frame border along direction angle a,
+// with a small safety margin. Box reach, not a circle.
+fn frameReach(a: f32) -> f32 {
+  let c = abs(cos(a));
+  let s = abs(sin(a));
+  let rx = (u.aspect * 0.5 - 0.015) / max(c, 1e-4);
+  let ry = 0.485 / max(s, 1e-4);
+  return min(rx, ry);
+}
+
+// The largest radius of a FULL circle that fits the frame (short side).
+fn frameCircle() -> f32 {
+  return min(u.aspect * 0.5, 0.5) - 0.015;
+}
+
+// Compress x softly against lim: identity below 72% of lim, smooth
+// asymptotic approach above — never reaches lim, never clips.
+fn softLimit(x: f32, lim: f32) -> f32 {
+  let knee = lim * 0.72;
+  if (x <= knee) { return x; }
+  return knee + (lim - knee) * tanh((x - knee) / (lim - knee));
+}
+
+// Fade against the actual frame BORDER (all four edges), for glow that
+// bleeds past geometry. Replaces circular col *= smoothstep(0.5,0.45,r)
+// fades, which darkened along a circle instead of the frame.
+fn frameFade(p: vec2f) -> f32 {
+  let box = vec2f(u.aspect * 0.5, 0.5) - abs(p);
+  return smoothstep(0.0, 0.02, min(box.x, box.y));
+}
+
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,

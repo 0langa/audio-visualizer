@@ -6,10 +6,10 @@ B batch, Q library, L loop, F fullscreen, Ctrl+Z undo).
 
 ## Visual modes
 
-Seventeen modes on the strip: Spectrum Bars, Radial Burst, Oscilloscope,
+Sixteen modes on the strip: Spectrum Bars, Radial Burst, Oscilloscope,
 Particles, Tunnel, Kaleido Nebula, Metaballs, LED Matrix, Voice Orb, Echo
 Trails, Particle Flow (120k GPU particles), Spectrum Scape (3D), Aurora,
-Synthwave, Bass Circle, the classic Builder, and **Builder Studio** (below).
+Synthwave, Bass Circle, and **Builder** (the layer compositor, below).
 Each mode has curated **styles** (one-click looks), main parameters, and an
 **Advanced** drawer exposing every internal constant worth touching. Hover
 any control for a plain-language hint. The settings panel (G) is organized
@@ -17,7 +17,7 @@ into **tabs** (Visual / Sync / Scene / Text / Live), every section
 collapses, the panel edge drags to resize — and the **search box** at the
 top finds any setting by name across all tabs.
 
-## Builder Studio
+## Builder
 
 A real layer compositor: stack up to twelve layers from nine types
 (background wash, particles, spectrum bars, radial ring, pulse rings,

@@ -250,10 +250,16 @@ fn preset(uv: vec2f) -> vec4f {
   let v = binAt(xs);
   let pk = peakAt(xs);
 
-  let inner = P_innerRadius() * (1.0 + (u.bass * P_ringBreathe() + beatP * 0.06) * u.pulse);
-  // Frame-safety: the top/bottom edge sits at r=0.5, so a radial bar's tip must
-  // never pass ~0.47 or the burst spills out of frame at any loudness/setting.
-  let len = min(v * P_barLen(), max(0.0, 0.47 - inner));
+  // Frame-safety is SOFT since v2.44: geometry compresses toward the frame
+  // border (softLimit/frameReach) instead of clipping at a fixed circle —
+  // maxed settings approach the edge smoothly, never slice along one.
+  let screenA = atan2(p.y, p.x);
+  let inner = softLimit(
+    P_innerRadius() * (1.0 + (u.bass * P_ringBreathe() + beatP * 0.06) * u.pulse),
+    frameCircle() * 0.9,
+  );
+  let tipSoft = softLimit(inner + v * P_barLen(), frameReach(screenA));
+  let len = max(tipSoft - inner, 0.0);
   let barHue = P_hue() + xs * P_hueSpread();
 
   // Background wash
@@ -270,7 +276,7 @@ fn preset(uv: vec2f) -> vec4f {
   col += hsl2rgb(barHue, 0.9, 0.5) * fall * P_glow() * v * step(tip, r);
 
   // Peak arc (toggleable)
-  let pkR = min(inner + pk * P_barLen(), 0.47);
+  let pkR = softLimit(inner + pk * P_barLen(), frameReach(screenA));
   col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.005, 0.0, abs(r - pkR)) * 0.8
        * step(0.5, P_peaks());
 
@@ -285,7 +291,10 @@ fn preset(uv: vec2f) -> vec4f {
           + sin(a * 6.0 - spin * 0.7 + 1.3) * amp * 0.35;
   let lim = inner * P_wobClamp();
   wob = clamp(wob, -lim, lim);
-  let core = smoothstep(coreR + wob + 0.005, coreR + wob - 0.005, r);
+  // The core is a disc, so it compresses against the circle that fits the
+  // frame — a maxed Core size fills gracefully instead of walling the screen.
+  let coreEdge = softLimit(coreR + wob, frameCircle());
+  let core = smoothstep(coreEdge + 0.005, coreEdge - 0.005, r);
   let coreL = 0.12 + u.drive * P_coreBright() + beatP * P_beatBloom();
   col = mix(col, hsl2rgb(P_hue() + 30.0, 0.75, coreL), core);
 

@@ -35,15 +35,22 @@ export const presets: PresetDef[] = [
   aurora,
   synthwave,
   bassCircle,
-  builder,
-  // Builder Studio: a stable strip entry; rendering resolves through
-  // presetById -> currentBuilder2Def() (the generated def).
+  // ONE Builder on the strip (the Builder Studio layer compositor);
+  // rendering resolves through presetById -> currentBuilder2Def().
   currentBuilder2Def(),
 ];
 
-// Built-in id -> def, built once (the list is static). presetById runs in the
-// per-frame resolve path, so this avoids a linear scan every frame.
-const builtinById = new Map(presets.map((p) => [p.id, p]));
+// Built-in id -> def, built once. Includes HIDDEN presets that left the
+// strip but must keep resolving forever: the classic `builder` renders
+// byte-identically for every old project/scene that references it.
+const builtinById = new Map([...presets, builder].map((p) => [p.id, p]));
+
+/** Every id the app can render: strip presets, hidden built-ins, Builder
+ * Studio, and registered custom defs. Validators use THIS, not the strip
+ * list — a hidden id must never be "migrated" away to the default mode. */
+export function knownPresetId(id: string): boolean {
+  return id === BUILDER2_ID || builtinById.has(id) || customPresetById(id) !== undefined;
+}
 
 export function presetById(id: string): PresetDef {
   // Builder Studio resolves to its CURRENT generated def — object identity

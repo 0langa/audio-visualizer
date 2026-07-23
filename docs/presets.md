@@ -102,6 +102,17 @@ depth-tested instanced 3D grid (see `spectrumScape.ts`).
 
 - Geometry rides SLOW signals (`drive`, `energy`); brightness can ride fast
   ones. Fast bands moving geometry reads as jitter.
+- **Frame safety is SOFT, never a clip (the v2.44 law).** The frame in
+  `centered()` space is the rectangle `|x| <= u.aspect*0.5, |y| <= 0.5` —
+  not a circle. Never write `min(radius, 0.47)`-style caps: at maxed
+  settings they slice geometry along a visible circle. Use the ABI helpers
+  instead — `softLimit(x, lim)` (identity below ~72% of the limit, smooth
+  asymptotic compression above; a hard edge cannot exist at any setting),
+  with `frameReach(angle)` as the limit for directional geometry (bar tips
+  reach further sideways on a wide frame, like the frame itself) and
+  `frameCircle()` for elements that must stay circular (discs, rings).
+  For glow that bleeds past geometry, fade with `frameFade(p)` (the actual
+  border), never `smoothstep(0.5, 0.45, r)` (a circle).
 - Never `fract()` a spectrum coordinate that spans the frame — it wraps into
   a hard seam.
 - Respect the masters: multiply your spin by `u.spin`, beat scaling by

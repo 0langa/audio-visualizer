@@ -1,6 +1,5 @@
 import type { BgSettings, ParamValues } from "../render/types";
-import { presets } from "../render/presets";
-import { customPresetById } from "../render/presets/custom";
+import { knownPresetId } from "../render/presets";
 import { validBg } from "./project";
 
 /**
@@ -187,7 +186,7 @@ export function validTimeline(v: unknown): Timeline {
         // only the built-ins silently DELETED custom scenes on every reload
         // (boot registers customs before initial state precisely so stored
         // ids validate; validPresetId in project.ts got this right).
-        (presets.some((p) => p.id === s.presetId) || customPresetById(s.presetId) !== undefined) &&
+        knownPresetId(s.presetId) &&
         typeof s.start === "number" &&
         Number.isFinite(s.start) &&
         s.start >= 0

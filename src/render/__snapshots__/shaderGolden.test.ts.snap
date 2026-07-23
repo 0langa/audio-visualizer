@@ -236,9 +236,10 @@ fn preset(uv: vec2f) -> vec4f {
   // strong off-grid hits still punch through.
   let beatP = max(u.driveBeat, gridPulse(7.0));
   let pump = 1.0 + (u.drive * P_pump() + beatP * P_beatPump()) * u.pulse;
-  // Frame-safety: cap the swollen disc so a loud beat (big u.drive/pulse) can't
-  // balloon it past the frame. The top/bottom edge is r=0.5.
-  let circleR = min(P_radius() * pump, 0.34);
+  // Frame-safety is SOFT since v2.44: the swollen disc compresses toward
+  // the largest circle the frame fits instead of clipping at a fixed 0.34 —
+  // a maxed Circle size grows to near the frame edge, smoothly.
+  let circleR = softLimit(P_radius() * pump, frameCircle() * 0.86);
 
   // --- Background bokeh particles: each drifts along its own slow path and
   // twinkles, independent of the circle (the classic floating-dust layer).
@@ -283,9 +284,11 @@ fn preset(uv: vec2f) -> vec4f {
   let xs = abs(seg * 2.0 - 1.0);
   let v = binAt(xs);
   let barInner = circleR + P_gap();
-  // Radial bars stay inside the frame too (tip <= ~0.47).
-  let barLenMax = max(0.0, 0.47 - barInner);
-  let barLen = min(v * P_barLen(), barLenMax);
+  // Bar tips compress toward the frame border along their own angle (soft
+  // frame limit, v2.44) — on a wide frame the side bars reach further than
+  // the top/bottom ones, exactly like the frame itself does.
+  let tipSoft = softLimit(barInner + v * P_barLen(), frameReach(a));
+  let barLen = max(tipSoft - barInner, 0.0);
   let barHue = P_hue() + xs * P_hueSpread();
   let inBar = step(barInner, r) * step(r, barInner + barLen);
   let along = (r - barInner) / max(barLen, 1e-3);
@@ -396,345 +399,6 @@ exports[`shader golden baseline > bass-circle: param ABI (key + default, in orde
   },
   {
     "default": 0.3,
-    "key": "vignette",
-  },
-]
-`;
-
-exports[`shader golden baseline > builder: accessors + body are stable 1`] = `
-"fn P_hue() -> f32 { return params[0u]; }
-fn P_hueSpread() -> f32 { return params[1u]; }
-fn P_bgGlow() -> f32 { return params[2u]; }
-fn P_beatFlash() -> f32 { return params[3u]; }
-fn P_bars() -> f32 { return params[4u]; }
-fn P_radial() -> f32 { return params[5u]; }
-fn P_waveLine() -> f32 { return params[6u]; }
-fn P_waveCircle() -> f32 { return params[7u]; }
-fn P_orb() -> f32 { return params[8u]; }
-fn P_stars() -> f32 { return params[9u]; }
-fn P_rings() -> f32 { return params[10u]; }
-fn P_barsHeight() -> f32 { return params[11u]; }
-fn P_barsGap() -> f32 { return params[12u]; }
-fn P_barsGlow() -> f32 { return params[13u]; }
-fn P_barsPeaks() -> f32 { return params[14u]; }
-fn P_radialR() -> f32 { return params[15u]; }
-fn P_radialLen() -> f32 { return params[16u]; }
-fn P_radialSym() -> f32 { return params[17u]; }
-fn P_lineY() -> f32 { return params[18u]; }
-fn P_lineAmp() -> f32 { return params[19u]; }
-fn P_lineGlow() -> f32 { return params[20u]; }
-fn P_circleR() -> f32 { return params[21u]; }
-fn P_circleAmp() -> f32 { return params[22u]; }
-fn P_orbSize() -> f32 { return params[23u]; }
-fn P_orbPump() -> f32 { return params[24u]; }
-fn P_orbWobble() -> f32 { return params[25u]; }
-fn P_starDensity() -> f32 { return params[26u]; }
-fn P_starSpeed() -> f32 { return params[27u]; }
-fn P_starStreak() -> f32 { return params[28u]; }
-fn P_ringStart() -> f32 { return params[29u]; }
-fn P_ringEnd() -> f32 { return params[30u]; }
-fn P_ringSharp() -> f32 { return params[31u]; }
-fn P_ringBright() -> f32 { return params[32u]; }
-fn P_orbBeat() -> f32 { return params[33u]; }
-fn P_vignette() -> f32 { return params[34u]; }
-
-fn preset(uv: vec2f) -> vec4f {
-  let p = centered(uv);
-  let r = length(p);
-  let a = atan2(p.y, p.x);
-
-  // --- Background wash + beat pulse (tempo-true when the track has a grid)
-  let beatP = max(u.driveBeat, gridPulse(6.0));
-  var col = hsl2rgb(P_hue() + 40.0, 0.5, 0.05 + u.bass * 0.04) * (1.0 - r * 0.8) * P_bgGlow() * 2.0;
-  col += hsl2rgb(P_hue(), 0.7, 0.5) * beatP * P_beatFlash() * (1.0 - r);
-
-  // --- Particles (behind everything else): same recipe as the Particles
-  // mode — per-particle wander + beat scatter, crisp cores, drifting field
-  if (P_stars() > 0.5) {
-    let pp = vec2f(uv.x * u.aspect, uv.y);
-    let spd = P_starSpeed() * (0.3 + u.drive * 0.9);
-    for (var l = 0; l < 2; l++) {
-      let fl = f32(l);
-      let n = P_starDensity() * (1.0 + fl * 0.4);
-      let q = pp * n - vec2f(0.0, -u.time * spd * n * 0.1); // gentle upward drift
-      let base = floor(q);
-      let f = q - base;
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          let cell = base + vec2f(f32(dx), f32(dy));
-          let h1 = hash21(cell + fl * 77.3);
-          if (h1 > 0.65) { continue; }
-          let h2 = hash21(cell + fl * 77.3 + 31.7);
-          let h3 = hash21(cell + fl * 77.3 + 63.1);
-          let ph = h2 * TAU;
-          let wob = vec2f(sin(u.time * 0.4 * (0.5 + h2) + ph),
-                          cos(u.time * 0.4 * (0.7 + h3) + ph * 1.7)) * 0.3;
-          let scat = normalize(vec2f(h2 - 0.5, h3 - 0.5) + 1e-4)
-                   * u.driveBeat * P_starStreak() * 0.5;
-          let d = f - (vec2f(f32(dx), f32(dy)) + 0.5 + wob + scat);
-          let s = 0.14 * (0.5 + h1) * (1.0 - fl * 0.25);
-          let dist = length(d);
-          let core = smoothstep(s * 0.38, s * 0.16, dist);
-          let halo = exp(-dot(d, d) / max(s * s * 0.5, 1e-5)) * 0.15;
-          col += hsl2rgb(P_hue() + (h2 - 0.5) * P_hueSpread(), 0.5, 0.8)
-               * (core + halo) * (1.0 - fl * 0.3) * 0.8;
-        }
-      }
-    }
-  }
-
-  // --- Bottom spectrum bars (same sampling as Spectrum Bars: honors the
-  // Motion->Detail master and the global Smooth-spectrum toggle)
-  if (P_bars() > 0.5) {
-    let n = round(mix(8.0, f32(u.binCount), u.detail));
-    let fi = clamp(uv.x * n, 0.0, n - 0.001);
-    let i = u32(fi);
-    let inBar = fract(fi);
-    let barCenter = (f32(i) + 0.5) / n;
-    var v = binAt(barCenter);
-    var pk = peakAt(barCenter);
-    var gapMask = step(P_barsGap() * 0.5, inBar) * step(inBar, 1.0 - P_barsGap() * 0.5);
-    if (u.smoothBins > 0.5) {
-      v = binAt(uv.x);
-      pk = peakAt(uv.x);
-      gapMask = 1.0;
-    }
-    let y = 1.0 - uv.y;
-    let barH = v * P_barsHeight();
-    let bHue = P_hue() + (fi / n) * P_hueSpread();
-    if (y < barH) {
-      let g = y / max(barH, 0.001);
-      col = mix(col, hsl2rgb(bHue, 0.85, 0.35 + g * 0.3), gapMask);
-    } else {
-      col += hsl2rgb(bHue, 0.9, 0.5) * exp(-(y - barH) * 12.0) * P_barsGlow() * v * gapMask;
-    }
-    if (P_barsPeaks() > 0.5) {
-      let capD = abs(y - pk * P_barsHeight());
-      col += hsl2rgb(bHue, 0.3, 0.9) * smoothstep(0.005, 0.0, capD) * gapMask * 0.8;
-    }
-  }
-
-  // --- Radial spectrum ring
-  if (P_radial() > 0.5) {
-    let seg = fract(a / TAU * P_radialSym() + 10.0);
-    let xs = abs(seg * 2.0 - 1.0);
-    let v = binAt(xs);
-    let inner = P_radialR() * (1.0 + u.bass * 0.1);
-    // Frame-safety: bar tips stay inside the frame (edge at r=0.5).
-    let len = min(v * P_radialLen(), max(0.0, 0.47 - inner));
-    let rHue = P_hue() + xs * P_hueSpread();
-    let inBar = step(inner, r) * step(r, inner + len);
-    let radial = (r - inner) / max(len, 0.001);
-    col = mix(col, hsl2rgb(rHue, 0.85, 0.35 + radial * 0.35), inBar);
-    col += hsl2rgb(rHue, 0.9, 0.5) * exp(-max(r - inner - len, 0.0) * 16.0) * 0.4 * v
-         * step(inner + len, r);
-  }
-
-  // --- Tempo pulse rings: born at the center on every beat, arriving at
-  // full reach exactly as the next beat lands (beatPhase). Falls back to the
-  // flux pulse's decay when the track has no grid yet.
-  if (P_rings() > 0.5) {
-    var pt = 1.0 - u.driveBeat;
-    var amp = u.driveBeat;
-    if (u.bpm > 0.5) {
-      pt = u.beatPhase;
-      amp = max(exp(-u.beatPhase * 2.5) - 0.08, 0.0) / 0.92;
-    }
-    if (amp > 0.005) {
-      let ringR = mix(P_ringStart(), P_ringEnd(), pt);
-      let d = abs(r - ringR);
-      let ringHue = P_hue() + 15.0 + pt * P_hueSpread() * 0.3;
-      col += hsl2rgb(ringHue, 0.8, 0.55)
-           * exp(-d * (30.0 + P_ringSharp() * 90.0)) * amp * P_ringBright();
-    }
-  }
-
-  // --- Waveform circle
-  if (P_waveCircle() > 0.5) {
-    let wv = waveAt(fract(a / TAU + 0.5));
-    // Frame-safety: the wave circle stays inside the frame at loud passages.
-    let cr = min(P_circleR() + wv * P_circleAmp() * (0.5 + u.drive * 1.2), 0.47);
-    let d = abs(r - cr);
-    let cHue = P_hue() + 30.0 + wv * 25.0;
-    col += hsl2rgb(cHue, 0.7, 0.55) * smoothstep(0.004, 0.0008, d) * 0.7;
-    col += hsl2rgb(cHue, 0.8, 0.5) * exp(-d * 110.0) * 0.25;
-  }
-
-  // --- Orb core
-  if (P_orb() > 0.5) {
-    // Sustained size rides energy; the beat kick is kept SEPARATE from the
-    // clamped level so it still pops the orb (radius + brightness) even when a
-    // loud passage has already driven level to its 1.0 ceiling.
-    let level = clamp(u.drive * 1.6, 0.0, 1.0);
-    let beatKick = clamp(gridPulse(7.0) * P_orbBeat(), 0.0, 1.0);
-    let spin = u.time * 0.35;
-    let amp = P_orbSize() * P_orbWobble() * (0.1 + level * 0.35);
-    let wob = sin(a * 3.0 + spin) * amp + sin(a * 6.0 - spin * 0.8 + 1.5) * amp * 0.4;
-    // Frame-safety: the orb can't balloon past the frame on a loud beat.
-    let orbR = min(P_orbSize() * (1.0 + level * P_orbPump() + beatKick * 0.4) + wob, 0.44);
-    let inside = smoothstep(orbR, orbR - 0.01, r);
-    let body = hsl2rgb(P_hue() + 20.0, 0.7, 0.18 + level * 0.3 + beatKick * 0.25 + exp(-r * 6.0) * 0.2);
-    col = mix(col, body, inside);
-    col += hsl2rgb(P_hue() + 20.0, 0.8, 0.6) * smoothstep(0.005, 0.0, abs(r - orbR)) * 0.6;
-  }
-
-  // --- Horizontal wave line (topmost)
-  if (P_waveLine() > 0.5) {
-    let w = (waveAt(uv.x) * 0.5 + waveAt(uv.x + 0.008) * 0.3 + waveAt(uv.x - 0.008) * 0.2)
-          / (0.35 + u.drive * 1.2);
-    let y = P_lineY() + clamp(w * P_lineAmp(), -0.4, 0.4);
-    let d = abs(uv.y - y);
-    let lHue = P_hue() + w * 30.0;
-    col += hsl2rgb(lHue, 0.85, 0.62) * smoothstep(0.003, 0.0007, d);
-    col += hsl2rgb(lHue, 0.9, 0.5) * exp(-d * (100.0 - P_lineGlow() * 60.0)) * (0.3 + P_lineGlow() * 0.5);
-  }
-
-  col *= 1.0 - r * r * P_vignette();
-  return vec4f(col, 1.0);
-}
-"
-`;
-
-exports[`shader golden baseline > builder: param ABI (key + default, in order) is stable 1`] = `
-[
-  {
-    "default": 210,
-    "key": "hue",
-  },
-  {
-    "default": 90,
-    "key": "hueSpread",
-  },
-  {
-    "default": 0.35,
-    "key": "bgGlow",
-  },
-  {
-    "default": 0.15,
-    "key": "beatFlash",
-  },
-  {
-    "default": 1,
-    "key": "bars",
-  },
-  {
-    "default": 0,
-    "key": "radial",
-  },
-  {
-    "default": 1,
-    "key": "waveLine",
-  },
-  {
-    "default": 0,
-    "key": "waveCircle",
-  },
-  {
-    "default": 0,
-    "key": "orb",
-  },
-  {
-    "default": 0,
-    "key": "stars",
-  },
-  {
-    "default": 0,
-    "key": "rings",
-  },
-  {
-    "default": 0.5,
-    "key": "barsHeight",
-  },
-  {
-    "default": 0.25,
-    "key": "barsGap",
-  },
-  {
-    "default": 0.4,
-    "key": "barsGlow",
-  },
-  {
-    "default": 1,
-    "key": "barsPeaks",
-  },
-  {
-    "default": 0.22,
-    "key": "radialR",
-  },
-  {
-    "default": 0.25,
-    "key": "radialLen",
-  },
-  {
-    "default": 2,
-    "key": "radialSym",
-  },
-  {
-    "default": 0.5,
-    "key": "lineY",
-  },
-  {
-    "default": 0.25,
-    "key": "lineAmp",
-  },
-  {
-    "default": 0.5,
-    "key": "lineGlow",
-  },
-  {
-    "default": 0.3,
-    "key": "circleR",
-  },
-  {
-    "default": 0.05,
-    "key": "circleAmp",
-  },
-  {
-    "default": 0.14,
-    "key": "orbSize",
-  },
-  {
-    "default": 0.5,
-    "key": "orbPump",
-  },
-  {
-    "default": 0.4,
-    "key": "orbWobble",
-  },
-  {
-    "default": 6,
-    "key": "starDensity",
-  },
-  {
-    "default": 0.3,
-    "key": "starSpeed",
-  },
-  {
-    "default": 0.4,
-    "key": "starStreak",
-  },
-  {
-    "default": 0.1,
-    "key": "ringStart",
-  },
-  {
-    "default": 0.85,
-    "key": "ringEnd",
-  },
-  {
-    "default": 0.5,
-    "key": "ringSharp",
-  },
-  {
-    "default": 0.8,
-    "key": "ringBright",
-  },
-  {
-    "default": 0.25,
-    "key": "orbBeat",
-  },
-  {
-    "default": 0.5,
     "key": "vignette",
   },
 ]
@@ -874,7 +538,6 @@ exports[`shader golden baseline > covers exactly the registered preset set 1`] =
   "aurora",
   "synthwave",
   "bass-circle",
-  "builder",
   "builder2",
 ]
 `;
@@ -928,7 +591,7 @@ fn preset(uv: vec2f) -> vec4f {
   // outward from — inject it on-screen (r<=0.45), or a loud/bright master at
   // high Ring size + Reactivity puts the whole source off-frame and the tunnel
   // has nothing to echo. The trails still extend past this via feedback.
-  let ringR = min(P_radius() + spec * P_react() * (0.6 + u.bass * 0.8), 0.45);
+  let ringR = softLimit(P_radius() + spec * P_react() * (0.6 + u.bass * 0.8), frameCircle());
   let band = smoothstep(P_thick() + 0.02, 0.0, abs(rad - ringR));
   // Cosine palette instead of a raw hsl2rgb hue rotated by angle and drifted
   // by time: a continuously sweeping HSL hue walks through its desaturated
@@ -1311,8 +974,10 @@ fn preset(uv: vec2f) -> vec4f {
     // per-band accent + a staggered beat gulp. Capped so a loud beat can't
     // inflate a single ball into a full-frame solid wash — it stays a blob
     // that merges, not a fill.
-    let rad = min(P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
-            + band * P_radiusBand() + beatMul * P_beatSwell() * u.pulse), 0.34);
+    // Soft frame limit (v2.44): a maxed Size approaches a frame-filling
+    // blob smoothly instead of pinning every ball to one clipped radius.
+    let rad = softLimit(P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
+            + band * P_radiusBand() + beatMul * P_beatSwell() * u.pulse), frameCircle() * 0.8);
     let d2 = dot(p - pos, p - pos);
     let contrib = rad * rad / (d2 + 1e-5);
     field += contrib;
@@ -2019,10 +1684,16 @@ fn preset(uv: vec2f) -> vec4f {
   let v = binAt(xs);
   let pk = peakAt(xs);
 
-  let inner = P_innerRadius() * (1.0 + (u.bass * P_ringBreathe() + beatP * 0.06) * u.pulse);
-  // Frame-safety: the top/bottom edge sits at r=0.5, so a radial bar's tip must
-  // never pass ~0.47 or the burst spills out of frame at any loudness/setting.
-  let len = min(v * P_barLen(), max(0.0, 0.47 - inner));
+  // Frame-safety is SOFT since v2.44: geometry compresses toward the frame
+  // border (softLimit/frameReach) instead of clipping at a fixed circle —
+  // maxed settings approach the edge smoothly, never slice along one.
+  let screenA = atan2(p.y, p.x);
+  let inner = softLimit(
+    P_innerRadius() * (1.0 + (u.bass * P_ringBreathe() + beatP * 0.06) * u.pulse),
+    frameCircle() * 0.9,
+  );
+  let tipSoft = softLimit(inner + v * P_barLen(), frameReach(screenA));
+  let len = max(tipSoft - inner, 0.0);
   let barHue = P_hue() + xs * P_hueSpread();
 
   // Background wash
@@ -2039,7 +1710,7 @@ fn preset(uv: vec2f) -> vec4f {
   col += hsl2rgb(barHue, 0.9, 0.5) * fall * P_glow() * v * step(tip, r);
 
   // Peak arc (toggleable)
-  let pkR = min(inner + pk * P_barLen(), 0.47);
+  let pkR = softLimit(inner + pk * P_barLen(), frameReach(screenA));
   col += hsl2rgb(barHue, 0.3, 0.9) * smoothstep(0.005, 0.0, abs(r - pkR)) * 0.8
        * step(0.5, P_peaks());
 
@@ -2054,7 +1725,10 @@ fn preset(uv: vec2f) -> vec4f {
           + sin(a * 6.0 - spin * 0.7 + 1.3) * amp * 0.35;
   let lim = inner * P_wobClamp();
   wob = clamp(wob, -lim, lim);
-  let core = smoothstep(coreR + wob + 0.005, coreR + wob - 0.005, r);
+  // The core is a disc, so it compresses against the circle that fits the
+  // frame — a maxed Core size fills gracefully instead of walling the screen.
+  let coreEdge = softLimit(coreR + wob, frameCircle());
+  let core = smoothstep(coreEdge + 0.005, coreEdge - 0.005, r);
   let coreL = 0.12 + u.drive * P_coreBright() + beatP * P_beatBloom();
   col = mix(col, hsl2rgb(P_hue() + 30.0, 0.75, coreL), core);
 
@@ -2576,6 +2250,48 @@ fn kaleido(p: vec2f, segments: f32) -> vec2f {
 /** uv centered at 0, x corrected for aspect ratio */
 fn centered(uv: vec2f) -> vec2f {
   return vec2f((uv.x - 0.5) * u.aspect, uv.y - 0.5);
+}
+
+// ---- Frame-aware soft limiting (v2.44) ----------------------------------
+// The frame in centered() space is the RECTANGLE |x| <= u.aspect*0.5,
+// |y| <= 0.5 — not a circle. The old frame-safety rule hard-capped radial
+// geometry at a fixed circle (r <= ~0.47, the half-HEIGHT), which sliced
+// maxed-out settings along a visible circular edge on wide frames.
+// These helpers replace clipping with COMPRESSION: below the knee the
+// mapping is identity (defaults render exactly as before), above it the
+// value approaches the frame border asymptotically — a hard edge cannot
+// exist at ANY setting, by construction. Presets must use these instead of
+// min(x, 0.47)-style caps.
+
+// Distance from center to the frame border along direction angle a,
+// with a small safety margin. Box reach, not a circle.
+fn frameReach(a: f32) -> f32 {
+  let c = abs(cos(a));
+  let s = abs(sin(a));
+  let rx = (u.aspect * 0.5 - 0.015) / max(c, 1e-4);
+  let ry = 0.485 / max(s, 1e-4);
+  return min(rx, ry);
+}
+
+// The largest radius of a FULL circle that fits the frame (short side).
+fn frameCircle() -> f32 {
+  return min(u.aspect * 0.5, 0.5) - 0.015;
+}
+
+// Compress x softly against lim: identity below 72% of lim, smooth
+// asymptotic approach above — never reaches lim, never clips.
+fn softLimit(x: f32, lim: f32) -> f32 {
+  let knee = lim * 0.72;
+  if (x <= knee) { return x; }
+  return knee + (lim - knee) * tanh((x - knee) / (lim - knee));
+}
+
+// Fade against the actual frame BORDER (all four edges), for glow that
+// bleeds past geometry. Replaces circular col *= smoothstep(0.5,0.45,r)
+// fades, which darkened along a circle instead of the frame.
+fn frameFade(p: vec2f) -> f32 {
+  let box = vec2f(u.aspect * 0.5, 0.5) - abs(p);
+  return smoothstep(0.0, 0.02, min(box.x, box.y));
 }
 
 struct VSOut {
@@ -4144,7 +3860,8 @@ fn preset(uv: vec2f) -> vec4f {
   // Circular waveform ring
   if (P_ring() > 0.5) {
     let wv = waveAt(fract(a / TAU + 0.5));
-    let ringR = min(radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2), 0.47);
+    let ringR = softLimit(radius * P_ringDist() + wv * P_ringWave() * (0.35 + level * 1.2),
+                          frameCircle());
     let dRing = abs(r - ringR);
     let ringT = fract(baseT + 0.07 + wv * 0.05);
     let ringPal = cosPalette(ringT, vec3f(0.5), vec3f(0.5), vec3f(1.0), vec3f(0.0, 0.33, 0.67));

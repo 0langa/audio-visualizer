@@ -269,8 +269,10 @@ fn preset(uv: vec2f) -> vec4f {
     // per-band accent + a staggered beat gulp. Capped so a loud beat can't
     // inflate a single ball into a full-frame solid wash — it stays a blob
     // that merges, not a fill.
-    let rad = min(P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
-            + band * P_radiusBand() + beatMul * P_beatSwell() * u.pulse), 0.34);
+    // Soft frame limit (v2.44): a maxed Size approaches a frame-filling
+    // blob smoothly instead of pinning every ball to one clipped radius.
+    let rad = softLimit(P_size() * (P_radiusFloor() + u.drive * P_energyGrow()
+            + band * P_radiusBand() + beatMul * P_beatSwell() * u.pulse), frameCircle() * 0.8);
     let d2 = dot(p - pos, p - pos);
     let contrib = rad * rad / (d2 + 1e-5);
     field += contrib;

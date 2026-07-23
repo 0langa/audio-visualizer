@@ -129,7 +129,7 @@ export const echoTrails: PresetDef = {
       key: "radius",
       label: "Ring size",
       min: 0.05,
-      max: 0.44,
+      max: 0.6,
       step: 0.01,
       default: 0.22,
       hint: "Base radius of the injected spectrum ring",
@@ -260,7 +260,7 @@ fn preset(uv: vec2f) -> vec4f {
   // outward from — inject it on-screen (r<=0.45), or a loud/bright master at
   // high Ring size + Reactivity puts the whole source off-frame and the tunnel
   // has nothing to echo. The trails still extend past this via feedback.
-  let ringR = min(P_radius() + spec * P_react() * (0.6 + u.bass * 0.8), 0.45);
+  let ringR = softLimit(P_radius() + spec * P_react() * (0.6 + u.bass * 0.8), frameCircle());
   let band = smoothstep(P_thick() + 0.02, 0.0, abs(rad - ringR));
   // Cosine palette instead of a raw hsl2rgb hue rotated by angle and drifted
   // by time: a continuously sweeping HSL hue walks through its desaturated

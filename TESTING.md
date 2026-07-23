@@ -20,8 +20,11 @@ Mark each ✅ / ❌ with a note. Grouped by what it exercises.
 
 ## Core render & export
 
-- [ ] Each of the 17 visual modes looks correct and "pro": no maxing-out, nothing out of
+- [ ] Each of the 16 visual modes looks correct and "pro": no maxing-out, nothing out of
       frame, dynamics read as spikes not mush, sync feels locked to the track.
+- [ ] **Max-settings sweep**: on Bass Circle, Radial Burst, Voice Orb, Metaballs and
+      Echo Trails, drag the size/reach sliders to max — geometry should compress
+      smoothly toward the frame edge; no hard circular cut anywhere.
 - [ ] Export a clip in H.264, then spot-check HEVC / AV1 / VP9-alpha / PNG-seq / ProRes /
       GIF / WebP — each opens in a player or NLE.
 - [ ] **ProRes 4444 with alpha drops into Premiere/Resolve** with correct transparency.
@@ -62,7 +65,7 @@ Mark each ✅ / ❌ with a note. Grouped by what it exercises.
       file — they persist per install, not per project. Not a bug.)
 - [ ] Library folder scan + gapless auto-advance on a real music folder.
 - [ ] `.avtheme` import via drag-drop; a factory pack applies cleanly.
-- [ ] **Builder Studio**: add/duplicate/reorder/mute layers, change a blend
+- [ ] **Builder** (the layer compositor): add/duplicate/reorder/mute layers, change a blend
       mode; export the stack as `.avbuilder` and import it back; save the
       project, reopen — the stack round-trips and the export matches the
       preview.
