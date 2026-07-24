@@ -3,7 +3,13 @@ import { safeName } from "../batch";
 import { clearHistory, historyDepths, popRedo, popUndo } from "../history";
 import { wasPreviousExitClean } from "../persistence";
 import { clearAutosave, isTauri, openTextFile, readAutosave, saveTextFile } from "../platform";
-import { parseProject, PROJECT_EXTENSION, ProjectParseError, serializeProject } from "../project";
+import {
+  parseProject,
+  PROJECT_EXTENSION,
+  ProjectParseError,
+  serializeProject,
+  validateDocument,
+} from "../project";
 import { parseTheme, serializeTheme, ThemeParseError } from "../themes";
 import type { VizState } from "../store";
 import type { GetFn, SetFn, SliceCtx } from "./ctx";
@@ -63,6 +69,17 @@ export function projectIOActions(set: SetFn, get: GetFn, ctx: SliceCtx) {
       }
       const d = historyDepths();
       set({ undoDepth: d.undo, redoDepth: d.redo });
+    },
+
+    newProject() {
+      // One-click escape hatch back to a clean document: everything a
+      // project file carries resets to defaults (timeline OFF, overlays and
+      // assets gone, params/post/motion/lyric style/audiogram/builder stack
+      // default). Session things (loaded track, volume, prefs) stay. Runs
+      // through the ordinary undo path, so it is a single Ctrl+Z to regret.
+      ctx.record("new-project");
+      get().applyDocument(validateDocument({}));
+      ctx.flashNotice("New project — everything reset to defaults");
     },
 
     async saveProject() {

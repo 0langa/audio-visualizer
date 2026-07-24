@@ -712,6 +712,13 @@ export default function App() {
               Project
             </button>
             <div className="menu">
+              <button
+                className="menu-item"
+                title="Reset everything to a clean default project (Ctrl+Z undoes it)"
+                onClick={() => store().newProject()}
+              >
+                New project
+              </button>
               <button className="menu-item" onClick={() => void store().saveProject()}>
                 Save project… <kbd className="menu-kbd">Ctrl+S</kbd>
               </button>

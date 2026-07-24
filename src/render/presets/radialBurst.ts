@@ -241,7 +241,13 @@ fn preset(uv: vec2f) -> vec4f {
   // Beat kicks ride the tempo grid when the track has one (gridPulse falls
   // back to the flux pulse when it doesn't); real onsets still win via max.
   let beatP = max(u.driveBeat, gridPulse(7.0));
-  var a = atan2(p.y, p.x) + (u.time * P_rotSpeed() * TAU * 0.1 + beatP * 0.12) * u.spin;
+  // Rotation is TIME-only. A beat kick used to add +0.12 rad to the angle,
+  // but the pulse DECAYS after each beat — so the whole burst visibly
+  // rotated forward on the hit and then slid BACK as the pulse faded
+  // ("rotation jumping back and forth", reported across many versions).
+  // Angle offsets must be monotonic; beat energy stays in ring breathe,
+  // core pump and bloom, which are radial and can decay without lying.
+  var a = atan2(p.y, p.x) + u.time * P_rotSpeed() * TAU * 0.1 * u.spin;
 
   // Fold into symmetric segments, mirrored inside each for seamless wrap
   let sym = max(1.0, P_symmetry());

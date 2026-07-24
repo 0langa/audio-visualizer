@@ -398,6 +398,8 @@ interface Actions {
   retryFailedBatch(): Promise<void>;
   dismissBatch(): void;
   setError(message: string | null): void;
+  /** Reset the document to a clean default state (undoable). */
+  newProject(): void;
   saveProject(): Promise<void>;
   openProject(): Promise<void>;
   applyDocument(doc: ProjectDocument): void;

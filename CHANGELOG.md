@@ -11,6 +11,24 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.44.3] - 2026-07-24
+
+### Fixed
+
+- **Radial Burst no longer looks like it rotates backwards.** A beat kick
+  added a rotation offset that decayed after every hit, so the whole burst
+  visibly slid back as each pulse faded — reported as "rotation jumping back
+  and forth" across many versions. Rotation is now purely time-driven
+  (monotonic); the beat still hits through ring breathe, core pump and glow.
+
+### Added
+
+- **Project ▸ New project** — one click resets the document to clean
+  defaults (timeline off, overlays/assets cleared, params/post/motion/lyric
+  style/audiogram/Builder stack default). Undoable with a single Ctrl+Z.
+  Loaded track, volume and app preferences are untouched. Useful whenever a
+  loaded project or test session leaves the app in a state you don't want.
+
 ## [2.44.2] - 2026-07-24
 
 ### Fixed
