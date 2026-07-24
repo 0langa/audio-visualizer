@@ -19,11 +19,11 @@ hardware are marked **HUMAN**. Mark each item ✅/❌ with a one-line note.
   items HUMAN.
 - Native Win32 file dialogs: automate by typing the FULL PATH into the
   file-name field and pressing Enter (arrow-key navigation is unreliable).
-- Keyboard: the app binds `[ ] \` by PHYSICAL position (works on QWERTZ):
-  previous mode = key right of P (ü on QWERTZ), next mode = second key right
-  of P (+ on QWERTZ), Stage mode = key left of Enter/below (# on QWERTZ).
-  Synthetic input should send scancodes/`e.code` (BracketLeft, BracketRight,
-  Backslash), not characters.
+- Keyboard (since v2.45.2): every shortcut has a LETTER/DIGIT primary
+  binding that sits on the same labeled key on every layout — P/N previous/
+  next mode, S stage, 0 blackout, H help. The legacy physical-position
+  symbol keys (`[ ] \` via e.code, `.`/`?` via e.key) remain as
+  secondaries. Synthetic input can simply send the letters.
 - Prepare a scratch folder first: `C:\bf-test\` (media in `C:\bf-test\media`,
   exports in `C:\bf-test\out`).
 
@@ -78,20 +78,18 @@ switching · OS-fullscreen + Stage as projector output · undo/redo ·
   work?" bar is visible in the UI chrome; click **Restore**; the app
   continues without error. Then: close the app NORMALLY, relaunch —
   PASS: no recovery bar.
-- [ ] **HUMAN — physical-key shortcuts (QWERTZ).** TOOL-BLOCKED 2026-07-23: bundled Computer Use exposes character-key
-      sends, not raw physical scancodes; both attempted OEM sends mapped to
-      Stage, so they cannot validly pass/fail the v2.44.1 physical-key fix.
-      Owner keyboard or a raw-scancode-capable helper must finish this item.
-      With the app focused and a
-      demo playing: send scancode for **BracketRight** (second key right of P)
-      → the mode strip's selection advances (watch the highlighted chip — UI
-      chrome is visible to capture). Send **Backslash** scancode → all chrome
-      disappears (Stage mode). Send **Escape** → chrome returns. Then focus a
-      dropdown first (open panel, click any `<select>`), send Backslash →
-      Stage; send Escape → PASS only if chrome returns (Esc must win with a
-      dropdown focused). Finally, type text containing AltGr characters into
-      the search box (e.g. `@[]\` on QWERTZ = AltGr chords) — PASS: no mode
-      switch/stage toggle fires while typing.
+- [ ] **HUMAN — shortcuts on a non-US keyboard (RESCOPED in v2.45.2).**
+      The letter/digit primaries make raw scancodes unnecessary: on the
+      owner's QWERTZ keyboard, with a demo playing, press **N** → mode strip
+      advances; **P** → goes back; **S** → chrome disappears (Stage);
+      **0** → blackout; **Esc** → chrome returns; **H** → shortcut list.
+      Then focus a dropdown (open panel, click any `<select>`), press **S**
+      (nothing should fire — selects own letters), press **Esc** → PASS
+      only if chrome/panels close (Esc must win with a dropdown focused).
+      Finally type AltGr characters into the panel search box (`@[]\` on
+      QWERTZ) — PASS: no mode switch or stage toggle fires while typing.
+      Legacy check (optional): the physical ü/+/# keys (BracketLeft/Right,
+      Backslash positions) still step modes / toggle Stage.
 - [ ] **Unsupported video-bg codec message.** FIXED in v2.44.2 — the
       friendly-message translation existed but had been lost in a botched
       multi-edit before the v2.44.1 build; it is actually in the binary now.

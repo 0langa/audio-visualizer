@@ -22,7 +22,7 @@ export const PresetStrip = memo(function PresetStrip(props: {
 
   return (
     <div className="chrome preset-strip">
-      <button className="icon-btn subtle" title="Previous preset ([)" onClick={() => step(-1)}>
+      <button className="icon-btn subtle" title="Previous preset (P)" onClick={() => step(-1)}>
         <IconChevronLeft size={16} />
       </button>
       <div className="chips">
@@ -53,7 +53,7 @@ export const PresetStrip = memo(function PresetStrip(props: {
           +
         </button>
       </div>
-      <button className="icon-btn subtle" title="Next preset (])" onClick={() => step(1)}>
+      <button className="icon-btn subtle" title="Next preset (N)" onClick={() => step(1)}>
         <IconChevronRight size={16} />
       </button>
     </div>

@@ -11,6 +11,19 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.45.2] - 2026-07-24
+
+### Changed
+
+- **Layout-proof keyboard shortcuts.** Every shortcut now has a letter or
+  digit as its primary key — the only keys whose printed label sits in the
+  same place on every major layout (QWERTY, QWERTZ, AZERTY, …):
+  **P / N** previous/next mode, **S** Stage mode, **0** blackout (the digit
+  row now reads: 1–9 pick a mode, 0 cuts to black), **H** shortcut list.
+  The old symbol bindings (`[` `]` `\` `.` `?`) still work as secondaries
+  for muscle memory. Tooltips, the shortcut overlay and the docs all name
+  the letter keys now.
+
 ## [2.45.1] - 2026-07-24
 
 ### Added

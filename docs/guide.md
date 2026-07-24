@@ -1,8 +1,10 @@
 # User guide
 
-Everything the app does, panel by panel. Keyboard shortcuts: press `?` in
-the app (Space play/pause, `[`/`]` switch mode, G settings, T timeline,
-B batch, Q library, L loop, F fullscreen, Ctrl+Z undo).
+Everything the app does, panel by panel. Keyboard shortcuts: press `H` (or
+`?`) in the app (Space play/pause, P/N switch mode, G settings, T timeline,
+B batch, Q library, L loop, F fullscreen, S stage, Ctrl+Z undo). Every
+shortcut is a letter or digit, so it sits on the same labeled key on every
+keyboard layout — QWERTZ, AZERTY and friends included.
 
 ## Visual modes
 
@@ -94,10 +96,11 @@ changes an export.
   or **Bar**, the switch doesn't happen instantly — it waits and lands exactly
   on the next beat/bar of the detected grid, Ableton-session-launch style. The
   queued mode's chip pulses until it takes over. Off = instant.
-- **Stage mode** (the monitor icon, or **`\`**) hides all the chrome and the
+- **Stage mode** (the monitor icon, or **S**) hides all the chrome and the
   cursor for a clean, full-bleed output — for a projector, a capture card, or
   screen-share. The mode name flashes briefly on each switch so you can drive
-  blind. **`.`** blacks out (the VJ cut); **Esc** exits.
+  blind. **0** blacks out (the VJ cut — 1–9 pick modes, 0 cuts to black);
+  **Esc** exits.
 - **MIDI** (Settings ▸ MIDI ▸ Enable, on Chromium-based builds): map a
   controller's knobs and pads. **Learn CC** then move a knob to bind it to the
   selected setting; **Learn note → &lt;mode&gt;** then play a note to switch to

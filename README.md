@@ -119,11 +119,11 @@ Free and open source. Built to become a professional-grade tool for producers an
   Analysis-only tap; nothing is re-emitted to the speakers
 - **Live performance / VJ**: jump between modes with number keys **1–9** or a
   MIDI controller, with optional **beat-quantized takeover** (the switch lands
-  on the next beat/bar, Ableton-style); **Stage mode** (`\`) gives a clean
+  on the next beat/bar, Ableton-style); **Stage mode** (**S**) gives a clean
   chrome-free full-bleed output with blackout and a mode-name HUD; **Web MIDI**
   maps knobs to any setting and notes to modes (local, no drivers). Preview-only
   — never affects exports
-- Product chrome: auto-hides while playing, keyboard shortcuts (press ?),
+- Product chrome: auto-hides while playing, keyboard shortcuts (press H — letter/digit keys only, so they work on every keyboard layout),
   hover-scrub seek bar, onboarding empty state, GPU-loss auto-recovery
 - Three synthesized demo tracks (120 BPM house / 174 BPM DnB / 70 BPM ambient)
   for instant cross-style testing without files

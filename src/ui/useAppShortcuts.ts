@@ -149,8 +149,33 @@ export function useAppShortcuts(store: typeof useVizStore.getState): void {
           s.applyVolume(Math.max(0, s.volume - 0.05), false);
           break;
         case "?":
-          // README + docs/guide.md both tell users to press ? for shortcuts.
+        case "h":
+        case "H":
+          // H is the layout-proof binding; ? kept for muscle memory (README
+          // and docs historically said "press ?").
           s.setShowHelp(!s.showHelp);
+          break;
+        // Letters and digits are the only keys whose printed label matches on
+        // every major layout (QWERTY/QWERTZ/AZERTY/…) — symbol keys move or
+        // need AltGr/Shift. So every performance shortcut has a letter/digit
+        // PRIMARY binding; the physical-position symbol keys above stay as
+        // secondaries for US-layout muscle memory.
+        case "p":
+        case "P":
+          s.stepPreset(-1);
+          break;
+        case "n":
+        case "N":
+          s.stepPreset(1);
+          break;
+        case "s":
+        case "S":
+          s.setStageMode(!s.stageMode);
+          break;
+        case "0":
+          // 0 = blackout completes the digit row: 1-9 pick a mode, 0 cuts to
+          // black (Stage mode only, like the legacy "." binding).
+          if (s.stageMode) s.setBlackout(!s.blackout);
           break;
         case "m":
         case "M":

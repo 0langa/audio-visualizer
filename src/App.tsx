@@ -49,9 +49,9 @@ const SHORTCUTS: Array<[string, string]> = [
   ["↑ / ↓", "Volume"],
   ["M", "Mute"],
   ["L", "Loop"],
-  ["[ / ]", "Previous / next preset"],
+  ["P / N", "Previous / next preset (also [ / ])"],
   ["1 – 9", "Jump to mode (beat-quantized when Live › Quantize is on)"],
-  ["\\", "Stage mode (chrome-free output) · . blackout · Esc exits"],
+  ["S", "Stage mode (chrome-free output) · 0 blackout · Esc exits (also \\ and .)"],
   ["G", "Settings panel"],
   ["F", "Fullscreen"],
   ["Ctrl+S", "Save project"],
@@ -61,7 +61,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["B", "Batch render"],
   ["Q", "Music library"],
   ["Ctrl+,", "App settings"],
-  ["?", "This shortcut list"],
+  ["H or ?", "This shortcut list"],
 ];
 
 export default function App() {
@@ -784,7 +784,7 @@ export default function App() {
           </button>
           <button
             className={`icon-btn ${stageMode ? "active" : ""}`}
-            title="Stage mode — chrome-free output for performance/capture (\\)"
+            title="Stage mode — chrome-free output for performance/capture (S)"
             aria-label="Stage mode"
             aria-pressed={stageMode}
             onClick={() => store().setStageMode(!stageMode)}
