@@ -11,6 +11,54 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.46.1] - 2026-07-25
+
+Every finding from the independent v3-readiness audit that could be fixed
+without a design decision, fixed and verified — including two Critical
+determinism repairs.
+
+### Fixed
+
+- **Per-mode backgrounds now render in the live preview** (they already
+  rendered in exports). The render loop re-applied the global background
+  every frame, silently overwriting the override within ~16 ms — the
+  flagship v2.46.0 feature looked broken on screen while exporting
+  correctly. Live and export now resolve backgrounds through the same
+  rule, pinned by a live-vs-export parity test.
+- **Long tracks (>90 min) analyze identically in preview and export.**
+  The fallback decoder kept the file's native sample rate while the live
+  path analyzes at the audio device's rate — on the common 44.1-vs-48 kHz
+  mismatch, every exported frequency bin sat ~8% off its live position.
+  The fallback now resamples once, exactly like the normal path; chunk
+  seams also no longer risk one-sample clicks.
+- **Opening a project no longer overwrites your newer custom shaders.**
+  A project embedding an older copy of a shader you've since edited used
+  to silently revert and persist it, with no undo. Your library version
+  now wins on content divergence, with a notice.
+- **The update dialog** traps focus, closes on Esc, and shows a proper
+  error screen with Retry if an install fails (it used to just vanish);
+  double-clicking Install can no longer double-run an install.
+- **Beats on high-refresh displays**: the onset threshold now scales with
+  frame time, so a 144 Hz preview fires the same beats a 60 fps export
+  renders. 60 fps behavior is bit-identical.
+- **Batch "Match cover colors"** now re-matches per track — previously
+  every batched video wore the first track's colors.
+- Voice Orb joins the v2.44 soft frame-limit family (no more hard
+  circular clip at max size); film-grain dither no longer degrades hours
+  into a long track; GIF export caps at ~3 minutes with a clear message
+  instead of exhausting memory; a wedged ffmpeg finalize can no longer
+  deadlock the export abort; toggling a per-mode background off frees its
+  embedded image/video; the mode strip's edge fades (shipped inert in
+  v2.46.0) actually appear; panels no longer fade out while you read
+  them; the guide's aspect-ratio list matches the app; plus a dozen
+  smaller correctness, a11y and docs repairs.
+
+### Deferred from the audit (need design decisions or hardware sessions)
+
+- 2-hour export memory streaming (A2), decode cancellation (A3),
+  fs-scope binding of sidecar output paths (E1), slider-drag render
+  batching (U2).
+
 ## [2.46.0] - 2026-07-24
 
 ### Added
