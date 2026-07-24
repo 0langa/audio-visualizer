@@ -5,6 +5,8 @@ import { DEFAULT_SYNC } from "../audio/types";
 import { DEFAULT_LYRIC_STYLE } from "../state/lyrics";
 import { DEFAULT_AUDIOGRAM } from "../state/audiogram";
 import type { ProjectDocument } from "../state/project";
+import { resolveActiveFrame } from "../state/frameResolve";
+import { BG_IMAGE, BG_SOLID, type BgSettings } from "../render/types";
 
 const FMT: FormatPreset = {
   id: "t",
@@ -132,5 +134,83 @@ describe("buildExportOptions", () => {
     // would silently repoint if that array were ever reordered.
     const o = buildExportOptions(doc(), { ...FMT, w: 1080, h: 1920 }, track, undefined, {});
     expect([o.width, o.height]).toEqual([1080, 1920]);
+  });
+});
+
+describe("per-mode overrides (schema v11) resolve at the export chokepoint", () => {
+  const asset = { id: "as-x", name: "x.png", dataUrl: "data:image/png;base64,AA==" };
+  const solidRed: BgSettings = { mode: BG_SOLID, color: [1, 0, 0] };
+
+  it("a bg override for the active mode wins over the global bg", () => {
+    const d = doc({
+      bg: { mode: 0, color: [0, 0, 0] },
+      bgByPreset: { "spectrum-bars": solidRed },
+    });
+    const o = buildExportOptions(d, FMT, track, undefined, {});
+    expect(o.bg).toEqual(solidRed);
+  });
+
+  it("another mode's override does NOT leak into this mode", () => {
+    const d = doc({
+      bg: { mode: 0, color: [0, 0, 0] },
+      bgByPreset: { "bass-circle": solidRed },
+    });
+    const o = buildExportOptions(d, FMT, track, undefined, {});
+    expect(o.bg.mode).toBe(0);
+  });
+
+  it("an image bg override resolves its asset into bgImage", () => {
+    const d = doc({
+      assets: { "as-x": asset },
+      bgByPreset: {
+        "spectrum-bars": {
+          mode: BG_IMAGE,
+          color: [0, 0, 0],
+          image: { assetId: "as-x", dim: 0.3, blur: 4 },
+        },
+      },
+    });
+    const o = buildExportOptions(d, FMT, track, undefined, {});
+    expect(o.bgImage).toEqual({ dataUrl: asset.dataUrl, dim: 0.3, blur: 4 });
+  });
+
+  it("a center image wins over the track's cover art", () => {
+    const d = doc({
+      assets: { "as-x": asset },
+      centerImageByPreset: { "spectrum-bars": "as-x" },
+    });
+    const o = buildExportOptions(d, FMT, { ...track, coverArt: "data:image/png;base64,BB==" }, undefined, {});
+    expect(o.coverArt).toBe(asset.dataUrl);
+  });
+
+  it("no center image falls back to the track cover", () => {
+    const o = buildExportOptions(doc(), FMT, { ...track, coverArt: "data:cover" }, undefined, {});
+    expect(o.coverArt).toBe("data:cover");
+  });
+
+  it("LIVE PARITY (BG1): frameResolve with the store's effective baseBg yields the export's bg", () => {
+    // The live loop feeds resolveActiveFrame baseBg = bgByPreset[presetId] ?? bg
+    // (store.getFrameInput) and re-applies rf.bg every frame. This pins that
+    // both paths resolve the SAME background for the same document — the exact
+    // invariant BG1 broke (override exported but was invisible live).
+    const d = doc({
+      bg: { mode: 0, color: [0, 0, 0] },
+      bgByPreset: { "spectrum-bars": solidRed },
+    });
+    const exported = buildExportOptions(d, FMT, track, undefined, {});
+    const liveBaseBg = d.bgByPreset[d.presetId] ?? d.bg; // = store.getFrameInput().baseBg
+    const rf = resolveActiveFrame(
+      {
+        timeline: d.timeline,
+        basePresetId: d.presetId,
+        baseParams: {},
+        baseMods: [],
+        baseBg: liveBaseBg,
+        paramsByPreset: d.paramsByPreset,
+        modsByPreset: d.modsByPreset,
+      },
+      1.0,
+    );
+    expect(rf.bg).toEqual(exported.bg);
   });
 });

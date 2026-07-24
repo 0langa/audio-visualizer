@@ -1014,12 +1014,18 @@ export const useVizStore = create<VizState>((set, get) => {
             basePresetId: s.presetId,
             baseParams: s.activeParams,
             baseMods: s.activeMods,
-            baseBg: s.bg,
+            // Effective bg (BG1): the render loop re-applies rf.bg every
+            // frame, so handing it the GLOBAL bg here silently overwrote the
+            // per-mode override within ~16ms of every correct apply — the
+            // override rendered in exports but was invisible live. Resolve
+            // for the BASE mode, exactly like buildExportOptions does; a
+            // timeline scene's own bg still wins inside frameResolve.
+            baseBg: s.bgByPreset[s.presetId] ?? s.bg,
             paramsByPreset: s.paramsByPreset,
             modsByPreset: s.modsByPreset,
           };
         },
-        getBackground: () => get().bg,
+        getBackground: () => effBg(), // BG1: paused/initial bind must match the loop
         getSync: () => get().sync,
         isSeeking: () => get().seeking,
         onPlayback: (playback) => set({ playback }),
