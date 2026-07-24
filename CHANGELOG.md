@@ -41,6 +41,14 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ### Fixed
 
+- **UI polish pass across every mode and window size.** Sliders no
+  longer push their value readout past the panel edge on narrow panels
+  (worst in the Advanced drawer); the mode strip on narrow windows now
+  fades at the edges when more modes are hidden, scrolls with the mouse
+  wheel, and always auto-scrolls the active mode into view; and hovering
+  a setting with a long hint no longer makes the whole panel jump — the
+  hint footer keeps a fixed two-line height (the full text stays in the
+  tooltip).
 - Replacing a background image/video or a center image now garbage-
   collects the old embedded asset only when nothing else (an overlay,
   another mode's background, a center image) still uses it.
