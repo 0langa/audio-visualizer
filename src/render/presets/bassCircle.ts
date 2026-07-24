@@ -112,6 +112,15 @@ export const bassCircle: PresetDef = {
       default: 1,
       hint: "Show the track's embedded cover art inside the circle (falls back to a plain fill)",
     },
+    {
+      key: "coverHue",
+      label: "Match cover colors",
+      min: 0,
+      max: 1,
+      step: 1,
+      default: 0,
+      hint: "Analyze the cover art and set Hue + Hue spread to match it — reapplies automatically whenever a track with cover art loads",
+    },
   ],
   advanced: [
     {

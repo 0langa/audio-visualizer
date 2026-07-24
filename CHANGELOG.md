@@ -11,6 +11,24 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.45.1] - 2026-07-24
+
+### Added
+
+- **Radial Burst: cover art in the core.** The track's embedded cover now
+  fills the breathing center disc (same as Bass Circle's circle) — on by
+  default when the track has art, with a **Cover art** toggle plus
+  **Cover blend** and **Cover brightness** in Advanced. The wobbling core
+  edge crops the art organically; loudness and beats lift its brightness.
+  Tracks without embedded art keep the classic plain core.
+- **Bass Circle: Match cover colors.** A new toggle that analyzes the
+  cover art's dominant color and sets **Hue** and **Hue spread** to fit —
+  immediately when switched on, and again automatically whenever a track
+  with cover art loads. Near-grayscale covers are ignored (your colors
+  stay). The analysis writes plain slider values into the project, so
+  exports match the preview exactly and one Ctrl+Z restores the previous
+  colors.
+
 ## [2.45.0] - 2026-07-24
 
 ### Added

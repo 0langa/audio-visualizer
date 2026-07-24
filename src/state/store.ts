@@ -25,6 +25,7 @@ import { WebGPURenderer } from "../render/webgpuRenderer";
 import { stemValuesAt, type StemEntry, type StemSlot } from "../audio/stems";
 import { defaultParams } from "../render/types";
 import { presetById, presets } from "../render/presets";
+import { extractCoverPalette, type CoverPalette } from "./coverPalette";
 import { APP_VERSION } from "../version";
 import { getAnalyzer, getEngine, getRenderer, initServices, remeasure } from "./services";
 import { analyzeTrack } from "../audio/analysis/trackAnalysis";
@@ -216,6 +217,9 @@ interface SessionSlice {
   trackMeta: OverlayMeta;
   /** Cover art extracted from the loaded file's tags (session-only). */
   coverArt: string | null;
+  /** Dominant color of the current cover art (null = none/grayscale). Feeds
+   * "match cover colors" toggles; session-only, never serialized. */
+  coverPalette: CoverPalette | null;
   /** Momentary loudness readout (LUFS), null before playback. */
   lufs: number | null;
   /** Smoothed stereo width readout 0..1. */
@@ -560,9 +564,33 @@ export const useVizStore = create<VizState>((set, get) => {
    * sample it (coverSample()/hasCover()). Race-guarded: a decode that finishes
    * after the track changed is dropped instead of overwriting the new cover.
    */
+  /** Set Hue/Hue spread from the analyzed cover — only when the active
+   * preset opts in (has a coverHue param) AND the user turned it on. One
+   * history entry for the pair; a no-op without a usable palette. */
+  const maybeApplyCoverPalette = () => {
+    const state = get();
+    const pal = state.coverPalette;
+    if (!pal) return;
+    const def = presetById(state.presetId);
+    if (!def.params.some((p) => p.key === "coverHue")) return;
+    if ((state.activeParams.coverHue ?? 0) < 0.5) return;
+    if (state.activeParams.hue === pal.hue && state.activeParams.hueSpread === pal.spread) return;
+    record("cover-palette");
+    recordSuspended = true;
+    try {
+      const activeParams = { ...state.activeParams, hue: pal.hue, hueSpread: pal.spread };
+      const paramsByPreset = { ...state.paramsByPreset, [state.presetId]: activeParams };
+      set({ activeParams, paramsByPreset });
+      saveStoredParams(paramsByPreset);
+    } finally {
+      recordSuspended = false;
+    }
+  };
+
   const applyCoverArt = () => {
     const cover = get().coverArt;
     if (!cover) {
+      set({ coverPalette: null });
       getRenderer()?.setCoverArt(null);
       return;
     }
@@ -570,13 +598,21 @@ export const useVizStore = create<VizState>((set, get) => {
       .then((r) => r.blob())
       .then((b) => createImageBitmap(b))
       .then((bmp) => {
-        if (get().coverArt === cover) getRenderer()?.setCoverArt(bmp);
-        else bmp.close();
+        if (get().coverArt === cover) {
+          // Palette BEFORE the renderer takes the bitmap (ownership transfer
+          // closes it) — extraction only reads pixels via drawImage.
+          set({ coverPalette: extractCoverPalette(bmp) });
+          maybeApplyCoverPalette();
+          getRenderer()?.setCoverArt(bmp);
+        } else bmp.close();
       })
       .catch(() => {
         // Same race guard as success: a stale decode failure (slow corrupt
         // art from the PREVIOUS track) must not wipe the current track's cover
-        if (get().coverArt === cover) getRenderer()?.setCoverArt(null);
+        if (get().coverArt === cover) {
+          set({ coverPalette: null });
+          getRenderer()?.setCoverArt(null);
+        }
       });
   };
 
@@ -810,6 +846,7 @@ export const useVizStore = create<VizState>((set, get) => {
     userPresets: loadUserPresets(),
     trackMeta: { title: "", artist: "" },
     coverArt: null,
+    coverPalette: null,
     lufs: null,
     stereoWidth: 0,
     beatGrid: null,
@@ -1070,6 +1107,9 @@ export const useVizStore = create<VizState>((set, get) => {
       const paramsByPreset = { ...state.paramsByPreset, [state.presetId]: activeParams };
       set({ activeParams, paramsByPreset });
       saveStoredParams(paramsByPreset);
+      // Turning "match cover colors" on applies the palette right away
+      // (its own history entry — undo restores the previous colors first).
+      if (key === "coverHue" && value > 0.5) maybeApplyCoverPalette();
     },
 
     applyStyle(values) {
@@ -1380,6 +1420,7 @@ export const useVizStore = create<VizState>((set, get) => {
         set({
           trackMeta: { title: demo.name, artist: "" },
           coverArt: null,
+          coverPalette: null,
           stems: [],
           lyrics: null,
           lyricFileName: null,

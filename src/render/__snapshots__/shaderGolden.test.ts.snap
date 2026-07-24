@@ -210,19 +210,20 @@ fn P_barLen() -> f32 { return params[3u]; }
 fn P_particles() -> f32 { return params[4u]; }
 fn P_rimBright() -> f32 { return params[5u]; }
 fn P_cover() -> f32 { return params[6u]; }
-fn P_symmetry() -> f32 { return params[7u]; }
-fn P_spin() -> f32 { return params[8u]; }
-fn P_hueSpread() -> f32 { return params[9u]; }
-fn P_beatPump() -> f32 { return params[10u]; }
-fn P_gap() -> f32 { return params[11u]; }
-fn P_barGlow() -> f32 { return params[12u]; }
-fn P_partDensity() -> f32 { return params[13u]; }
-fn P_partFill() -> f32 { return params[14u]; }
-fn P_partFloat() -> f32 { return params[15u]; }
-fn P_beatBurst() -> f32 { return params[16u]; }
-fn P_coverMix() -> f32 { return params[17u]; }
-fn P_coverBright() -> f32 { return params[18u]; }
-fn P_vignette() -> f32 { return params[19u]; }
+fn P_coverHue() -> f32 { return params[7u]; }
+fn P_symmetry() -> f32 { return params[8u]; }
+fn P_spin() -> f32 { return params[9u]; }
+fn P_hueSpread() -> f32 { return params[10u]; }
+fn P_beatPump() -> f32 { return params[11u]; }
+fn P_gap() -> f32 { return params[12u]; }
+fn P_barGlow() -> f32 { return params[13u]; }
+fn P_partDensity() -> f32 { return params[14u]; }
+fn P_partFill() -> f32 { return params[15u]; }
+fn P_partFloat() -> f32 { return params[16u]; }
+fn P_beatBurst() -> f32 { return params[17u]; }
+fn P_coverMix() -> f32 { return params[18u]; }
+fn P_coverBright() -> f32 { return params[19u]; }
+fn P_vignette() -> f32 { return params[20u]; }
 
 fn preset(uv: vec2f) -> vec4f {
   let c = centered(uv);
@@ -348,6 +349,10 @@ exports[`shader golden baseline > bass-circle: param ABI (key + default, in orde
   {
     "default": 1,
     "key": "cover",
+  },
+  {
+    "default": 0,
+    "key": "coverHue",
   },
   {
     "default": 2,
@@ -1653,21 +1658,24 @@ fn P_symmetry() -> f32 { return params[3u]; }
 fn P_rotSpeed() -> f32 { return params[4u]; }
 fn P_glow() -> f32 { return params[5u]; }
 fn P_peaks() -> f32 { return params[6u]; }
-fn P_barLen() -> f32 { return params[7u]; }
-fn P_ringBreathe() -> f32 { return params[8u]; }
-fn P_coreSize() -> f32 { return params[9u]; }
-fn P_corePump() -> f32 { return params[10u]; }
-fn P_coreBeat() -> f32 { return params[11u]; }
-fn P_wobBase() -> f32 { return params[12u]; }
-fn P_wobAmp() -> f32 { return params[13u]; }
-fn P_wobClamp() -> f32 { return params[14u]; }
-fn P_spinBase() -> f32 { return params[15u]; }
-fn P_spinEnergy() -> f32 { return params[16u]; }
-fn P_coreBright() -> f32 { return params[17u]; }
-fn P_detailRing() -> f32 { return params[18u]; }
-fn P_detailPos() -> f32 { return params[19u]; }
-fn P_beatBloom() -> f32 { return params[20u]; }
-fn P_vignette() -> f32 { return params[21u]; }
+fn P_cover() -> f32 { return params[7u]; }
+fn P_barLen() -> f32 { return params[8u]; }
+fn P_ringBreathe() -> f32 { return params[9u]; }
+fn P_coreSize() -> f32 { return params[10u]; }
+fn P_corePump() -> f32 { return params[11u]; }
+fn P_coreBeat() -> f32 { return params[12u]; }
+fn P_wobBase() -> f32 { return params[13u]; }
+fn P_wobAmp() -> f32 { return params[14u]; }
+fn P_wobClamp() -> f32 { return params[15u]; }
+fn P_spinBase() -> f32 { return params[16u]; }
+fn P_spinEnergy() -> f32 { return params[17u]; }
+fn P_coreBright() -> f32 { return params[18u]; }
+fn P_detailRing() -> f32 { return params[19u]; }
+fn P_detailPos() -> f32 { return params[20u]; }
+fn P_beatBloom() -> f32 { return params[21u]; }
+fn P_coverMix() -> f32 { return params[22u]; }
+fn P_coverBright() -> f32 { return params[23u]; }
+fn P_vignette() -> f32 { return params[24u]; }
 
 fn preset(uv: vec2f) -> vec4f {
   let p = centered(uv);
@@ -1736,7 +1744,20 @@ fn preset(uv: vec2f) -> vec4f {
   let coreEdge = softLimit(coreR + wob, frameCircle());
   let core = smoothstep(coreEdge + 0.005, coreEdge - 0.005, r);
   let coreL = 0.12 + u.drive * P_coreBright() + beatP * P_beatBloom();
-  col = mix(col, hsl2rgb(P_hue() + 30.0, 0.75, coreL), core);
+  var coreFill = hsl2rgb(P_hue() + 30.0, 0.75, coreL);
+  if (P_cover() > 0.5 && hasCover()) {
+    // Map the core disc to the image using the STABLE (wobble-free) radius so
+    // the art itself doesn't jiggle — the wavy core mask crops its edge
+    // organically instead. Same top-down uv convention as Bass Circle: no y
+    // flip (centered()'s y already grows downward like the texture's v).
+    let artR = max(softLimit(coreR, frameCircle()), 1e-3);
+    let cuv = vec2f(p.x / artR, p.y / artR) * 0.5 + vec2f(0.5);
+    // Loudness lift + beat bloom keep the art alive without recoloring it.
+    let art = coverSample(cuv).rgb * P_coverBright()
+            * (0.85 + u.drive * P_coreBright() + beatP * P_beatBloom());
+    coreFill = mix(coreFill, art, P_coverMix());
+  }
+  col = mix(col, coreFill, core);
 
   // Thin waveform detail ring inside the core: fast micro-motion reads as
   // "alive" on a hairline without deforming the silhouette
@@ -1786,6 +1807,10 @@ exports[`shader golden baseline > radial-burst: param ABI (key + default, in ord
   {
     "default": 1,
     "key": "peaks",
+  },
+  {
+    "default": 1,
+    "key": "cover",
   },
   {
     "default": 0.3,
@@ -1842,6 +1867,14 @@ exports[`shader golden baseline > radial-burst: param ABI (key + default, in ord
   {
     "default": 0.1,
     "key": "beatBloom",
+  },
+  {
+    "default": 0.85,
+    "key": "coverMix",
+  },
+  {
+    "default": 0.9,
+    "key": "coverBright",
   },
   {
     "default": 0.5,

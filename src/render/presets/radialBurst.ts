@@ -96,6 +96,15 @@ export const radialBurst: PresetDef = {
       default: 1,
       hint: "Floating white arcs holding each angle's recent maximum",
     },
+    {
+      key: "cover",
+      label: "Cover art",
+      min: 0,
+      max: 1,
+      step: 1,
+      default: 1,
+      hint: "Show the track's embedded cover art inside the core (falls back to the plain core)",
+    },
   ],
   advanced: [
     {
@@ -225,6 +234,24 @@ export const radialBurst: PresetDef = {
       hint: "Core brightness flash on each beat",
     },
     {
+      key: "coverMix",
+      label: "Cover blend",
+      min: 0,
+      max: 1,
+      step: 0.02,
+      default: 0.85,
+      hint: "How strongly the cover art replaces the core's fill",
+    },
+    {
+      key: "coverBright",
+      label: "Cover brightness",
+      min: 0.1,
+      max: 2,
+      step: 0.05,
+      default: 0.9,
+      hint: "Brightness of the cover art inside the core",
+    },
+    {
       key: "vignette",
       label: "Vignette",
       min: 0,
@@ -302,7 +329,20 @@ fn preset(uv: vec2f) -> vec4f {
   let coreEdge = softLimit(coreR + wob, frameCircle());
   let core = smoothstep(coreEdge + 0.005, coreEdge - 0.005, r);
   let coreL = 0.12 + u.drive * P_coreBright() + beatP * P_beatBloom();
-  col = mix(col, hsl2rgb(P_hue() + 30.0, 0.75, coreL), core);
+  var coreFill = hsl2rgb(P_hue() + 30.0, 0.75, coreL);
+  if (P_cover() > 0.5 && hasCover()) {
+    // Map the core disc to the image using the STABLE (wobble-free) radius so
+    // the art itself doesn't jiggle — the wavy core mask crops its edge
+    // organically instead. Same top-down uv convention as Bass Circle: no y
+    // flip (centered()'s y already grows downward like the texture's v).
+    let artR = max(softLimit(coreR, frameCircle()), 1e-3);
+    let cuv = vec2f(p.x / artR, p.y / artR) * 0.5 + vec2f(0.5);
+    // Loudness lift + beat bloom keep the art alive without recoloring it.
+    let art = coverSample(cuv).rgb * P_coverBright()
+            * (0.85 + u.drive * P_coreBright() + beatP * P_beatBloom());
+    coreFill = mix(coreFill, art, P_coverMix());
+  }
+  col = mix(col, coreFill, core);
 
   // Thin waveform detail ring inside the core: fast micro-motion reads as
   // "alive" on a hairline without deforming the silhouette

@@ -11,7 +11,11 @@ Particles, Tunnel, Kaleido Nebula, Metaballs, LED Matrix, Voice Orb, Echo
 Trails, Particle Flow (120k GPU particles), Spectrum Scape (3D), Aurora,
 Synthwave, Bass Circle, and **Builder** (the layer compositor, below).
 Each mode has curated **styles** (one-click looks), main parameters, and an
-**Advanced** drawer exposing every internal constant worth touching. Hover
+**Advanced** drawer exposing every internal constant worth touching.
+Bass Circle and Radial Burst can show the track's **embedded cover art** in
+their center, and Bass Circle's **Match cover colors** toggle analyzes the
+art and sets Hue + Hue spread to fit it — automatically again on every new
+track. Hover
 any control for a plain-language hint. The settings panel (G) is organized
 into **tabs** (Visual / Sync / Scene / Text / Live), every section
 collapses, the panel edge drags to resize — and the **search box** at the
