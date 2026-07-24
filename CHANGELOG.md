@@ -11,6 +11,41 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.46.0] - 2026-07-24
+
+### Added
+
+- **Per-mode backgrounds.** The Background section (Scene tab) gains a
+  scope switch: **All modes** (the shared background, as before) or
+  **This mode** — give any visual mode its own background, including a
+  custom image or looping video. Spectrum Bars can sit on your video loop
+  while Bass Circle keeps its animated backdrop. Overrides live in the
+  project file (schema v11), survive restarts, and exports resolve them
+  exactly like the preview.
+- **Custom center images.** Modes that draw artwork in their center
+  (Bass Circle, Radial Burst) get a **Center image** row: choose any
+  image to replace the track's embedded cover art, per mode. "Match
+  cover colors" matches whichever image is actually displayed. One click
+  returns to the track's cover.
+- **In-app user guide.** Press H → **User guide…**: a twelve-section,
+  human-written walkthrough of everything Beatform does — from first
+  track to Builder stacks, timelines, live performance and every export
+  format. No internet needed; it ships inside the app.
+
+### Changed
+
+- **The update dialog got a real design.** Accent hero band, a version
+  transition (current → new), properly formatted release notes
+  (headings, bullets, bold), a real progress bar with percent and MB,
+  and a one-click restart — replacing the plain text box from v2.45.0.
+
+### Fixed
+
+- Replacing a background image/video or a center image now garbage-
+  collects the old embedded asset only when nothing else (an overlay,
+  another mode's background, a center image) still uses it.
+
+
 ## [2.45.2] - 2026-07-24
 
 ### Changed

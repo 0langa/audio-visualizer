@@ -5,6 +5,9 @@ import {
   ProjectParseError,
   serializeProject,
   type ProjectDocument,
+  validBgByPreset,
+  validCenterImages,
+  validateDocument,
 } from "./project";
 import { BG_SOLID } from "../render/types";
 import { presets } from "../render/presets";
@@ -419,5 +422,57 @@ describe("project files (.avproj)", () => {
     const parsed = parseProject(JSON.stringify(file));
     expect(parsed.assets["svg-1"]).toBeUndefined();
     expect(parsed.bg.mode).toBe(0); // no black hole, same degrade path as a missing asset
+  });
+});
+
+describe("schema v11 (per-mode backgrounds + center images)", () => {
+  const assets = {
+    "as-1": { id: "as-1", name: "x.png", dataUrl: "data:image/png;base64,AA==" },
+  };
+
+  it("keeps valid bg overrides and degrades dangling image/video refs", () => {
+    const out = validBgByPreset(
+      {
+        "bass-circle": { mode: 3, color: [0, 0, 0], image: { assetId: "as-1", dim: 0.3, blur: 5 } },
+        ghost: { mode: 3, color: [0, 0, 0], image: { assetId: "MISSING", dim: 0, blur: 0 } },
+        video: { mode: 4, color: [0, 0, 0], video: { assetId: "MISSING", dim: 0, blur: 0 } },
+      },
+      assets,
+    );
+    expect(out["bass-circle"].mode).toBe(3);
+    expect(out["bass-circle"].image?.assetId).toBe("as-1");
+    expect(out.ghost.mode).toBe(0); // degraded, not dropped — the entry itself is legal
+    expect(out.video.mode).toBe(0);
+  });
+
+  it("garbage bgByPreset shapes default to empty", () => {
+    expect(validBgByPreset(null, assets)).toEqual({});
+    expect(validBgByPreset(42, assets)).toEqual({});
+    expect(validBgByPreset("x", assets)).toEqual({});
+  });
+
+  it("keeps center images whose asset exists, drops dangling ones", () => {
+    const out = validCenterImages({ "bass-circle": "as-1", "radial-burst": "MISSING", bad: 7 }, assets);
+    expect(out).toEqual({ "bass-circle": "as-1" });
+  });
+
+  it("both fields survive a full document round-trip", () => {
+    const document = validateDocument({
+      presetId: "bass-circle",
+      assets,
+      bgByPreset: {
+        "bass-circle": { mode: 1, color: [1, 0, 0] },
+      },
+      centerImageByPreset: { "bass-circle": "as-1" },
+    });
+    const parsed = parseProject(serializeProject(document, "rt"));
+    expect(parsed.bgByPreset["bass-circle"].mode).toBe(1);
+    expect(parsed.centerImageByPreset["bass-circle"]).toBe("as-1");
+  });
+
+  it("older documents without the fields default them empty", () => {
+    const document = validateDocument({ presetId: "spectrum-bars" });
+    expect(document.bgByPreset).toEqual({});
+    expect(document.centerImageByPreset).toEqual({});
   });
 });

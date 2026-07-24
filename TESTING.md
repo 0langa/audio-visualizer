@@ -111,6 +111,29 @@ switching · OS-fullscreen + Stage as projector output · undo/redo ·
       **Restart now** boots the new version. Manual checks from
       Settings → Updates must NOT pop the modal. Requires the auto-check
       toggle ON (default).
+- [ ] **Per-mode backgrounds (new in v2.46.0).** Open panel (G) → Scene →
+      Background. Default scope is "All modes". Select a mode (e.g. Spectrum
+      Bars), switch scope to "This mode" (nothing should change visually),
+      pick Image → choose any picture. PASS: Spectrum Bars shows the image
+      background; switching to any other mode shows the shared background;
+      switching back shows the image again; an export of each mode matches
+      what its preview showed; app restart keeps the override. Switching the
+      scope back to "All modes" discards the override (shared bg returns).
+- [ ] **Custom center image (new in v2.46.0).** On Bass Circle or Radial
+      Burst: panel (G) → Visual → "Center image" row (absent in other
+      modes). Choose… → pick an image. PASS: the center shows the chosen
+      image instead of the cover art (also with no track cover present),
+      exports match, "Match cover colors" (Bass Circle) matches the chosen
+      image's colors, ✕ restores the track's cover art. Saved per mode and
+      in .avproj round-trips.
+- [ ] **In-app user guide (new in v2.46.0).** Press H → "User guide…".
+      PASS: a 12-section guide dialog opens, every TOC entry renders real
+      content, pager works, Esc closes. Spot-check accuracy of any two
+      sections against the running app.
+- [ ] **Update dialog redesign (new in v2.46.0).** At the next release
+      offer: PASS = hero band with version chips (current → new), formatted
+      release notes (headings/bullets/bold, not a raw text dump), a real
+      progress bar while downloading, Restart now when done.
 - [ ] **App-settings gear discoverability (new in v2.45.0).** Top bar shows
       a gear icon between the sliders icon (visual settings) and the ?
       (shortcuts). PASS: clicking it opens the App settings dialog

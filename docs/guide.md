@@ -1,6 +1,8 @@
 # User guide
 
-Everything the app does, panel by panel. Keyboard shortcuts: press `H` (or
+Everything the app does, panel by panel — all of it also lives in the app
+itself: the **User guide** button in the shortcut overlay (press `H`) opens
+a 12-section in-app walkthrough. Keyboard shortcuts: press `H` (or
 `?`) in the app (Space play/pause, P/N switch mode, G settings, T timeline,
 B batch, Q library, L loop, F fullscreen, S stage, Ctrl+Z undo). Every
 shortcut is a letter or digit, so it sits on the same labeled key on every
@@ -14,10 +16,11 @@ Trails, Particle Flow (120k GPU particles), Spectrum Scape (3D), Aurora,
 Synthwave, Bass Circle, and **Builder** (the layer compositor, below).
 Each mode has curated **styles** (one-click looks), main parameters, and an
 **Advanced** drawer exposing every internal constant worth touching.
-Bass Circle and Radial Burst can show the track's **embedded cover art** in
-their center, and Bass Circle's **Match cover colors** toggle analyzes the
-art and sets Hue + Hue spread to fit it — automatically again on every new
-track. Hover
+Bass Circle and Radial Burst show artwork in their center: the track's
+**embedded cover art** by default, or any image you choose via the
+**Center image** row (saved per mode). Bass Circle's **Match cover colors**
+toggle analyzes whichever image is displayed and sets Hue + Hue spread to
+fit it — automatically again on every new track. Hover
 any control for a plain-language hint. The settings panel (G) is organized
 into **tabs** (Visual / Sync / Scene / Text / Live), every section
 collapses, the panel edge drags to resize — and the **search box** at the
@@ -145,6 +148,10 @@ yours; everything renders identically in exports.
   (desktop): cover-fit, dimmable, deterministic (the frame for each moment is a
   pure function of track time, so exports match the preview). Decoded to a
   fixed loop of the first seconds.
+- **Per-mode backgrounds** — the Background section's scope switch ("All
+  modes" / "This mode") gives any mode its own background, image and video
+  included: Spectrum Bars can sit on your video loop while Bass Circle keeps
+  its animated backdrop. Modes without an override follow the shared one.
 - **WebM VP9 + alpha** — pick the _VP9 + alpha_ codec to write a transparent
   `.webm` (color + alpha planes, Opus audio) for OBS overlays and web embeds.
   Set Background to Transparent.
