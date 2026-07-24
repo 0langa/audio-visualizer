@@ -53,7 +53,6 @@ Releases — there is no paid tier, cloud service, or telemetry.
   collects the old embedded asset only when nothing else (an overlay,
   another mode's background, a center image) still uses it.
 
-
 ## [2.45.2] - 2026-07-24
 
 ### Changed

@@ -101,16 +101,16 @@ switching · OS-fullscreen + Stage as projector output · undo/redo ·
 ## ⬜ Still to test
 
 - [✅] **Startup update prompt (new in v2.45.0).** PASS 2026-07-24, owner
-      hardware: installed 2.45.0 offered 2.45.1 in the startup dialog and
-      the full install/restart flow completed ("auto updater and popup
-      confirmed e2e"). Original steps kept for regression: with an
-      installed build ≥ 2.45.0 and a NEWER release published, launch and
-      wait ~10 s. PASS: an "Update available" modal appears on its own,
-      naming the new version with notes, **Install now** / **Later**;
-      "Later" dismisses for the session; Install shows progress, then
-      **Restart now** boots the new version. Manual checks from
-      Settings → Updates must NOT pop the modal. Requires the auto-check
-      toggle ON (default).
+  hardware: installed 2.45.0 offered 2.45.1 in the startup dialog and
+  the full install/restart flow completed ("auto updater and popup
+  confirmed e2e"). Original steps kept for regression: with an
+  installed build ≥ 2.45.0 and a NEWER release published, launch and
+  wait ~10 s. PASS: an "Update available" modal appears on its own,
+  naming the new version with notes, **Install now** / **Later**;
+  "Later" dismisses for the session; Install shows progress, then
+  **Restart now** boots the new version. Manual checks from
+  Settings → Updates must NOT pop the modal. Requires the auto-check
+  toggle ON (default).
 - [ ] **Per-mode backgrounds (new in v2.46.0).** Open panel (G) → Scene →
       Background. Default scope is "All modes". Select a mode (e.g. Spectrum
       Bars), switch scope to "This mode" (nothing should change visually),

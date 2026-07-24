@@ -71,8 +71,7 @@ export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: Updat
   if (update.state !== "available" && update.state !== "downloading" && update.state !== "ready")
     return null;
 
-  const version =
-    update.state === "available" || update.state === "ready" ? update.version : null;
+  const version = update.state === "available" || update.state === "ready" ? update.version : null;
   const pct =
     update.state === "downloading" && update.total
       ? Math.min(100, Math.round((update.received / update.total) * 100))
@@ -88,16 +87,38 @@ export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: Updat
         onClick={(e) => e.stopPropagation()}
       >
         <div className="update-hero">
-          <button className="icon-btn subtle update-hero-close" aria-label="Close" onClick={onDismiss}>
+          <button
+            className="icon-btn subtle update-hero-close"
+            aria-label="Close"
+            onClick={onDismiss}
+          >
             <IconClose size={16} />
           </button>
           <div className="update-hero-icon" aria-hidden>
             {update.state === "ready" ? (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="26"
+                height="26"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             ) : (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="26"
+                height="26"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M12 3v12" />
                 <path d="M6 11l6 6 6-6" />
                 <path d="M4 21h16" />
@@ -114,7 +135,17 @@ export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: Updat
             </span>
             <span className="update-hero-versions">
               <span className="update-ver old">v{APP_VERSION}</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M5 12h14" />
                 <path d="M13 6l6 6-6 6" />
               </svg>

@@ -213,9 +213,7 @@ export function loadStoredCenterImages(
 }
 
 export function saveStoredCenterImages(v: Record<string, string>): void {
-  scheduleWrite(LS_CENTER_IMAGES, () =>
-    localStorage.setItem(LS_CENTER_IMAGES, JSON.stringify(v)),
-  );
+  scheduleWrite(LS_CENTER_IMAGES, () => localStorage.setItem(LS_CENTER_IMAGES, JSON.stringify(v)));
 }
 
 export function loadStoredVolume(): number {

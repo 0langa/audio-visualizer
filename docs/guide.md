@@ -46,8 +46,8 @@ reactions.
 Modes that draw the spectrum also get three **shape** controls (saved per
 mode, applied identically in exports): **Merge** melts isolated spikes into
 one connected silhouette (each bar props up its neighbors, Monstercat-style),
-**Rounding** averages neighboring bars — real smoothing, unlike the *Smooth
-curve* spline which only rounds corners between still-spiky values — and
+**Rounding** averages neighboring bars — real smoothing, unlike the _Smooth
+curve_ spline which only rounds corners between still-spiky values — and
 **Contrast** flattens (below 50%) or exaggerates (above 50%) the peaks. They
 shape the drawn bars only; the sync feel (attack/release, beat pulses) is
 untouched.

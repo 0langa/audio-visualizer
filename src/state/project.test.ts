@@ -452,7 +452,10 @@ describe("schema v11 (per-mode backgrounds + center images)", () => {
   });
 
   it("keeps center images whose asset exists, drops dangling ones", () => {
-    const out = validCenterImages({ "bass-circle": "as-1", "radial-burst": "MISSING", bad: 7 }, assets);
+    const out = validCenterImages(
+      { "bass-circle": "as-1", "radial-burst": "MISSING", bad: 7 },
+      assets,
+    );
     expect(out).toEqual({ "bass-circle": "as-1" });
   });
 

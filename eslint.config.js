@@ -13,6 +13,20 @@ export default tseslint.config(
     languageOptions: { globals: { console: "readonly", process: "readonly", fetch: "readonly" } },
   },
   {
+    // AudioWorklet global scope (the bundled loopback worklet, v2.44.1) —
+    // its runtime globals exist neither in browser nor Node environments.
+    files: ["public/**/*.js"],
+    languageOptions: {
+      globals: {
+        AudioWorkletProcessor: "readonly",
+        registerProcessor: "readonly",
+        sampleRate: "readonly",
+        currentFrame: "readonly",
+        currentTime: "readonly",
+      },
+    },
+  },
+  {
     files: ["src/**/*.{ts,tsx}"],
     plugins: { "react-hooks": reactHooks },
     rules: {

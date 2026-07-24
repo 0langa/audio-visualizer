@@ -62,7 +62,7 @@ export function extractCoverPalette(bmp: ImageBitmap): CoverPalette | null {
     total += w;
   }
   // Under ~6% of pixels carrying color = grayscale art for our purposes.
-  if (total < (GRID * GRID) * 0.06 * 0.2) return null;
+  if (total < GRID * GRID * 0.06 * 0.2) return null;
 
   // Peak bin over a smoothed (bin ± neighbors) histogram, then a circular
   // weighted mean over the peak's ±2-bin neighborhood for a stable hue.
