@@ -446,8 +446,15 @@ fn cleanup(job: &ProresJob) {
 /// blocking command that ran inline on the IPC handler and froze the UI.
 #[tauri::command(async)]
 pub fn prores_finish(state: tauri::State<'_, ProresState>) -> Result<(), String> {
-    let mut guard = state.job.lock().map_err(|_| "state poisoned")?;
-    let mut job = guard.take().ok_or("No sidecar export running")?;
+    let mut job = {
+        // Take the job and RELEASE the mutex before the unbounded wait
+        // (audit E3): holding it across child.wait() meant a wedged ffmpeg
+        // finalize blocked prores_abort forever on the same lock. With the
+        // job taken, a concurrent abort now gets "No sidecar export running"
+        // instead of a deadlock.
+        let mut guard = state.job.lock().map_err(|_| "state poisoned")?;
+        guard.take().ok_or("No sidecar export running")?
+    };
     // EOF -> ffmpeg finalizes the output. Waits out an in-flight write, which
     // is correct: frames must all land before the pipe closes.
     drop(state.stdin.lock().map_err(|_| "state poisoned")?.take());

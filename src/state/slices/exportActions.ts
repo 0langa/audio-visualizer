@@ -188,6 +188,17 @@ export function exportActions(set: SetFn, get: GetFn, ctx: SliceCtx) {
           await proresSetAudio(wavFromPcm(pcmFromAudioBuffer(buf)));
           await proresBegin(fps, savePath);
         } else if (animFormat && savePath) {
+          // GIF's single-pass palettegen graph makes ffmpeg buffer EVERY
+          // decoded frame until EOF (audit E2) — a long track at full fps is
+          // a guaranteed sidecar OOM, not a slow export. Cap GIF at ~3
+          // minutes of frames with a clear pointer to the formats built for
+          // long content; WebP streams and is unaffected.
+          const gifFrames = (canvasMode ? settings.canvasDuration : buf.duration) * fps;
+          if (animFormat === "gif" && gifFrames > 5400) {
+            throw new Error(
+              "GIF exports are limited to ~3 minutes (the encoder holds every frame in memory). For longer clips use animated WebP or MP4; for loops, Canvas loop mode.",
+            );
+          }
           await animBegin(animFormat, fps, savePath);
         }
         // Same rasterizer as the live view, at export resolution — WYSIWYG
