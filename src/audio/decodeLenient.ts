@@ -65,7 +65,11 @@ async function decodeWithMediabunny(
 
   // One allocation per channel (Float32Array each) — the same footprint the
   // native decoder would need. Throws on genuinely impossible sizes.
-  const native = new AudioBuffer({ numberOfChannels: channels, length: totalFrames, sampleRate: rate });
+  const native = new AudioBuffer({
+    numberOfChannels: channels,
+    length: totalFrames,
+    sampleRate: rate,
+  });
   const dest = Array.from({ length: channels }, (_, ch) => native.getChannelData(ch));
 
   const sink = new AudioBufferSink(track);

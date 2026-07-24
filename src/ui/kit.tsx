@@ -87,6 +87,7 @@ export function ParamRow(props: {
         className={`switch ${value > 0.5 ? "on" : ""}`}
         role="switch"
         aria-checked={value > 0.5}
+        aria-label={p.label}
         onClick={() => props.onChange(value > 0.5 ? 0 : 1)}
       >
         <span className="knob" />

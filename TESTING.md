@@ -94,7 +94,7 @@ switching · OS-fullscreen + Stage as projector output · undo/redo ·
       friendly-message translation existed but had been lost in a botched
       multi-edit before the v2.44.1 build; it is actually in the binary now.
       Retest: Panel (G) → Scene tab → Background → Video → pick
-      `C:f-test\mediag-bad.mp4`. PASS: the error toast names a codec
+      `C:\bf-test\media\bg-bad.mp4`. PASS: the error toast names a codec
       problem and suggests H.264/VP9 — NOT "Assertion failed". `bg-good.mp4`
       still loads clean.
 
@@ -154,8 +154,8 @@ switching · OS-fullscreen + Stage as projector output · undo/redo ·
       120 min rejects — reproduced and bisected); long tracks now fall back
       to an incremental mediabunny decode. The 2 h fixture loads end-to-end
       (verified: 7200 s duration reported). Retest: load
-      `C:f-test\media\long2h.mp3` (decode takes ~2 min — the app is not
-      hung), Export → MP4 → 720p30 → `C:f-test\out\long.mp4`. Sample
+      `C:\bf-test\media\long2h.mp3` (decode takes ~2 min — the app is not
+      hung), Export → MP4 → 720p30 → `C:\bf-test\out\long.mp4`. Sample
       `Get-Process beatform | Select -Expand WorkingSet64` every ~5 min.
       PASS: memory is STABLE during the export (no unbounded growth) and the
       finished file probes as ≈2 h with audio+video. Note on the absolute

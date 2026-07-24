@@ -1,4 +1,5 @@
 import type { AudioFeatures } from "../audio/types";
+import { BUILDER_MAX_LAYERS } from "./builder2";
 import { getPrefs } from "../state/prefs";
 import { allParams, DEFAULT_MOTION, DEFAULT_POST, paramOr } from "./types";
 import type {
@@ -449,7 +450,10 @@ fn tonemap(x: vec3f) -> vec3f {
 /** Ordered-ish dither. Dark gradients band badly on 8-bit; +-1/255 of noise
  * costs nothing and removes the stair-stepping that screams "cheap". */
 fn grain(uv: vec2f, amt: f32) -> f32 {
-  return (hash21(uv * 1024.0 + u.time * 60.0) - 0.5) * amt;
+  // fract(u.time): unbounded time loses f32 mantissa late in long tracks and
+  // the dither slowly froze (audit R7 — the post-chain grain was fixed the
+  // same way). Noise repeats its seed each second, invisible for dither.
+  return (hash21(uv * 1024.0 + fract(u.time) * 60.0) - 0.5) * amt;
 }
 
 /** Radial vignette. 0.25-0.4 reads as "lit"; past ~0.6 it reads as a mistake. */
@@ -1486,9 +1490,12 @@ export class WebGPURenderer implements Renderer {
       size: MAX_PARAMS * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    // Builder Studio layer params: BUILDER_MAX_LAYERS * 16 f32 slots.
+    // Builder Studio layer params: one 16-f32 block per layer, sized from
+    // the REAL cap (audit R4: a hardcoded 16-layer size silently truncated
+    // if BUILDER_MAX_LAYERS ever grew past it — LP() would read past the
+    // buffer and drop layers with no compile error).
     this.builderBuf = device.createBuffer({
-      size: 16 * 16 * 4,
+      size: BUILDER_MAX_LAYERS * 16 * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.waveBuf = device.createBuffer({

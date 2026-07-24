@@ -174,10 +174,14 @@ export default function App() {
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
       if (latest > 0) setPrefs({ panelWidth: latest });
     };
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
+    // pointercancel (audit U7): a cancelled gesture (window drag-out, pen
+    // palm rejection) used to leak both listeners and skip the persist.
+    el.addEventListener("pointercancel", onUp);
   }, []);
 
   // Auto-updater (desktop): silent check shortly after boot; manual check +
@@ -578,7 +582,18 @@ export default function App() {
     };
   }, []);
 
-  const idle = chromeIdle && playback.playing && !showExport && !showHelp;
+  // Idle-hide only when nothing interactive is open (audit U6): the params
+  // panel, library, guide and settings are .chrome too, so holding the
+  // pointer still while READING one used to fade it out under the cursor.
+  const idle =
+    chromeIdle &&
+    playback.playing &&
+    !showExport &&
+    !showHelp &&
+    !showGuide &&
+    !showSettings &&
+    !showPanel &&
+    !showLibrary;
 
   return (
     <div

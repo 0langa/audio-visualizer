@@ -112,7 +112,10 @@ describe("mergeEmbeddedDefs (S1 — project-open must not clobber newer local ed
   });
 
   it("param changes count as divergence too", () => {
-    const localNewer = { ...mk("custom-a", "S"), params: [{ key: "x", label: "X", min: 0, max: 1, step: 0.1, default: 0.5 }] } as PresetDef;
+    const localNewer = {
+      ...mk("custom-a", "S"),
+      params: [{ key: "x", label: "X", min: 0, max: 1, step: 0.1, default: 0.5 }],
+    } as PresetDef;
     const { kept } = mergeEmbeddedDefs([localNewer], [mk("custom-a", "S")]);
     expect(kept).toHaveLength(1);
   });

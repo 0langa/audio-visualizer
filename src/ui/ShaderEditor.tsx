@@ -23,6 +23,9 @@ export interface ShaderEditorProps {
 }
 
 interface ParamRow {
+  /** Stable identity for React keys (audit U3): with index keys, removing a
+   * middle row remapped DOM state (focus, selection) onto the wrong row. */
+  uid: string;
   key: string;
   label: string;
   min: string;
@@ -31,7 +34,10 @@ interface ParamRow {
   default: string;
 }
 
-const EMPTY_ROW: ParamRow = {
+let rowUid = 0;
+const nextRowUid = () => `row-${++rowUid}`;
+
+const EMPTY_ROW: Omit<ParamRow, "uid"> = {
   key: "",
   label: "",
   min: "0",
@@ -40,8 +46,8 @@ const EMPTY_ROW: ParamRow = {
   default: "0.5",
 };
 
-const STARTER_ROWS: ParamRow[] = [
-  { key: "hue", label: "Hue", min: "0", max: "360", step: "1", default: "200" },
+const starterRows = (): ParamRow[] => [
+  { uid: nextRowUid(), key: "hue", label: "Hue", min: "0", max: "360", step: "1", default: "200" },
 ];
 
 function rowsToSpecs(rows: ParamRow[]): { specs: ParamSpec[]; errors: string[] } {
@@ -78,6 +84,7 @@ function rowsToSpecs(rows: ParamRow[]): { specs: ParamSpec[]; errors: string[] }
 
 function specsToRows(specs: ParamSpec[]): ParamRow[] {
   return specs.map((s) => ({
+    uid: nextRowUid(),
     key: s.key,
     label: s.label,
     min: String(s.min),
@@ -92,7 +99,7 @@ function specsToRows(specs: ParamSpec[]): ParamRow[] {
 export const ShaderEditor = memo(function ShaderEditor(props: ShaderEditorProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("My Visual");
-  const [rows, setRows] = useState<ParamRow[]>(STARTER_ROWS);
+  const [rows, setRows] = useState<ParamRow[]>(starterRows);
   const [wgsl, setWgsl] = useState(NEW_SHADER_TEMPLATE);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -226,7 +233,7 @@ export const ShaderEditor = memo(function ShaderEditor(props: ShaderEditorProps)
             onClick={() => {
               setEditingId(null);
               setName("My Visual");
-              setRows(STARTER_ROWS);
+              setRows(starterRows());
               setWgsl(NEW_SHADER_TEMPLATE);
               setErrors([]);
               setDirty(false);
@@ -251,7 +258,7 @@ export const ShaderEditor = memo(function ShaderEditor(props: ShaderEditorProps)
 
         <div className="shader-params">
           {rows.map((r, i) => (
-            <div key={i} className="shader-param-row">
+            <div key={r.uid} className="shader-param-row">
               {(["key", "label", "min", "max", "step", "default"] as const).map((field) => (
                 <input
                   key={field}
@@ -284,7 +291,7 @@ export const ShaderEditor = memo(function ShaderEditor(props: ShaderEditorProps)
           <button
             className="text-btn"
             onClick={() => {
-              setRows([...rows, { ...EMPTY_ROW }]);
+              setRows([...rows, { ...EMPTY_ROW, uid: nextRowUid() }]);
               setDirty(true);
             }}
             title="Add a parameter (becomes P_<key>() in WGSL and a slider in the panel)"

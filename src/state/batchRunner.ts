@@ -5,6 +5,45 @@ import { rasterizeOverlay } from "../render/overlay";
 import { analyzeTrack } from "../audio/analysis/trackAnalysis";
 import { getEngine, setLiveRenderPaused } from "./services";
 import { classifyError, type BatchRun, type JobStatus } from "./batch";
+import { extractCoverPalette } from "./coverPalette";
+import { presetById } from "../render/presets";
+import type { ProjectDocument } from "./project";
+
+/**
+ * Per-track "Match cover colors" (audit R1): the interactive store re-runs
+ * the palette on every cover decode, but batch jobs were built from the
+ * Start-frozen doc — so with the toggle on, every batched track rendered
+ * with the FIRST track's hue while its cover texture was correct, and a
+ * track exported different colors single vs. batch. When the active mode
+ * has the toggle on and the track has art, rewrite hue/hueSpread from THAT
+ * track's cover, exactly like maybeApplyCoverPalette does live. Grayscale
+ * art (null palette) and any decode failure keep the frozen colors.
+ */
+async function docWithTrackPalette(
+  doc: ProjectDocument,
+  coverArt: string | null,
+): Promise<ProjectDocument> {
+  if (!coverArt) return doc;
+  const def = presetById(doc.presetId);
+  if (!def.params.some((p) => p.key === "coverHue")) return doc;
+  const params = doc.paramsByPreset[doc.presetId];
+  if ((params?.coverHue ?? 0) < 0.5) return doc;
+  try {
+    const bmp = await createImageBitmap(await (await fetch(coverArt)).blob());
+    const pal = extractCoverPalette(bmp);
+    bmp.close();
+    if (!pal) return doc;
+    return {
+      ...doc,
+      paramsByPreset: {
+        ...doc.paramsByPreset,
+        [doc.presetId]: { ...params, hue: pal.hue, hueSpread: pal.spread },
+      },
+    };
+  } catch {
+    return doc;
+  }
+}
 
 /**
  * The batch runner: a for-loop with per-job isolation.
@@ -213,7 +252,7 @@ export async function runBatch(run: BatchRun, hooks: BatchRunnerHooks): Promise<
           const result = await exportVideo(
             buf,
             buildExportOptions(
-              run.doc,
+              await docWithTrackPalette(run.doc, track.coverArt),
               fmt,
               {
                 name: track.file.name,

@@ -587,7 +587,7 @@ export const useVizStore = create<VizState>((set, get) => {
   /** Set Hue/Hue spread from the analyzed cover — only when the active
    * preset opts in (has a coverHue param) AND the user turned it on. One
    * history entry for the pair; a no-op without a usable palette. */
-  const maybeApplyCoverPalette = () => {
+  const maybeApplyCoverPalette = (recordHistory = false) => {
     const state = get();
     const pal = state.coverPalette;
     if (!pal) return;
@@ -595,7 +595,11 @@ export const useVizStore = create<VizState>((set, get) => {
     if (!def.params.some((p) => p.key === "coverHue")) return;
     if ((state.activeParams.coverHue ?? 0) < 0.5) return;
     if (state.activeParams.hue === pal.hue && state.activeParams.hueSpread === pal.spread) return;
-    record("cover-palette");
+    // Only a USER interaction (flipping the toggle) records an undo entry —
+    // the automatic re-apply on track/cover/project load used to push a
+    // spurious step, so opening a project immediately dirtied its history
+    // (audit R2).
+    if (recordHistory) record("cover-palette");
     recordSuspended = true;
     try {
       const activeParams = { ...state.activeParams, hue: pal.hue, hueSpread: pal.spread };
@@ -1199,7 +1203,7 @@ export const useVizStore = create<VizState>((set, get) => {
       saveStoredParams(paramsByPreset);
       // Turning "match cover colors" on applies the palette right away
       // (its own history entry — undo restores the previous colors first).
-      if (key === "coverHue" && value > 0.5) maybeApplyCoverPalette();
+      if (key === "coverHue" && value > 0.5) maybeApplyCoverPalette(true);
     },
 
     applyStyle(values) {
@@ -1249,6 +1253,21 @@ export const useVizStore = create<VizState>((set, get) => {
         delete bgByPreset[s.presetId];
       }
       set({ bgByPreset });
+      // Orphan-GC the dropped override's image/video asset (audit BG2): a
+      // per-mode VIDEO background is a tens-of-MB data URL — without this,
+      // toggling the override off left it riding in state, autosave and
+      // .avproj forever. After the set() so assetInUse sees the final refs.
+      if (!on) {
+        const removed = s.bgByPreset[s.presetId];
+        for (const id of [removed?.image?.assetId, removed?.video?.assetId]) {
+          if (id && !assetInUse(id)) {
+            const pruned = { ...get().assets };
+            delete pruned[id];
+            set({ assets: pruned });
+          }
+        }
+        saveStoredOverlay(get().overlayLayers, get().assets);
+      }
       saveStoredBgByPreset(bgByPreset);
       getRenderer()?.setBackground(effBg());
       applyBgImage();
@@ -1762,9 +1781,7 @@ export const useVizStore = create<VizState>((set, get) => {
         for (const def of register) registerCustomPreset(def);
         if (register.length > 0) saveCustomPresets(customDefs);
         if (kept.length > 0) {
-          flashNotice(
-            `Kept your newer ${kept.join(", ")} — this project embeds an older copy`,
-          );
+          flashNotice(`Kept your newer ${kept.join(", ")} — this project embeds an older copy`);
         }
       }
       const preset = presetById(doc.presetId);

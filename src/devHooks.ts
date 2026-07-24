@@ -39,6 +39,73 @@ export function installDevHooks(store: typeof useVizStore.getState): void {
   // The live audio engine, for E2E probes (module import from the console
   // would get a DIFFERENT instance — "services not initialized").
   (window as unknown as { __engine: unknown }).__engine = getEngine();
+  // UI clipping auditor for the browser-pane harness (referenced by the
+  // testing hand-off): walks a scope's visible DOM and reports horizontally
+  // clipped text, elements poking outside the scope, and content below the
+  // viewport with no scrollable ancestor. Pure inspection, DEV-only.
+  (window as unknown as { __auditUI: unknown }).__auditUI = (scopeSel: string) => {
+    const scope = document.querySelector(scopeSel);
+    if (!scope) return { error: "no scope " + scopeSel };
+    const sr = scope.getBoundingClientRect();
+    const issues: Array<{ kind: string; el: string; px: number }> = [];
+    const seen = new Set<string>();
+    for (const el of Array.from(scope.querySelectorAll<HTMLElement>("*"))) {
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      const id =
+        (el.className?.toString?.() || el.tagName) + "|" + (el.textContent ?? "").slice(0, 25);
+      if (
+        el.children.length === 0 &&
+        el.scrollWidth > el.clientWidth + 1 &&
+        cs.textOverflow !== "ellipsis" &&
+        cs.overflowX !== "auto" &&
+        cs.overflowX !== "scroll" &&
+        !seen.has("clip|" + id)
+      ) {
+        seen.add("clip|" + id);
+        issues.push({ kind: "text-clip", el: id, px: el.scrollWidth - el.clientWidth });
+      }
+      if ((r.right > sr.right + 2 || r.left < sr.left - 2) && !seen.has("out|" + id)) {
+        let p = el.parentElement;
+        let scrollable = false;
+        while (p && p !== scope.parentElement) {
+          const pcs = getComputedStyle(p);
+          if (/(auto|scroll)/.test(pcs.overflowX)) {
+            scrollable = true;
+            break;
+          }
+          p = p.parentElement;
+        }
+        if (!scrollable) {
+          seen.add("out|" + id);
+          issues.push({ kind: "outside-scope-x", el: id, px: Math.round(r.right - sr.right) });
+        }
+      }
+      if (r.bottom > innerHeight + 2 && cs.position !== "fixed" && !seen.has("vp|" + id)) {
+        let p = el.parentElement;
+        let scrollable = false;
+        while (p && p !== document.body) {
+          const pcs = getComputedStyle(p);
+          if (/(auto|scroll)/.test(pcs.overflowY)) {
+            scrollable = true;
+            break;
+          }
+          p = p.parentElement;
+        }
+        if (!scrollable) {
+          seen.add("vp|" + id);
+          issues.push({
+            kind: "below-viewport-unscrollable",
+            el: id,
+            px: Math.round(r.bottom - innerHeight),
+          });
+        }
+      }
+    }
+    return issues;
+  };
   (window as unknown as { __loadFile: unknown }).__loadFile = async (url: string, name: string) => {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`fetch ${url}: ${r.status}`);
@@ -167,7 +234,7 @@ export function installDevHooks(store: typeof useVizStore.getState): void {
       bgVideo: (() => {
         const bg = s.bgByPreset[s.presetId] ?? s.bg;
         return bg.mode === 4 && bg.video && s.assets[bg.video.assetId]
-          ? { dataUrl: s.assets[bg.video.assetId].dataUrl, dim: bg.video.dim }
+          ? { dataUrl: s.assets[bg.video.assetId].dataUrl, dim: bg.video.dim, blur: bg.video.blur }
           : undefined;
       })(),
       timeline: s.timeline.enabled ? s.timeline : undefined,

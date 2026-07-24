@@ -291,8 +291,11 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Frame-safety: the orb (and its ring below) must stay inside the frame —
   // the top/bottom edge is r=0.5 — however loud the voice or high the growth.
-  let radius = min(P_size() * (1.0 + level * P_growth()) + idle, 0.4);
-  let edge = min(radius + disp, 0.46);
+  // Soft frame limits (v2.44 law; audit R3 — the one spot the kit missed):
+  // the orb compresses toward the largest inscribed circle instead of
+  // flattening against a hard 0.4/0.46 wall at max Size + loud voice.
+  let radius = softLimit(P_size() * (1.0 + level * P_growth()) + idle, frameCircle() * 0.86);
+  let edge = softLimit(radius + disp, frameCircle() * 0.95);
 
   // Cosine palette instead of flat hsl2rgb fills — stays saturated at low
   // brightness (the background wash) and gives the hot-white pushes below

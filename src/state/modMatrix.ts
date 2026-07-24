@@ -137,7 +137,10 @@ export function validModRoutes(v: unknown): ModRoute[] {
 
 export function validModsByPreset(v: unknown): Record<string, ModRoute[]> {
   if (typeof v !== "object" || v === null) return {};
-  const out: Record<string, ModRoute[]> = {};
+  // Object.create(null): a document carrying a __proto__ key must not set
+  // the result's prototype (same hardening as every other validator — this
+  // was the one L14 missed).
+  const out: Record<string, ModRoute[]> = Object.create(null);
   for (const [presetId, routes] of Object.entries(v)) {
     const clean = validModRoutes(routes);
     if (clean.length > 0) out[presetId] = clean;

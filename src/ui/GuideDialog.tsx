@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useFocusTrap } from "./useFocusTrap";
 import { IconClose } from "./Icons";
 
 /**
@@ -218,8 +219,8 @@ const SECTIONS: GuideSection[] = [
         </p>
         <h4>Aspect</h4>
         <p>
-          The frame aspect (16:9, 9:16, 1:1, 4:5, 21:9) is a project setting — visuals compose into
-          the frame, so vertical exports for Shorts/Reels look designed, not cropped.
+          The frame aspect (Fill, 16:9, 9:16, 1:1) is a project setting — visuals compose into the
+          frame, so vertical exports for Shorts/Reels look designed, not cropped.
         </p>
       </>
     ),
@@ -443,6 +444,7 @@ const SECTIONS: GuideSection[] = [
 ];
 
 export function GuideDialog({ onClose }: GuideDialogProps) {
+  const trapRef = useFocusTrap(true); // GD2: same H17 machinery as every modal
   const [activeId, setActiveId] = useState(SECTIONS[0].id);
   const active = SECTIONS.find((s) => s.id === activeId) ?? SECTIONS[0];
   const idx = SECTIONS.indexOf(active);
@@ -450,6 +452,8 @@ export function GuideDialog({ onClose }: GuideDialogProps) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
+        ref={trapRef}
+        tabIndex={-1}
         className="modal guide-dialog"
         role="dialog"
         aria-modal="true"

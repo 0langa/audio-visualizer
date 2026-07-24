@@ -324,7 +324,12 @@ export class FeaturePipeline {
     f.beat = false;
     if (
       this.clock >= WARMUP_SEC &&
-      flux > mean * 1.6 + 0.012 &&
+      // The relative term self-scales with dt (flux and its mean shrink
+      // together as frames get shorter) but the absolute floor did not, so a
+      // 144 Hz live display suppressed onsets a 60 fps export fires (audit
+      // A6). dt*60 == 1 at 60 fps: 60 fps behaviour (and the golden trace,
+      // which runs at fixed 1/60) is bit-identical.
+      flux > mean * 1.6 + 0.012 * (dt * 60) &&
       this.clock - this.lastBeatAt > BEAT_REFRACTORY &&
       input.playing
     ) {
@@ -452,7 +457,12 @@ export class FeaturePipeline {
 
     if (
       this.clock >= WARMUP_SEC &&
-      flux > mean * 1.6 + 0.012 &&
+      // The relative term self-scales with dt (flux and its mean shrink
+      // together as frames get shorter) but the absolute floor did not, so a
+      // 144 Hz live display suppressed onsets a 60 fps export fires (audit
+      // A6). dt*60 == 1 at 60 fps: 60 fps behaviour (and the golden trace,
+      // which runs at fixed 1/60) is bit-identical.
+      flux > mean * 1.6 + 0.012 * (dt * 60) &&
       this.clock - this.lastSyncBeatAt > BEAT_REFRACTORY &&
       playing
     ) {
@@ -466,7 +476,10 @@ export class FeaturePipeline {
 }
 
 function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
+  // NaN fails both comparisons and used to fall through UNclamped (audit
+  // A7): a NaN sample from a malformed fallback decode would flow into
+  // rms/bands and stick in every EMA downstream. NaN now clamps to 0.
+  return v > 0 ? (v > 1 ? 1 : v) : 0;
 }
 
 function bandMean(mag: Float32Array, [b0, b1]: [number, number]): number {

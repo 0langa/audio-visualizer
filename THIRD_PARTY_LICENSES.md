@@ -49,8 +49,10 @@ These and their transitive dependencies are overwhelmingly dual-licensed
 `MIT OR Apache-2.0` (the Rust ecosystem convention). The authoritative,
 complete list with exact versions is `src-tauri/Cargo.lock`; a full
 license manifest can be regenerated at any time with `cargo license` or
-`cargo about` against that lockfile. No crate in the tree carries a
-copyleft (GPL/AGPL) license.
+`cargo about` against that lockfile. No crate in the tree carries a strong
+copyleft (GPL/AGPL) license; one transitive dependency (`option-ext`) is
+MPL-2.0, a weak file-level copyleft whose source-availability obligation is
+met by the unmodified crates.io distribution.
 
 The bundled **ffmpeg** sidecar is a separate LGPL binary, not linked — see
 `binaries/FFMPEG-LICENSE.txt`.

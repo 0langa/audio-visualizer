@@ -33,6 +33,8 @@ export const shared: {
   libraryPrefetch: { path: string; file: File; buffer: AudioBuffer } | null;
   /** Active Web MIDI listener handle (null = off). MIDI actions + teardown. */
   midiHandle: MidiHandle | null;
+  /** enableMidi claimed but not yet resolved (S3 re-entrancy guard). */
+  midiStarting: boolean;
 } = {
   trackLoadGen: 0,
   exportAbort: null,
@@ -40,4 +42,5 @@ export const shared: {
   lastFrameKey: NULL_FRAME_KEY,
   libraryPrefetch: null,
   midiHandle: null,
+  midiStarting: false,
 };

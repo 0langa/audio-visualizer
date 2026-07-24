@@ -179,7 +179,13 @@ describe("per-mode overrides (schema v11) resolve at the export chokepoint", () 
       assets: { "as-x": asset },
       centerImageByPreset: { "spectrum-bars": "as-x" },
     });
-    const o = buildExportOptions(d, FMT, { ...track, coverArt: "data:image/png;base64,BB==" }, undefined, {});
+    const o = buildExportOptions(
+      d,
+      FMT,
+      { ...track, coverArt: "data:image/png;base64,BB==" },
+      undefined,
+      {},
+    );
     expect(o.coverArt).toBe(asset.dataUrl);
   });
 

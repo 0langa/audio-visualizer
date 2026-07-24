@@ -2264,7 +2264,10 @@ fn tonemap(x: vec3f) -> vec3f {
 /** Ordered-ish dither. Dark gradients band badly on 8-bit; +-1/255 of noise
  * costs nothing and removes the stair-stepping that screams "cheap". */
 fn grain(uv: vec2f, amt: f32) -> f32 {
-  return (hash21(uv * 1024.0 + u.time * 60.0) - 0.5) * amt;
+  // fract(u.time): unbounded time loses f32 mantissa late in long tracks and
+  // the dither slowly froze (audit R7 — the post-chain grain was fixed the
+  // same way). Noise repeats its seed each second, invisible for dither.
+  return (hash21(uv * 1024.0 + fract(u.time) * 60.0) - 0.5) * amt;
 }
 
 /** Radial vignette. 0.25-0.4 reads as "lit"; past ~0.6 it reads as a mistake. */
@@ -3858,8 +3861,11 @@ fn preset(uv: vec2f) -> vec4f {
 
   // Frame-safety: the orb (and its ring below) must stay inside the frame —
   // the top/bottom edge is r=0.5 — however loud the voice or high the growth.
-  let radius = min(P_size() * (1.0 + level * P_growth()) + idle, 0.4);
-  let edge = min(radius + disp, 0.46);
+  // Soft frame limits (v2.44 law; audit R3 — the one spot the kit missed):
+  // the orb compresses toward the largest inscribed circle instead of
+  // flattening against a hard 0.4/0.46 wall at max Size + loud voice.
+  let radius = softLimit(P_size() * (1.0 + level * P_growth()) + idle, frameCircle() * 0.86);
+  let edge = softLimit(radius + disp, frameCircle() * 0.95);
 
   // Cosine palette instead of flat hsl2rgb fills — stays saturated at low
   // brightness (the background wash) and gives the hot-white pushes below

@@ -443,7 +443,6 @@ button:disabled {
     transparent 100%
   );
   padding: 4px 2px;
-  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
 
 .chips.fade-l {
@@ -1764,7 +1763,7 @@ kbd {
   font: inherit;
   font-size: 13px;
   font-weight: 650;
-  color: #fff;
+  color: var(--accent-fg);
   padding: 9px 22px;
   border-radius: 10px;
   background: linear-gradient(

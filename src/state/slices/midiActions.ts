@@ -10,11 +10,16 @@ import { shared } from "./shared";
 export function midiActions(set: SetFn, get: GetFn, ctx: SliceCtx) {
   return {
     async enableMidi() {
-      if (get().midiEnabled || shared.midiHandle) return;
+      if (get().midiEnabled || shared.midiHandle || shared.midiStarting) return;
+      // Claimed BEFORE the await (audit S3): two rapid calls both passed the
+      // guard, attached two onmidimessage handlers and leaked the first
+      // handle — every message then fired twice for the session.
+      shared.midiStarting = true;
       const handle = await startMidi(
         (data) => get().handleMidiMessage(data),
         (names) => set({ midiDevices: names }),
       );
+      shared.midiStarting = false;
       if (!handle) {
         ctx.flashNotice("MIDI isn't available here (needs a Chromium-based build)");
         return;
