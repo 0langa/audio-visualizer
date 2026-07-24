@@ -64,6 +64,17 @@ export interface SyncSettings {
   attack?: number;
   /** How fast the reaction falls (0 = instant, 1 = long glide). Falls back to smooth. */
   release?: number;
+  /** Spectrum SHAPE (drawn bins only — never the sync feel):
+   * Merge: Monstercat-style neighbor falloff — every bar props its neighbors
+   * up with an exponential decay, melting isolated spikes into one connected
+   * mountain. 0 = off. */
+  shapeMerge?: number;
+  /** Rounding: kernel blur across neighboring bins (real smoothing, unlike
+   * the spline which only interpolates BETWEEN spiky values). 0 = off. */
+  shapeRound?: number;
+  /** Contrast of the drawn spectrum: 0.5 = current look, lower = flatter/
+   * fuller bars, higher = spikier peaks vs deeper valleys. */
+  contrast?: number;
 }
 
 export const DEFAULT_SYNC: SyncSettings = { mode: "kick", smooth: 0.5 };
@@ -95,6 +106,9 @@ export function sanitizeSync(v: unknown): SyncSettings {
     smooth,
     ...(p.attack !== undefined ? { attack: clamp01(p.attack, smooth) } : {}),
     ...(p.release !== undefined ? { release: clamp01(p.release, smooth) } : {}),
+    ...(p.shapeMerge !== undefined ? { shapeMerge: clamp01(p.shapeMerge, 0) } : {}),
+    ...(p.shapeRound !== undefined ? { shapeRound: clamp01(p.shapeRound, 0) } : {}),
+    ...(p.contrast !== undefined ? { contrast: clamp01(p.contrast, 0.5) } : {}),
   };
 }
 

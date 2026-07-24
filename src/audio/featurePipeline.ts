@@ -103,6 +103,8 @@ export class FeaturePipeline {
    * drawn spectrum only. `mag` (the −22 dBFS ceiling) still drives bands,
    * flux and beats, so sync feel is unchanged by the display headroom. */
   private magDisp: Float32Array;
+  private binScratch: Float32Array;
+  private binScratch2: Float32Array;
   private prevMag: Float32Array;
   /** [start, end) FFT-bin range per output bin, geometrically spaced */
   private ranges: Array<[number, number]>;
@@ -136,6 +138,8 @@ export class FeaturePipeline {
     const fftBins = config.fftBins;
     this.mag = new Float32Array(fftBins);
     this.magDisp = new Float32Array(fftBins);
+    this.binScratch = new Float32Array(this.binCount);
+    this.binScratch2 = new Float32Array(this.binCount);
     this.prevMag = new Float32Array(fftBins);
 
     const nyquist = config.sampleRate / 2;
@@ -213,10 +217,66 @@ export class FeaturePipeline {
     const attack = 1 - Math.exp(-dt * 35);
     const release = 1 - Math.exp(-dt * 9);
     const gravity = 0.55 * dt;
+    const raw = this.binScratch;
     for (let i = 0; i < this.binCount; i++) {
       const [b0, b1] = this.ranges[i];
       let v = 0;
       for (let b = b0; b < b1; b++) v = Math.max(v, magDisp[b]);
+      raw[i] = v;
+    }
+
+    // --- Spectrum SHAPE (drawn bins only; sync/bands read `mag`, untouched).
+    // Applied to the instantaneous frame BEFORE the temporal EMA, so attack/
+    // release feel is preserved and the peak caps ride the shaped curve.
+    // All three default to a no-op — the neutral path is byte-identical.
+    const n = this.binCount;
+    // 1) Merge (Monstercat): two sweeps with an exponential falloff — each
+    //    bar lifts its neighbors, melting isolated spikes into one shape.
+    const merge = this.sync.shapeMerge ?? 0;
+    if (merge > 0) {
+      const k = 0.5 + merge * 0.47; // 0.5 (subtle) .. 0.97 (one mountain)
+      let run = 0;
+      for (let i = 0; i < n; i++) {
+        run = Math.max(raw[i], run * k);
+        raw[i] = run;
+      }
+      run = 0;
+      for (let i = n - 1; i >= 0; i--) {
+        run = Math.max(raw[i], run * k);
+        raw[i] = run;
+      }
+    }
+    // 2) Rounding: box blur, two passes ≈ triangular kernel. Real smoothing —
+    //    the WGSL spline only interpolates BETWEEN values and keeps spikes.
+    const round = this.sync.shapeRound ?? 0;
+    if (round > 0) {
+      const radius = Math.max(1, Math.round(round * 4));
+      const tmp = this.binScratch2;
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i < n; i++) {
+          let acc = 0;
+          let cnt = 0;
+          const lo = Math.max(0, i - radius);
+          const hi = Math.min(n - 1, i + radius);
+          for (let j = lo; j <= hi; j++) {
+            acc += raw[j];
+            cnt++;
+          }
+          tmp[i] = acc / cnt;
+        }
+        raw.set(tmp.subarray(0, n));
+      }
+    }
+    // 3) Contrast: extra display gamma around the current baseline. 0.5 is
+    //    exactly today's look; lower flattens (fuller bars), higher spikes.
+    const contrast = this.sync.contrast ?? 0.5;
+    if (contrast !== 0.5) {
+      const g = Math.pow(2, (contrast - 0.5) * 1.7); // ~0.55x .. ~1.8x gamma
+      for (let i = 0; i < n; i++) raw[i] = Math.pow(raw[i], g);
+    }
+
+    for (let i = 0; i < this.binCount; i++) {
+      const v = raw[i];
       const prev = f.bins[i];
       f.bins[i] = prev + (v - prev) * (v > prev ? attack : release);
       f.peaks[i] = Math.max(f.peaks[i] - gravity, f.bins[i]);

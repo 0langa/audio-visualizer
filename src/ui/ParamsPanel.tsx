@@ -674,7 +674,7 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
       title: "Sync",
       tab: "sync",
       search:
-        "sync react kick energy bass melody voice treble snare hats smoothing attack release spectrum smooth curve",
+        "sync react kick energy bass melody voice treble snare hats smoothing attack release spectrum smooth curve merge rounding contrast monstercat flatten shape",
       body: (
         <>
           <div className="sync-grid">
@@ -743,6 +743,39 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
                 hint="Spline-smoothed spectrum: curves instead of corners"
                 checked={props.smoothSpectrum}
                 onChange={props.onSmoothSpectrum}
+                onHint={setHint}
+              />
+              <SliderRow
+                label="Merge"
+                hint="Bars prop up their neighbors (Monstercat-style) — melts lone spikes into one connected shape"
+                min={0}
+                max={1}
+                step={0.01}
+                value={props.sync.shapeMerge ?? 0}
+                onChange={(v) => props.onSync({ ...props.sync, shapeMerge: v })}
+                format={(v) => `${Math.round(v * 100)}%`}
+                onHint={setHint}
+              />
+              <SliderRow
+                label="Rounding"
+                hint="Averages neighboring bars before drawing — real smoothing that removes spikes, not just curved corners"
+                min={0}
+                max={1}
+                step={0.01}
+                value={props.sync.shapeRound ?? 0}
+                onChange={(v) => props.onSync({ ...props.sync, shapeRound: v })}
+                format={(v) => `${Math.round(v * 100)}%`}
+                onHint={setHint}
+              />
+              <SliderRow
+                label="Contrast"
+                hint="Below 50% flattens the spectrum (fuller, calmer bars); above 50% exaggerates peaks vs valleys"
+                min={0}
+                max={1}
+                step={0.01}
+                value={props.sync.contrast ?? 0.5}
+                onChange={(v) => props.onSync({ ...props.sync, contrast: v })}
+                format={(v) => `${Math.round(v * 100)}%`}
                 onHint={setHint}
               />
             </>

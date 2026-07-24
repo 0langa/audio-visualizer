@@ -11,6 +11,27 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ## [Unreleased]
 
+## [2.45.0] - 2026-07-24
+
+### Added
+
+- **Spectrum shape controls** (Settings → Sync, in every mode that draws the
+  spectrum): three new sliders that shape the drawn bars themselves, beyond
+  the existing spline that only rounds corners between still-spiky values.
+  - **Merge** — Monstercat-style neighbor falloff: every bar props up its
+    neighbors with an exponential decay, melting isolated spikes into one
+    connected silhouette.
+  - **Rounding** — kernel average across neighboring bars: real smoothing
+    that removes hard spikes and lows instead of merely curving between them.
+  - **Contrast** — below 50% flattens the spectrum toward fuller, calmer
+    bars; above 50% exaggerates peaks against valleys. 50% is exactly the
+    previous look.
+
+  All three are saved per mode in the project file, applied before the
+  attack/release envelope so the sync feel is untouched, and rendered
+  identically in preview and export. Defaults are neutral — existing
+  projects look byte-for-byte the same.
+
 ## [2.44.3] - 2026-07-24
 
 ### Fixed

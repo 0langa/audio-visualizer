@@ -294,6 +294,9 @@ export function validSyncByPreset(v: unknown): Record<string, SyncSettings> {
         smooth: Math.min(1, Math.max(0, s.smooth)),
         attack: clamp01(s.attack),
         release: clamp01(s.release),
+        shapeMerge: clamp01(s.shapeMerge),
+        shapeRound: clamp01(s.shapeRound),
+        contrast: clamp01(s.contrast),
       };
     }
   }
