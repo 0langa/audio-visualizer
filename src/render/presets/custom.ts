@@ -149,3 +149,40 @@ export const NEW_SHADER_TEMPLATE = `fn preset(uv: vec2f) -> vec4f {
   col *= 1.0 - r * r * 0.6;
   return vec4f(col, 1.0);
 }`;
+
+/** Two defs are "the same shader" when everything render- or UI-affecting
+ * matches. Used by the project-open merge below. */
+export function sameCustomDef(a: PresetDef, b: PresetDef): boolean {
+  return (
+    a.wgsl === b.wgsl &&
+    a.name === b.name &&
+    JSON.stringify(a.params) === JSON.stringify(b.params) &&
+    JSON.stringify(a.advanced ?? []) === JSON.stringify(b.advanced ?? [])
+  );
+}
+
+/**
+ * Merge a document's embedded custom defs into the local library WITHOUT
+ * data loss (audit S1): a same-id local def whose content DIFFERS from the
+ * embedded copy is kept — the realistic collision is your own shader edited
+ * after the project was saved, where the embedded copy is the OLDER one and
+ * silently persisting it destroyed the newer edit with no undo (openProject
+ * clears history first). Identical copies and brand-new ids import as
+ * before. Returns the merged library, the defs that should be (re)registered
+ * and the names of local defs that were protected.
+ */
+export function mergeEmbeddedDefs(
+  local: PresetDef[],
+  embedded: PresetDef[],
+): { merged: PresetDef[]; register: PresetDef[]; kept: string[] } {
+  const byId = new Map(local.map((d) => [d.id, d]));
+  const register: PresetDef[] = [];
+  const kept: string[] = [];
+  for (const def of embedded) {
+    const mine = byId.get(def.id);
+    if (mine && !sameCustomDef(mine, def)) kept.push(mine.name);
+    else register.push(def);
+  }
+  const ids = new Set(register.map((d) => d.id));
+  return { merged: [...local.filter((d) => !ids.has(d.id)), ...register], register, kept };
+}

@@ -8,8 +8,10 @@ import {
   ShaderParseError,
   unregisterCustomPreset,
   validCustomPreset,
+  mergeEmbeddedDefs,
 } from "./custom";
 import { presetById, presets } from "./index";
+import type { PresetDef } from "../types";
 
 const GOOD = {
   id: "custom-abc12",
@@ -80,5 +82,38 @@ describe(".avshader files", () => {
     const g = JSON.parse(serializeCustomPreset(GOOD as never, "x"));
     g.preset.wgsl = "nope";
     expect(() => parseCustomPreset(JSON.stringify(g))).toThrow(/failed validation/);
+  });
+});
+
+describe("mergeEmbeddedDefs (S1 — project-open must not clobber newer local edits)", () => {
+  const mk = (id: string, wgsl: string, name = id): PresetDef =>
+    ({ id, name, params: [], wgsl }) as PresetDef;
+
+  it("imports brand-new defs and re-registers identical ones", () => {
+    const local = [mk("custom-a", "A1")];
+    const { merged, register, kept } = mergeEmbeddedDefs(local, [
+      mk("custom-a", "A1"),
+      mk("custom-b", "B1"),
+    ]);
+    expect(kept).toEqual([]);
+    expect(register.map((d) => d.id).sort()).toEqual(["custom-a", "custom-b"]);
+    expect(merged).toHaveLength(2);
+  });
+
+  it("keeps the LOCAL def when the embedded same-id copy differs", () => {
+    const localNewer = mk("custom-a", "EDITED SOURCE", "My shader");
+    const { merged, register, kept } = mergeEmbeddedDefs(
+      [localNewer],
+      [mk("custom-a", "OLD SOURCE", "My shader")],
+    );
+    expect(kept).toEqual(["My shader"]);
+    expect(register).toEqual([]);
+    expect(merged).toEqual([localNewer]); // library untouched — nothing to persist
+  });
+
+  it("param changes count as divergence too", () => {
+    const localNewer = { ...mk("custom-a", "S"), params: [{ key: "x", label: "X", min: 0, max: 1, step: 0.1, default: 0.5 }] } as PresetDef;
+    const { kept } = mergeEmbeddedDefs([localNewer], [mk("custom-a", "S")]);
+    expect(kept).toHaveLength(1);
   });
 });

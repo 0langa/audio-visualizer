@@ -20,7 +20,7 @@ import {
 } from "../render/videoBg";
 import { bakeBackgroundBitmap } from "../render/bgImage";
 import { renderPresetThumbnails } from "../render/thumbnails";
-import { registerCustomPreset } from "../render/presets/custom";
+import { mergeEmbeddedDefs, registerCustomPreset } from "../render/presets/custom";
 import { WebGPURenderer } from "../render/webgpuRenderer";
 import { stemValuesAt, type StemEntry, type StemSlot } from "../audio/stems";
 import { defaultParams } from "../render/types";
@@ -1752,10 +1752,20 @@ export const useVizStore = create<VizState>((set, get) => {
       // referenced it. Registration is idempotent.
       let customDefs = get().customDefs;
       if (doc.customDefs.length > 0) {
-        const incoming = new Set(doc.customDefs.map((d) => d.id));
-        customDefs = [...customDefs.filter((d) => !incoming.has(d.id)), ...doc.customDefs];
-        for (const def of doc.customDefs) registerCustomPreset(def);
-        saveCustomPresets(customDefs);
+        // S1: never let a project's embedded (often older) copy silently
+        // overwrite + persist over a local same-id shader that has since
+        // been edited — the local version stays in the library AND the
+        // registry, and the user is told. Identical/new defs import as
+        // before, keeping registration idempotent for undo/redo.
+        const { merged, register, kept } = mergeEmbeddedDefs(customDefs, doc.customDefs);
+        customDefs = merged;
+        for (const def of register) registerCustomPreset(def);
+        if (register.length > 0) saveCustomPresets(customDefs);
+        if (kept.length > 0) {
+          flashNotice(
+            `Kept your newer ${kept.join(", ")} — this project embeds an older copy`,
+          );
+        }
       }
       const preset = presetById(doc.presetId);
       const activeParams = resolveParams(preset.id, doc.paramsByPreset);
