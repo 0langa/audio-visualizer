@@ -49,24 +49,36 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
 /** Download + install the update found by checkForUpdate. Progress reports
  * bytes received / total (total may be unknown). Resolves when the installer
  * has run; the app must relaunch to pick it up. */
+let installing = false;
+
 export async function downloadAndInstallUpdate(
   onProgress: (received: number, total: number | null) => void,
 ): Promise<void> {
   if (!current) throw new Error("No update staged — check first");
+  // Two surfaces can trigger an install (startup prompt + Settings). The
+  // flag is claimed synchronously before the first await, so a double
+  // invoke during the download window is a no-op instead of a second
+  // downloadAndInstall on the same consumed handle (audit UP3/S5).
+  if (installing) return;
+  installing = true;
   let received = 0;
   let total: number | null = null;
-  await current.downloadAndInstall((e) => {
-    if (e.event === "Started") {
-      total = e.data.contentLength ?? null;
-      onProgress(0, total);
-    } else if (e.event === "Progress") {
-      received += e.data.chunkLength;
-      onProgress(received, total);
-    } else if (e.event === "Finished") {
-      onProgress(total ?? received, total);
-    }
-  });
-  current = null;
+  try {
+    await current.downloadAndInstall((e) => {
+      if (e.event === "Started") {
+        total = e.data.contentLength ?? null;
+        onProgress(0, total);
+      } else if (e.event === "Progress") {
+        received += e.data.chunkLength;
+        onProgress(received, total);
+      } else if (e.event === "Finished") {
+        onProgress(total ?? received, total);
+      }
+    });
+    current = null;
+  } finally {
+    installing = false;
+  }
 }
 
 export async function relaunchApp(): Promise<void> {

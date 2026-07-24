@@ -1,7 +1,8 @@
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import { APP_VERSION } from "../version";
 import type { UpdatePhase } from "../state/updater";
 import { IconClose } from "./Icons";
+import { useFocusTrap } from "./useFocusTrap";
 
 /**
  * The startup "a new version is here" dialog (v2.45.0, redesigned v2.46.0).
@@ -68,8 +69,26 @@ function renderNotes(notes: string) {
 }
 
 export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: UpdatePromptProps) {
-  if (update.state !== "available" && update.state !== "downloading" && update.state !== "ready")
-    return null;
+  const visible =
+    update.state === "available" ||
+    update.state === "downloading" ||
+    update.state === "ready" ||
+    update.state === "error"; // UP2: a failed install must not silently vanish
+  // H17 modal machinery (audit UP1): focus moves in, Tab cycles inside,
+  // focus restores on close. Hooks run unconditionally (before the early
+  // return) per the rules of hooks.
+  const trapRef = useFocusTrap(visible);
+  // The global Esc handler only clears STORE flags; this dialog's open flag
+  // is App-local state, so it closes itself (also audit UP1).
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visible, onDismiss]);
+  if (!visible) return null;
 
   const version = update.state === "available" || update.state === "ready" ? update.version : null;
   const pct =
@@ -80,10 +99,18 @@ export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: Updat
   return (
     <div className="modal-backdrop" onClick={onDismiss}>
       <div
+        ref={trapRef}
+        tabIndex={-1}
         className="modal update-prompt"
         role="dialog"
         aria-modal="true"
-        aria-label={update.state === "ready" ? "Update installed" : "Update available"}
+        aria-label={
+          update.state === "ready"
+            ? "Update installed"
+            : update.state === "error"
+              ? "Update failed"
+              : "Update available"
+        }
         onClick={(e) => e.stopPropagation()}
       >
         <div className="update-hero">
@@ -131,7 +158,9 @@ export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: Updat
                 ? "Ready — restart to finish"
                 : update.state === "downloading"
                   ? "Downloading update"
-                  : "A new Beatform is here"}
+                  : update.state === "error"
+                    ? "The update didn't go through"
+                    : "A new Beatform is here"}
             </span>
             <span className="update-hero-versions">
               <span className="update-ver old">v{APP_VERSION}</span>
@@ -192,6 +221,23 @@ export function UpdatePrompt({ update, onInstall, onRelaunch, onDismiss }: Updat
                 : `${(update.received / 1e6).toFixed(1)} MB`}
             </span>
           </div>
+        )}
+
+        {update.state === "error" && (
+          <>
+            <p className="update-fineprint" role="alert">
+              {update.message} — nothing was changed; the installed version keeps running. You can
+              retry now or later from Settings → Updates.
+            </p>
+            <div className="update-actions">
+              <button className="update-cta" onClick={onInstall}>
+                Try again
+              </button>
+              <button className="ghost-btn" onClick={onDismiss}>
+                Close
+              </button>
+            </div>
+          </>
         )}
 
         {update.state === "ready" && (
