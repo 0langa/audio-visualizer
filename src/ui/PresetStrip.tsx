@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { PresetDef } from "../render/types";
 import { IconChevronLeft, IconChevronRight } from "./Icons";
 
@@ -20,12 +20,54 @@ export const PresetStrip = memo(function PresetStrip(props: {
   const step = (d: number) =>
     props.onSwitch(props.presets[(idx + d + props.presets.length) % props.presets.length].id);
 
+  const chipsRef = useRef<HTMLDivElement>(null);
+  // On narrow windows the strip overflows and scrolls, but the scrollbar is
+  // hidden by design — these edge-fade flags are the visual cue that more
+  // modes exist beyond the fold (each side fades only while there IS content
+  // hidden on that side).
+  const [fadeL, setFadeL] = useState(false);
+  const [fadeR, setFadeR] = useState(false);
+  useEffect(() => {
+    const el = chipsRef.current;
+    if (!el) return;
+    const update = () => {
+      setFadeL(el.scrollLeft > 4);
+      setFadeR(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [props.presets.length, props.thumbs]);
+
+  // Keep the active (or queued) chip visible: switching via keys/MIDI on a
+  // narrow window used to move the selection somewhere off-screen with no
+  // indication anything happened.
+  useEffect(() => {
+    const target = props.pendingId ?? props.activeId;
+    chipsRef.current
+      ?.querySelector(`[data-preset-id="${CSS.escape(target)}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [props.activeId, props.pendingId]);
+
   return (
     <div className="chrome preset-strip">
       <button className="icon-btn subtle" title="Previous preset (P)" onClick={() => step(-1)}>
         <IconChevronLeft size={16} />
       </button>
-      <div className="chips">
+      <div
+        ref={chipsRef}
+        className={`chips ${fadeL ? "fade-l" : ""} ${fadeR ? "fade-r" : ""}`}
+        onWheel={(e) => {
+          // The strip is the only horizontal scroller under the cursor here —
+          // translate the (vertical) wheel so hidden modes are one scroll away.
+          if (e.deltaY !== 0 && chipsRef.current) chipsRef.current.scrollLeft += e.deltaY;
+        }}
+      >
         {props.presets.map((p) => {
           const thumb = props.thumbs?.[p.id];
           const queued = p.id === props.pendingId;

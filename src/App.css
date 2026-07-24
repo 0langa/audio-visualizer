@@ -423,8 +423,34 @@ button:disabled {
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* Edge fades (fade-l / fade-r classes, driven by scroll position) hint
+     that more modes are hidden beyond the fold — the scrollbar is hidden by
+     design, so without these a narrow window silently cut the strip off. */
+  --fade-l: 0px;
+  --fade-r: 0px;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    black var(--fade-l),
+    black calc(100% - var(--fade-r)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    black var(--fade-l),
+    black calc(100% - var(--fade-r)),
+    transparent 100%
+  );
   padding: 4px 2px;
   mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+}
+
+.chips.fade-l {
+  --fade-l: 28px;
+}
+.chips.fade-r {
+  --fade-r: 28px;
 }
 
 .chips::-webkit-scrollbar {
@@ -622,6 +648,8 @@ button:disabled {
 .slider {
   appearance: none;
   -webkit-appearance: none;
+  width: 100%; /* fill the grid track — see .param-row's minmax(0, 1fr) */
+  min-width: 0;
   height: 4px;
   border-radius: 2px;
   background: linear-gradient(90deg, var(--accent) var(--pct, 50%), var(--track) var(--pct, 50%));
@@ -1040,7 +1068,14 @@ button:disabled {
 
 .param-row {
   display: grid;
-  grid-template-columns: 76px 1fr 44px;
+  /* minmax(0, 1fr), not bare 1fr: a bare 1fr track's minimum is the
+     content's min-content size, and an <input type=range> reports a fixed
+     ~129px intrinsic width — so on narrow panels (and 14px deeper inside the
+     Advanced drawer) the grid overflowed the panel edge and the value column
+     poked outside. Letting the track shrink to 0 keeps the row inside its
+     container at every panel width; the slider itself stretches via width:
+     100%. */
+  grid-template-columns: 76px minmax(0, 1fr) 44px;
 }
 
 .row-label {
@@ -1278,7 +1313,15 @@ button:disabled {
   font-size: 10.5px;
   line-height: 1.4;
   color: var(--text-faint);
-  min-height: 15px;
+  /* Clamp to two lines and RESERVE them: long hints on a narrow panel used
+     to wrap to 5-6 lines, growing the footer and shifting the whole panel on
+     every hover. The full text is always available as the row's native
+     tooltip (hintProps sets title=). */
+  min-height: calc(2 * 1.4em);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .footer-hint.is-hint {
