@@ -56,9 +56,16 @@ import { validTimeline, type Timeline } from "./timeline";
  * v10 (+) builderStack — Builder Studio's ordered layer list. Older files
  *        default to the starter stack; the classic `builder` preset is
  *        untouched and still renders identically.
+ *
+ * v11 (+) bgByPreset — optional per-mode background overrides (each entry a
+ *        full BgSettings; the global `bg` remains the default for modes
+ *        without one) — and centerImageByPreset — per-mode asset ids that
+ *        replace the track's cover art in modes that draw a center image
+ *        (Bass Circle, Radial Burst). Older files lack both fields and the
+ *        validators default them to empty.
  */
 
-export const PROJECT_VERSION = 10;
+export const PROJECT_VERSION = 11;
 export const PROJECT_EXTENSION = "avproj";
 
 /** Frame aspect: "free" fills the window; fixed ratios letterbox the stage. */
@@ -76,6 +83,12 @@ export interface ProjectDocument {
   paramsByPreset: Record<string, ParamValues>;
   syncByPreset: Record<string, SyncSettings>;
   bg: BgSettings;
+  /** Per-mode background overrides — an entry here wins over `bg` while that
+   * mode is active. Sparse: modes without an override follow the global bg. */
+  bgByPreset: Record<string, BgSettings>;
+  /** Per-mode center-image overrides (asset id): shown instead of the track's
+   * embedded cover art by modes that draw a center image. */
+  centerImageByPreset: Record<string, string>;
   overlayLayers: OverlayLayer[];
   assets: Record<string, OverlayAsset>;
   aspect: Aspect;
@@ -177,6 +190,8 @@ export function validateDocument(doc: Partial<ProjectDocument>): ProjectDocument
     paramsByPreset: validParamsByPreset(doc.paramsByPreset),
     syncByPreset: validSyncByPreset(doc.syncByPreset),
     bg,
+    bgByPreset: validBgByPreset(doc.bgByPreset, assets),
+    centerImageByPreset: validCenterImages(doc.centerImageByPreset, assets),
     overlayLayers: validLayers(doc.overlayLayers, assets),
     assets,
     aspect: validAspect(doc.aspect),
@@ -273,6 +288,42 @@ const SYNC_MODES = new Set([
   "snare",
   "hats",
 ]);
+
+/** Per-mode background overrides. Each entry is validated like the global bg
+ * (including the dangling-asset degradations); entries that end up identical
+ * to "no information" are still kept — sparseness is the caller's business,
+ * an empty object is the default. */
+export function validBgByPreset(
+  v: unknown,
+  assets: Record<string, OverlayAsset>,
+): Record<string, BgSettings> {
+  if (typeof v !== "object" || v === null) return {};
+  const out: Record<string, BgSettings> = Object.create(null);
+  for (const [presetId, raw] of Object.entries(v)) {
+    if (typeof presetId !== "string" || !presetId) continue;
+    const bg = validBg(raw);
+    if (bg.mode === BG_IMAGE && (!bg.image || !assets[bg.image.assetId])) bg.mode = BG_PRESET;
+    if (bg.mode === BG_VIDEO && (!bg.video || !assets[bg.video.assetId])) bg.mode = BG_PRESET;
+    out[presetId] = bg;
+  }
+  return out;
+}
+
+/** Per-mode center-image overrides: presetId -> asset id. Entries whose asset
+ * is gone are dropped (the mode falls back to the track's cover art). */
+export function validCenterImages(
+  v: unknown,
+  assets: Record<string, OverlayAsset>,
+): Record<string, string> {
+  if (typeof v !== "object" || v === null) return {};
+  const out: Record<string, string> = Object.create(null);
+  for (const [presetId, assetId] of Object.entries(v)) {
+    if (typeof presetId !== "string" || !presetId) continue;
+    if (typeof assetId !== "string" || !assets[assetId]) continue;
+    out[presetId] = assetId;
+  }
+  return out;
+}
 
 export function validSyncByPreset(v: unknown): Record<string, SyncSettings> {
   if (typeof v !== "object" || v === null) return {};

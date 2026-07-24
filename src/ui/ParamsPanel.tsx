@@ -195,6 +195,14 @@ export interface ParamsPanelProps {
   onBg: (bg: BgSettings) => void;
   onPickBackgroundImage: () => void;
   onUseAlbumArtBackground: () => void;
+  /** True when the ACTIVE mode has its own background override. */
+  bgPerMode: boolean;
+  /** Toggle the per-mode background override for the active mode. */
+  onBgPerMode: (on: boolean) => void;
+  /** Name of the active mode's custom center image, null = track cover. */
+  centerImageName: string | null;
+  onPickCenterImage: () => void;
+  onClearCenterImage: () => void;
   onPickVideoBackground: () => void;
   videoBgLoading: boolean;
   /** Offer the Video background option (desktop only). */
@@ -363,7 +371,7 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
       title: props.preset.name,
       tab: "visual",
       search:
-        `${props.preset.name} ${props.preset.description ?? ""} preset style look custom save import advanced reset ${presetParamText}`.toLowerCase(),
+        `${props.preset.name} ${props.preset.description ?? ""} preset style look custom save import advanced reset center image cover ${presetParamText}`.toLowerCase(),
       headerExtra: (
         <button
           className="text-btn"
@@ -482,6 +490,34 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
               onHint={setHint}
             />
           ))}
+
+          {props.preset.params.some((p) => p.key === "cover") && (
+            <div
+              className="row center-image-row"
+              title="What this mode draws in its center: the track's embedded cover art, or any image you choose"
+            >
+              <span className="row-label">Center image</span>
+              <span className="center-image-value">
+                {props.centerImageName ?? "Track cover art"}
+              </span>
+              <button
+                className="text-btn"
+                title="Choose a custom image for this mode's center"
+                onClick={props.onPickCenterImage}
+              >
+                Choose…
+              </button>
+              {props.centerImageName && (
+                <button
+                  className="text-btn"
+                  title="Back to the track's embedded cover art"
+                  onClick={props.onClearCenterImage}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
 
           {advanced.length > 0 && (
             <>
@@ -917,9 +953,27 @@ export const ParamsPanel = memo(function ParamsPanel(props: ParamsPanelProps) {
       title: "Background",
       tab: "scene",
       search:
-        "background animated solid transparent image video color dim blur album art chroma green magenta keying",
+        "background animated solid transparent image video color dim blur album art chroma green magenta keying per-mode this mode scope override",
       body: (
         <>
+          <Segmented
+            value={props.bgPerMode ? 1 : 0}
+            onHint={setHint}
+            ariaLabel="Background scope"
+            options={[
+              {
+                value: 0,
+                label: "All modes",
+                hint: "One background shared by every visual mode (the default)",
+              },
+              {
+                value: 1,
+                label: "This mode",
+                hint: `Give ${props.preset.name} its own background — other modes keep the shared one`,
+              },
+            ]}
+            onChange={(v) => props.onBgPerMode(v === 1)}
+          />
           <Segmented
             value={props.bg.mode}
             onHint={setHint}

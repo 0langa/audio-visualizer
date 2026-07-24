@@ -30,6 +30,8 @@ function doc(
     presetId,
     paramsByPreset: { [presetId]: params },
     syncByPreset: sync ? { [presetId]: sync } : {},
+    bgByPreset: {},
+    centerImageByPreset: {},
     bg: { mode: BG_PRESET, color: [0, 0, 0] },
     overlayLayers: [],
     assets: {},

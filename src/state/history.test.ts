@@ -9,6 +9,8 @@ function doc(marker: number): ProjectDocument {
     paramsByPreset: { [presets[0].id]: { marker } },
     syncByPreset: {},
     bg: { mode: 0, color: [0, 0, 0] },
+    bgByPreset: {},
+    centerImageByPreset: {},
     overlayLayers: [],
     assets: {},
     aspect: "free",

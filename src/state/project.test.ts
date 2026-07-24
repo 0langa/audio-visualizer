@@ -22,6 +22,8 @@ const doc: ProjectDocument = {
     [presets[2].id]: { mode: "bass" as const, smooth: 0.7 },
   },
   bg: { mode: BG_SOLID, color: [0, 0.69, 0.25] as [number, number, number] },
+  bgByPreset: {},
+  centerImageByPreset: {},
   overlayLayers: [
     {
       id: "ly-1",
@@ -343,6 +345,8 @@ describe("project files (.avproj)", () => {
           ...doc,
           assets: { "as-1": { id: "as-1", name: "bg.png", dataUrl: PIXEL } },
           bg: { mode: 3, color: [0, 0, 0], image: { assetId: "as-1", dim: 0.3, blur: 5 } },
+          bgByPreset: {},
+          centerImageByPreset: {},
         },
       };
       const parsed = parseProject(JSON.stringify(file));
@@ -363,6 +367,8 @@ describe("project files (.avproj)", () => {
             "vid-1": { id: "vid-1", name: "clip.mp4", dataUrl: "data:video/mp4;base64,AA" },
           },
           bg: { mode: 4, color: [0, 0, 0], video: { assetId: "vid-1", dim: 0.4, blur: 12 } },
+          bgByPreset: {},
+          centerImageByPreset: {},
         },
       };
       const parsed = parseProject(JSON.stringify(file));

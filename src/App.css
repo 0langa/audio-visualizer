@@ -1761,6 +1761,24 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- center image row (cover-drawing modes) ---------- */
+
+.center-image-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.center-image-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
 /* ---------- in-app user guide ---------- */
 
 .guide-dialog {

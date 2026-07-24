@@ -101,6 +101,10 @@ import {
   loadStoredVolume,
   saveStoredAspect,
   saveStoredBg,
+  loadStoredBgByPreset,
+  saveStoredBgByPreset,
+  loadStoredCenterImages,
+  saveStoredCenterImages,
   saveStoredOverlay,
   saveStoredPanelOpen,
   saveStoredParams,
@@ -164,6 +168,10 @@ interface DocumentSlice {
   paramsByPreset: Record<string, ParamValues>;
   syncByPreset: Record<string, SyncSettings>;
   bg: BgSettings;
+  /** Per-mode background overrides — an entry wins over `bg` for that mode. */
+  bgByPreset: Record<string, BgSettings>;
+  /** Per-mode center-image overrides (asset id) for cover-drawing modes. */
+  centerImageByPreset: Record<string, string>;
   overlayLayers: OverlayLayer[];
   assets: Record<string, OverlayAsset>;
   aspect: Aspect;
@@ -316,6 +324,13 @@ interface Actions {
   applyStyle(values: Partial<ParamValues>): void;
   resetParams(): void;
   setBg(bg: BgSettings): void;
+  /** Toggle a per-mode background override for the ACTIVE mode: on copies the
+   * current effective bg into the override; off deletes it (global wins). */
+  setBgPerMode(on: boolean): void;
+  /** Pick a custom center image for the active mode (replaces cover art). */
+  pickCenterImage(): Promise<void>;
+  /** Back to the track's cover art for the active mode. */
+  clearCenterImage(): void;
   /** Pick an image file as the background (switches bg.mode to image). */
   pickBackgroundImage(): Promise<void>;
   /** Pick a local video for the background (desktop; decodes a capped loop). */
@@ -523,6 +538,8 @@ export const useVizStore = create<VizState>((set, get) => {
     paramsByPreset: s.paramsByPreset,
     syncByPreset: s.syncByPreset,
     bg: s.bg,
+    bgByPreset: s.bgByPreset,
+    centerImageByPreset: s.centerImageByPreset,
     overlayLayers: s.overlayLayers,
     assets: s.assets,
     aspect: s.aspect,
@@ -591,7 +608,12 @@ export const useVizStore = create<VizState>((set, get) => {
   };
 
   const applyCoverArt = () => {
-    const cover = get().coverArt;
+    const s = get();
+    // A custom center image (per mode) replaces the track's embedded cover
+    // as THE art the shader samples — and as the palette source, so "match
+    // cover colors" matches what is actually on screen.
+    const overrideId = s.centerImageByPreset[s.presetId];
+    const cover = (overrideId ? s.assets[overrideId]?.dataUrl : undefined) ?? s.coverArt;
     if (!cover) {
       set({ coverPalette: null });
       getRenderer()?.setCoverArt(null);
@@ -601,7 +623,12 @@ export const useVizStore = create<VizState>((set, get) => {
       .then((r) => r.blob())
       .then((b) => createImageBitmap(b))
       .then((bmp) => {
-        if (get().coverArt === cover) {
+        const now = get();
+        const nowResolved =
+          (now.centerImageByPreset[now.presetId]
+            ? now.assets[now.centerImageByPreset[now.presetId]]?.dataUrl
+            : undefined) ?? now.coverArt;
+        if (nowResolved === cover) {
           // Palette BEFORE the renderer takes the bitmap (ownership transfer
           // closes it) — extraction only reads pixels via drawImage.
           set({ coverPalette: extractCoverPalette(bmp) });
@@ -612,7 +639,12 @@ export const useVizStore = create<VizState>((set, get) => {
       .catch(() => {
         // Same race guard as success: a stale decode failure (slow corrupt
         // art from the PREVIOUS track) must not wipe the current track's cover
-        if (get().coverArt === cover) {
+        const now = get();
+        const nowResolved =
+          (now.centerImageByPreset[now.presetId]
+            ? now.assets[now.centerImageByPreset[now.presetId]]?.dataUrl
+            : undefined) ?? now.coverArt;
+        if (nowResolved === cover) {
           set({ coverPalette: null });
           getRenderer()?.setCoverArt(null);
         }
@@ -684,8 +716,47 @@ export const useVizStore = create<VizState>((set, get) => {
     bgImageKey = "";
     videoBgKey = "";
   };
+  /** The background that should actually render right now: the active
+   * mode's override if one exists, else the global bg. EVERY renderer-apply
+   * and persistence-of-pixels path goes through this. */
+  const effBg = (): BgSettings => {
+    const s = get();
+    return s.bgByPreset[s.presetId] ?? s.bg;
+  };
+
+  /** Is an asset still referenced by anything other than the caller? Checked
+   * before orphan-GC: overlay layers, the global bg, every per-mode bg
+   * override, and every center image can hold a reference. */
+  const assetInUse = (id: string): boolean => {
+    const s = get();
+    if (s.overlayLayers.some((l) => "assetId" in l && l.assetId === id)) return true;
+    for (const b of [s.bg, ...Object.values(s.bgByPreset)]) {
+      if (b.image?.assetId === id || b.video?.assetId === id) return true;
+    }
+    return Object.values(s.centerImageByPreset).includes(id);
+  };
+
+  /** Write a new background to wherever the active mode's edits belong —
+   * the mode's override when one exists, the global bg otherwise — then
+   * persist and hand the effective result to the renderer. */
+  const commitBg = (next: BgSettings) => {
+    const s = get();
+    if (s.bgByPreset[s.presetId]) {
+      const bgByPreset = { ...s.bgByPreset, [s.presetId]: next };
+      set({ bgByPreset });
+      saveStoredBgByPreset(bgByPreset);
+    } else {
+      set({ bg: next });
+      saveStoredBg(next);
+    }
+    getRenderer()?.setBackground(effBg());
+    applyBgImage();
+    applyVideoBg();
+  };
+
   const applyBgImage = () => {
-    const { bg, assets } = get();
+    const { assets } = get();
+    const bg = effBg();
     const asset = bg.mode === BG_IMAGE && bg.image ? assets[bg.image.assetId] : undefined;
     const key = asset && bg.image ? `${bg.image.assetId}|${bg.image.dim}|${bg.image.blur}` : "";
     if (key === bgImageKey) return; // nothing that affects the bake changed
@@ -712,7 +783,8 @@ export const useVizStore = create<VizState>((set, get) => {
    * frame tick; this only owns the decoded array's lifecycle.
    */
   const applyVideoBg = () => {
-    const { bg, assets } = get();
+    const { assets } = get();
+    const bg = effBg();
     const asset = bg.mode === BG_VIDEO && bg.video ? assets[bg.video.assetId] : undefined;
     // See bgImageKey: without this a Dim/Blur drag re-decoded the whole clip
     // on every pointer move.
@@ -816,6 +888,8 @@ export const useVizStore = create<VizState>((set, get) => {
         bg.mode === BG_VIDEO && (!bg.video || !initialOverlay.assets[bg.video.assetId]);
       return imageMissing || videoMissing ? { ...bg, mode: 0 } : bg;
     })(),
+    bgByPreset: loadStoredBgByPreset(initialOverlay.assets),
+    centerImageByPreset: loadStoredCenterImages(initialOverlay.assets),
     overlayLayers: initialOverlay.layers,
     assets: initialOverlay.assets,
     aspect: loadStoredAspect(),
@@ -985,7 +1059,7 @@ export const useVizStore = create<VizState>((set, get) => {
           lastQuantizeTick = t;
           // Video background: upload the frame for THIS track time (pure index
           // → deterministic, matches the export). A GPU renderer only.
-          if (videoBgFrames && s.bg.mode === BG_VIDEO) {
+          if (videoBgFrames && (s.bgByPreset[s.presetId] ?? s.bg).mode === BG_VIDEO) {
             const r = getRenderer();
             if (r instanceof WebGPURenderer) {
               const i = videoBgFrameIndex(videoBgFrames.frames.length, videoBgFrames.fps, t);
@@ -1059,6 +1133,12 @@ export const useVizStore = create<VizState>((set, get) => {
       saveStoredPresetId(next.id);
       getRenderer()?.setPreset(next);
       getAnalyzer().setSync(sync);
+      // Per-mode surfaces: the new mode may carry its own background override
+      // and its own center image — swap both with the preset.
+      getRenderer()?.setBackground(effBg());
+      applyBgImage();
+      applyVideoBg();
+      applyCoverArt();
     },
 
     stepPreset(delta) {
@@ -1145,12 +1225,80 @@ export const useVizStore = create<VizState>((set, get) => {
       // UNGROUPABLE set and "bg" is not, so key by whether the mode changed —
       // without this, toggling mode right after a colour drag folds both into a
       // single undo.
-      record(get().bg.mode !== bg.mode ? "bg-mode" : "bg");
-      set({ bg });
-      saveStoredBg(bg);
-      getRenderer()?.setBackground(bg);
+      record(effBg().mode !== bg.mode ? "bg-mode" : "bg");
+      commitBg(bg);
+    },
+
+    setBgPerMode(on) {
+      const s = get();
+      const has = !!s.bgByPreset[s.presetId];
+      if (on === has) return;
+      record("bg-mode");
+      const bgByPreset = { ...s.bgByPreset };
+      if (on) {
+        // Start the override from what's on screen right now — flipping the
+        // switch alone must not change a single pixel.
+        bgByPreset[s.presetId] = structuredClone(s.bgByPreset[s.presetId] ?? s.bg);
+      } else {
+        delete bgByPreset[s.presetId];
+      }
+      set({ bgByPreset });
+      saveStoredBgByPreset(bgByPreset);
+      getRenderer()?.setBackground(effBg());
       applyBgImage();
       applyVideoBg();
+    },
+
+    async pickCenterImage() {
+      let img: { name: string; dataUrl: string } | null;
+      try {
+        img = await openImageFile();
+      } catch (e) {
+        set({ error: `Could not open image: ${(e as Error).message}` });
+        return;
+      }
+      if (!img) return;
+      record("center-image");
+      const asset: OverlayAsset = {
+        id: `as-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        name: img.name,
+        dataUrl: img.dataUrl,
+      };
+      const s = get();
+      const assets = { ...s.assets, [asset.id]: asset };
+      const centerImageByPreset = { ...s.centerImageByPreset, [s.presetId]: asset.id };
+      const prevId = s.centerImageByPreset[s.presetId];
+      set({ assets, centerImageByPreset });
+      // Orphan-GC the replaced center image unless something else holds it.
+      if (prevId && !assetInUse(prevId)) {
+        const pruned = { ...get().assets };
+        delete pruned[prevId];
+        set({ assets: pruned });
+      }
+      if (saveStoredOverlay(get().overlayLayers, get().assets)) {
+        saveStoredCenterImages(centerImageByPreset);
+      } else {
+        flashNotice("Image too large to remember — center image is session-only");
+      }
+      applyCoverArt(); // rebind the cover texture to the new source
+    },
+
+    clearCenterImage() {
+      const s = get();
+      const prevId = s.centerImageByPreset[s.presetId];
+      if (!prevId) return;
+      record("center-image");
+      const centerImageByPreset = { ...s.centerImageByPreset };
+      delete centerImageByPreset[s.presetId];
+      set({ centerImageByPreset });
+      if (!assetInUse(prevId)) {
+        const pruned = { ...get().assets };
+        delete pruned[prevId];
+        set({ assets: pruned });
+        saveStoredOverlay(get().overlayLayers, get().assets);
+      }
+      saveStoredCenterImages(centerImageByPreset);
+      applyCoverArt(); // back to the track's cover art
     },
 
     async pickBackgroundImage() {
@@ -1169,31 +1317,35 @@ export const useVizStore = create<VizState>((set, get) => {
         dataUrl: img.dataUrl,
       };
       const assets = { ...get().assets, [asset.id]: asset };
-      const prev = get().bg;
+      const prev = effBg();
       // Replacing the image orphans the old asset — a multi-MB data URL that
       // would otherwise ride along in state, autosave, .avproj and storage
       // forever. Drop it unless an overlay layer still uses it.
       // Both sub-objects, not just the image: switching video -> image left the
       // (tens-of-MB) video asset orphaned in state, autosave, .avproj and
       // localStorage forever — exactly what this GC exists to prevent.
-      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
-        if (prevId && !get().overlayLayers.some((l) => "assetId" in l && l.assetId === prevId)) {
-          delete assets[prevId];
-        }
-      }
       const bg: BgSettings = {
         ...prev,
         mode: BG_IMAGE,
         image: { assetId: asset.id, dim: prev.image?.dim ?? 0.25, blur: prev.image?.blur ?? 0 },
       };
-      set({ assets, bg });
+      set({ assets });
+      commitBg(bg);
+      // Orphan-GC AFTER the new bg is committed, so assetInUse sees the final
+      // reference set (old asset may still be used by an overlay, another
+      // mode's bg override, or a center image).
+      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
+        if (prevId && prevId !== asset.id && !assetInUse(prevId)) {
+          const pruned = { ...get().assets };
+          delete pruned[prevId];
+          set({ assets: pruned });
+        }
+      }
       // Persist the bg REFERENCE only if the asset itself persisted — a saved
       // mode-3 bg pointing at an asset that hit the quota boots into black.
-      if (saveStoredOverlay(get().overlayLayers, assets)) saveStoredBg(bg);
-      else flashNotice("Image too large to remember — background is session-only");
-      getRenderer()?.setBackground(bg);
-      applyBgImage();
-      applyVideoBg(); // switching away from a video bg: release its decoded loop
+      if (!saveStoredOverlay(get().overlayLayers, get().assets)) {
+        flashNotice("Image too large to remember — background is session-only");
+      }
     },
 
     async pickVideoBackground() {
@@ -1216,28 +1368,30 @@ export const useVizStore = create<VizState>((set, get) => {
         dataUrl: vid.dataUrl,
       };
       const assets = { ...get().assets, [asset.id]: asset };
-      const prev = get().bg;
+      const prev = effBg();
       // Orphan-GC BOTH the previous image and video asset, not just one: with an
       // image bg and a video bg both set, `video ?? image` freed only one and the
       // other (tens of MB) leaked in state, autosave, .avproj and localStorage
       // forever — matching pickBackgroundImage / useAlbumArtBackground.
-      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
-        if (prevId && !get().overlayLayers.some((l) => "assetId" in l && l.assetId === prevId)) {
-          delete assets[prevId];
-        }
-      }
       const bg: BgSettings = {
         ...prev,
         mode: BG_VIDEO,
         video: { assetId: asset.id, dim: prev.video?.dim ?? 0.35, blur: 0 },
       };
-      set({ assets, bg });
+      set({ assets });
+      commitBg(bg);
+      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
+        if (prevId && prevId !== asset.id && !assetInUse(prevId)) {
+          const pruned = { ...get().assets };
+          delete pruned[prevId];
+          set({ assets: pruned });
+        }
+      }
       // A video's data URL is large; keep it session-only if it won't persist
       // (localStorage), but the project-file / autosave path still embeds it.
-      if (saveStoredOverlay(get().overlayLayers, assets)) saveStoredBg(bg);
-      else flashNotice("Video kept for this session — save a project to keep it");
-      getRenderer()?.setBackground(bg);
-      applyVideoBg();
+      if (!saveStoredOverlay(get().overlayLayers, get().assets)) {
+        flashNotice("Video kept for this session — save a project to keep it");
+      }
     },
 
     useAlbumArtBackground() {
@@ -1253,28 +1407,26 @@ export const useVizStore = create<VizState>((set, get) => {
         dataUrl: cover,
       };
       const assets = { ...get().assets, [asset.id]: asset };
-      const prev = get().bg;
-      // Same orphan-GC as pickBackgroundImage.
-      // Both sub-objects, not just the image: switching video -> image left the
-      // (tens-of-MB) video asset orphaned in state, autosave, .avproj and
-      // localStorage forever — exactly what this GC exists to prevent.
-      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
-        if (prevId && !get().overlayLayers.some((l) => "assetId" in l && l.assetId === prevId)) {
-          delete assets[prevId];
-        }
-      }
+      const prev = effBg();
       const bg: BgSettings = {
         ...prev,
         mode: BG_IMAGE,
         // Album art behind a visualizer usually wants softening by default
         image: { assetId: asset.id, dim: prev.image?.dim ?? 0.35, blur: prev.image?.blur ?? 18 },
       };
-      set({ assets, bg });
-      if (saveStoredOverlay(get().overlayLayers, assets)) saveStoredBg(bg);
-      else flashNotice("Cover too large to remember — background is session-only");
-      getRenderer()?.setBackground(bg);
-      applyBgImage();
-      applyVideoBg(); // switching away from a video bg: release its decoded loop
+      set({ assets });
+      commitBg(bg);
+      // Same orphan-GC as pickBackgroundImage — after commit, via assetInUse.
+      for (const prevId of [prev.image?.assetId, prev.video?.assetId]) {
+        if (prevId && prevId !== asset.id && !assetInUse(prevId)) {
+          const pruned = { ...get().assets };
+          delete pruned[prevId];
+          set({ assets: pruned });
+        }
+      }
+      if (!saveStoredOverlay(get().overlayLayers, get().assets)) {
+        flashNotice("Cover too large to remember — background is session-only");
+      }
     },
 
     setSmoothSpectrum(v) {
@@ -1617,6 +1769,8 @@ export const useVizStore = create<VizState>((set, get) => {
         paramsByPreset: doc.paramsByPreset,
         syncByPreset: doc.syncByPreset,
         bg: doc.bg,
+        bgByPreset: doc.bgByPreset,
+        centerImageByPreset: doc.centerImageByPreset,
         overlayLayers: doc.overlayLayers,
         assets: doc.assets,
         aspect: doc.aspect,
@@ -1633,6 +1787,8 @@ export const useVizStore = create<VizState>((set, get) => {
       saveStoredParams(doc.paramsByPreset);
       saveStoredSync(doc.syncByPreset);
       saveStoredBg(doc.bg);
+      saveStoredBgByPreset(doc.bgByPreset);
+      saveStoredCenterImages(doc.centerImageByPreset);
       saveStoredOverlay(doc.overlayLayers, doc.assets);
       saveStoredAspect(doc.aspect);
       saveStoredMods(doc.modsByPreset);
@@ -1656,9 +1812,10 @@ export const useVizStore = create<VizState>((set, get) => {
       shared.lastFrameKey = NULL_FRAME_KEY;
       pruneBitmapCache(new Set(Object.keys(doc.assets)));
       getRenderer()?.setPreset(preset);
-      getRenderer()?.setBackground(doc.bg);
+      getRenderer()?.setBackground(effBg());
       applyBgImage();
       applyVideoBg(); // restore/clear a video background on open/theme/undo
+      applyCoverArt(); // per-mode center image may differ in the incoming doc
       getAnalyzer().setSync(sync);
       get().refreshOverlay();
       // Covers undo/redo/project-open: without this the autosave file kept

@@ -21,6 +21,8 @@ function doc(over: Partial<ProjectDocument> = {}): ProjectDocument {
     presetId: "spectrum-bars",
     paramsByPreset: {},
     syncByPreset: {},
+    bgByPreset: {},
+    centerImageByPreset: {},
     bg: { kind: "solid", colorA: "#000", colorB: "#111", angle: 0, alpha: 1 } as never,
     overlayLayers: [],
     assets: {},

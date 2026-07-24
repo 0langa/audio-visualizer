@@ -124,7 +124,9 @@ export function installDevHooks(store: typeof useVizStore.getState): void {
       codec: opts.codec,
       presetId: s.presetId,
       params: s.activeParams,
-      bg: s.bg,
+      // Per-mode overrides (v2.46) — mirror buildExportOptions or the probe
+      // silently tests the wrong background/cover.
+      bg: s.bgByPreset[s.presetId] ?? s.bg,
       sync: s.sync,
       overlay,
       segment: opts.canvasLoop,
@@ -146,19 +148,28 @@ export function installDevHooks(store: typeof useVizStore.getState): void {
       // regression baseline into hashes of black frames.
       post: opts.post ? { ...DEFAULT_POST, ...opts.post } : s.post,
       motion: s.motion,
-      coverArt: s.coverArt ?? undefined,
-      bgImage:
-        s.bg.mode === 3 && s.bg.image && s.assets[s.bg.image.assetId]
+      coverArt:
+        (s.centerImageByPreset[s.presetId]
+          ? s.assets[s.centerImageByPreset[s.presetId]]?.dataUrl
+          : undefined) ??
+        s.coverArt ??
+        undefined,
+      bgImage: (() => {
+        const bg = s.bgByPreset[s.presetId] ?? s.bg;
+        return bg.mode === 3 && bg.image && s.assets[bg.image.assetId]
           ? {
-              dataUrl: s.assets[s.bg.image.assetId].dataUrl,
-              dim: s.bg.image.dim,
-              blur: s.bg.image.blur,
+              dataUrl: s.assets[bg.image.assetId].dataUrl,
+              dim: bg.image.dim,
+              blur: bg.image.blur,
             }
-          : undefined,
-      bgVideo:
-        s.bg.mode === 4 && s.bg.video && s.assets[s.bg.video.assetId]
-          ? { dataUrl: s.assets[s.bg.video.assetId].dataUrl, dim: s.bg.video.dim }
-          : undefined,
+          : undefined;
+      })(),
+      bgVideo: (() => {
+        const bg = s.bgByPreset[s.presetId] ?? s.bg;
+        return bg.mode === 4 && bg.video && s.assets[bg.video.assetId]
+          ? { dataUrl: s.assets[bg.video.assetId].dataUrl, dim: bg.video.dim }
+          : undefined;
+      })(),
       timeline: s.timeline.enabled ? s.timeline : undefined,
       paramsByPreset: s.paramsByPreset,
       modsByPreset: s.modsByPreset,
@@ -226,6 +237,8 @@ export function installDevHooks(store: typeof useVizStore.getState): void {
         paramsByPreset: s.paramsByPreset,
         syncByPreset: s.syncByPreset,
         bg: s.bg,
+        bgByPreset: s.bgByPreset,
+        centerImageByPreset: s.centerImageByPreset,
         overlayLayers: s.overlayLayers,
         assets: s.assets,
         aspect: s.aspect,

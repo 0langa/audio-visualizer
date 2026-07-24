@@ -99,6 +99,13 @@ export function buildExportOptions(
   overlay: ImageBitmap | undefined,
   io: ExportIo,
 ): ExportOptions {
+  // Per-mode overrides (v2.46): the mode's own background wins over the
+  // global one, and a custom center image replaces the track's cover art —
+  // resolved HERE so the interactive export and the batch runner cannot
+  // drift apart.
+  const bg = doc.bgByPreset[doc.presetId] ?? doc.bg;
+  const centerId = doc.centerImageByPreset[doc.presetId];
+  const centerImage = centerId ? doc.assets[centerId]?.dataUrl : undefined;
   return {
     width: fmt.w,
     height: fmt.h,
@@ -107,7 +114,7 @@ export function buildExportOptions(
     codec: fmt.codec ?? "h264",
     presetId: doc.presetId,
     params: resolveDocParams(doc.presetId, doc.paramsByPreset),
-    bg: doc.bg,
+    bg,
     // The base preset's sync, even when a timeline scene switches preset:
     // exportCore builds ONE OfflineAnalyzer from job.sync for the whole
     // render, so this is what the preview does too. Resolving per-scene sync
@@ -122,24 +129,24 @@ export function buildExportOptions(
     modsByPreset: doc.modsByPreset,
     timeline: doc.timeline.enabled ? doc.timeline : undefined,
     overlay,
-    coverArt: track.coverArt ?? undefined,
+    coverArt: centerImage ?? track.coverArt ?? undefined,
     // Image background: resolve the asset here (the export job carries the
     // bytes; the core bakes with the same function as the live view).
     bgImage:
-      doc.bg.mode === BG_IMAGE && doc.bg.image && doc.assets[doc.bg.image.assetId]
+      bg.mode === BG_IMAGE && bg.image && doc.assets[bg.image.assetId]
         ? {
-            dataUrl: doc.assets[doc.bg.image.assetId].dataUrl,
-            dim: doc.bg.image.dim,
-            blur: doc.bg.image.blur,
+            dataUrl: doc.assets[bg.image.assetId].dataUrl,
+            dim: bg.image.dim,
+            blur: bg.image.blur,
           }
         : undefined,
     // Video background: same asset-resolve; the core decodes the loop itself.
     bgVideo:
-      doc.bg.mode === BG_VIDEO && doc.bg.video && doc.assets[doc.bg.video.assetId]
+      bg.mode === BG_VIDEO && bg.video && doc.assets[bg.video.assetId]
         ? {
-            dataUrl: doc.assets[doc.bg.video.assetId].dataUrl,
-            dim: doc.bg.video.dim,
-            blur: doc.bg.video.blur,
+            dataUrl: doc.assets[bg.video.assetId].dataUrl,
+            dim: bg.video.dim,
+            blur: bg.video.blur,
           }
         : undefined,
     beatGrid: track.beatGrid ?? undefined,

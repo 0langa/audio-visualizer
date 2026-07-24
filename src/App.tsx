@@ -80,7 +80,12 @@ export default function App() {
   const midiLearn = useVizStore((s) => s.midiLearn);
   const preset = presetById(presetId);
   const params = useVizStore((s) => s.activeParams);
-  const bg = useVizStore((s) => s.bg);
+  const bg = useVizStore((s) => s.bgByPreset[s.presetId] ?? s.bg);
+  const bgPerMode = useVizStore((s) => !!s.bgByPreset[s.presetId]);
+  const centerImageName = useVizStore((s) => {
+    const id = s.centerImageByPreset[s.presetId];
+    return id ? (s.assets[id]?.name ?? "Custom image") : null;
+  });
   const sync = useVizStore((s) => s.sync);
   const playback = useVizStore((s) => s.playback);
   const volume = useVizStore((s) => s.volume);
@@ -887,6 +892,11 @@ export default function App() {
           onReset={resetParams}
           bg={bg}
           onBg={setBg}
+          bgPerMode={bgPerMode}
+          onBgPerMode={(v) => store().setBgPerMode(v)}
+          centerImageName={centerImageName}
+          onPickCenterImage={() => void store().pickCenterImage()}
+          onClearCenterImage={() => store().clearCenterImage()}
           onPickBackgroundImage={pickBackgroundImage}
           onUseAlbumArtBackground={applyAlbumArtBackground}
           onPickVideoBackground={pickVideoBackground}

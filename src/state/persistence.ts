@@ -10,6 +10,7 @@ import {
   validSyncByPreset,
   type Aspect,
 } from "./project";
+import { validBgByPreset, validCenterImages } from "./project";
 import { validModsByPreset, type ModRoute } from "./modMatrix";
 import { validPost, validMotion } from "./project";
 import type { MotionSettings, PostSettings, PresetDef } from "../render/types";
@@ -32,6 +33,8 @@ import type { ExportSettings } from "./store";
 const LS_PRESET = "viz.activePreset";
 const LS_PARAMS = "viz.params.v1";
 const LS_BG = "viz.bg.v1";
+const LS_BG_BY_PRESET = "viz.bgByPreset.v1";
+const LS_CENTER_IMAGES = "viz.centerImages.v1";
 const LS_SYNC = "viz.sync.v1";
 
 function readJson<T>(key: string, fallback: T): T {
@@ -187,6 +190,32 @@ export function loadStoredBg(): BgSettings {
 
 export function saveStoredBg(bg: BgSettings): void {
   localStorage.setItem(LS_BG, JSON.stringify(bg));
+}
+
+/** Per-mode background overrides. Validated against the (already loaded)
+ * asset map so a quota-orphaned image/video entry degrades instead of
+ * booting a mode into a black background. */
+export function loadStoredBgByPreset(
+  assets: Record<string, OverlayAsset>,
+): Record<string, BgSettings> {
+  return validBgByPreset(readJson(LS_BG_BY_PRESET, {}), assets);
+}
+
+export function saveStoredBgByPreset(v: Record<string, BgSettings>): void {
+  scheduleWrite(LS_BG_BY_PRESET, () => localStorage.setItem(LS_BG_BY_PRESET, JSON.stringify(v)));
+}
+
+/** Per-mode center-image overrides (presetId -> asset id). */
+export function loadStoredCenterImages(
+  assets: Record<string, OverlayAsset>,
+): Record<string, string> {
+  return validCenterImages(readJson(LS_CENTER_IMAGES, {}), assets);
+}
+
+export function saveStoredCenterImages(v: Record<string, string>): void {
+  scheduleWrite(LS_CENTER_IMAGES, () =>
+    localStorage.setItem(LS_CENTER_IMAGES, JSON.stringify(v)),
+  );
 }
 
 export function loadStoredVolume(): number {
