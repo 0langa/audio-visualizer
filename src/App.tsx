@@ -27,6 +27,7 @@ import { useAppShortcuts, toggleFullscreen } from "./ui/useAppShortcuts";
 import { ExportDialog } from "./ui/ExportDialog";
 import { SettingsDialog } from "./ui/SettingsDialog";
 import { UpdatePrompt } from "./ui/UpdatePrompt";
+import { GuideDialog } from "./ui/GuideDialog";
 import {
   IconBatch,
   IconClose,
@@ -91,6 +92,7 @@ export default function App() {
   const dragOver = useVizStore((s) => s.dragOver);
   const showPanel = useVizStore((s) => s.showPanel);
   const showHelp = useVizStore((s) => s.showHelp);
+  const showGuide = useVizStore((s) => s.showGuide);
   const showSettings = useVizStore((s) => s.showSettings);
   const showExport = useVizStore((s) => s.showExport);
   const error = useVizStore((s) => s.error);
@@ -1065,6 +1067,16 @@ export default function App() {
             <div className="about-line">Beatform v{APP_VERSION}</div>
             <div className="update-line">
               <button
+                className="ghost-btn accent"
+                title="Open the full in-app user guide"
+                onClick={() => {
+                  store().setShowHelp(false);
+                  store().setShowGuide(true);
+                }}
+              >
+                User guide…
+              </button>
+              <button
                 className="ghost-btn"
                 title="App preferences: autosave, performance, updates (Ctrl+,)"
                 onClick={() => {
@@ -1108,6 +1120,7 @@ export default function App() {
         />
       )}
 
+      {showGuide && <GuideDialog onClose={() => store().setShowGuide(false)} />}
       {showExport && <ExportDialog />}
       {showSettings && (
         <SettingsDialog

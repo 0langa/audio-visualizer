@@ -54,6 +54,7 @@ export function useAppShortcuts(store: typeof useVizStore.getState): void {
       // dropdown Esc was swallowed and Stage mode felt stuck (QWERTZ report).
       if (e.key === "Escape") {
         s.setShowHelp(false);
+        s.setShowGuide(false);
         s.setShowSettings(false);
         if (!s.exporting) s.setShowExport(false);
         // Never let Escape dismiss a running queue out from under itself.

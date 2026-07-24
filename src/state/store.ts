@@ -199,6 +199,8 @@ interface SessionSlice {
   dragOver: boolean;
   showPanel: boolean;
   showHelp: boolean;
+  /** In-app user guide dialog (v2.46). */
+  showGuide: boolean;
   /** App-settings dialog (Ctrl+,). */
   showSettings: boolean;
   showExport: boolean;
@@ -381,6 +383,7 @@ interface Actions {
   setDragOver(v: boolean): void;
   setShowPanel(v: boolean | ((prev: boolean) => boolean)): void;
   setShowHelp(v: boolean): void;
+  setShowGuide(v: boolean): void;
   setShowSettings(v: boolean): void;
   /** Dismiss the error toast — real errors have no timer, so a stale one would
    * otherwise sit over the whole session, including Stage mode. (The degraded-
@@ -838,6 +841,7 @@ export const useVizStore = create<VizState>((set, get) => {
     dragOver: false,
     showPanel: loadStoredPanelOpen(),
     showHelp: false,
+    showGuide: false,
     showSettings: false,
     showExport: false,
     error: null,
@@ -1559,6 +1563,10 @@ export const useVizStore = create<VizState>((set, get) => {
 
     setShowHelp(showHelp) {
       set({ showHelp });
+    },
+
+    setShowGuide(showGuide) {
+      set({ showGuide });
     },
 
     clearError() {
