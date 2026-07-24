@@ -102,6 +102,22 @@ switching · OS-fullscreen + Stage as projector output · undo/redo ·
 
 ## ⬜ Still to test
 
+- [ ] **Startup update prompt (new in v2.45.0).** With an installed build
+      ≥ 2.45.0 and a NEWER release published: launch the app, wait ~10 s.
+      PASS: a modal "Update available" appears on its own (no menu digging)
+      naming the new version and showing release notes, with **Install
+      now** / **Later** buttons. "Later" dismisses for this session only
+      (prompt returns next launch). "Install now" shows download progress in
+      the same modal, then offers **Restart now**; restarting boots the new
+      version. Manual checks from Settings → Updates must NOT pop this
+      modal (they report inline in the dialog). Prompt requires the
+      Settings → Updates auto-check toggle ON (default).
+- [ ] **App-settings gear discoverability (new in v2.45.0).** Top bar shows
+      a gear icon between the sliders icon (visual settings) and the ?
+      (shortcuts). PASS: clicking it opens the App settings dialog
+      (same one as Ctrl+,), tooltip reads "App settings — autosave,
+      performance, updates (Ctrl+,)", and clicking again (or Esc) closes it.
+
 - [✅] **PNG sequence export.** PASS 2026-07-23 on v2.44.1: a 5 s,
   720p30 fixture exported 150 PNGs (360,833,706 bytes) to
   `C:\bf-test\out\pngseq5\track5_frames`; the first frame begins with

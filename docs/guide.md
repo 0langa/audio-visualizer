@@ -158,14 +158,16 @@ memory.
 
 ## App settings & updates
 
-**Ctrl+,** opens the app-settings page — preferences about the app itself,
+The **gear icon** in the top bar (or **Ctrl+,**) opens the app-settings
+page — preferences about the app itself,
 separate from the per-visual panel: autosave delay, the remembered
 save-dialog folder, a **live-preview frame cap** (30/60 — exports always
 render every frame), a **GPU preference** for dual-GPU laptops, and updates.
 Beatform **updates itself**: it checks GitHub Releases shortly after launch
-(a plain fetch of a static file — no telemetry, ever) and installs new
-versions with one click and a restart. Turn the automatic check off there if
-you prefer manual.
+(a plain fetch of a static file — no telemetry, ever). When a new version is
+found, a dialog offers it right away — release notes, **Install now** or
+Later — and installs with one click and a restart. Turn the automatic check
+off in settings if you prefer manual.
 
 ## Projects, looks, templates
 

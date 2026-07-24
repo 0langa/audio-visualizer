@@ -1590,6 +1590,37 @@ kbd {
   padding-top: 8px;
 }
 
+/* ---------- startup update prompt ---------- */
+
+.update-prompt {
+  max-width: 440px;
+}
+.update-prompt-line {
+  margin: 12px 2px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.update-prompt-notes {
+  margin: 10px 2px 0;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font: 11.5px/1.45 inherit;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.update-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+}
+
 /* ---------- toasts ---------- */
 
 .toast {

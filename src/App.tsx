@@ -32,6 +32,7 @@ import {
   IconExport,
   IconFolder,
   IconFullscreen,
+  IconGear,
   IconHelp,
   IconBroadcast,
   IconMusic,
@@ -175,11 +176,15 @@ export default function App() {
   // install live in the Help modal. Local state on purpose — this is UI
   // phase, not document/session state (it moves to the Settings page later).
   const [update, setUpdate] = useState<UpdatePhase>({ state: "idle" });
+  // Startup-found updates open a one-per-boot prompt; manual checks report
+  // inside the Settings dialog instead, so the two flows never fight.
+  const [updatePromptOpen, setUpdatePromptOpen] = useState(false);
   const runUpdateCheck = useCallback(async (manual: boolean) => {
     setUpdate({ state: "checking" });
     try {
       const found = await checkForUpdate();
       setUpdate(found ? { state: "available", ...found } : { state: "none" });
+      if (found && !manual) setUpdatePromptOpen(true);
     } catch (e) {
       // Offline at boot is normal — only a MANUAL check reports the failure.
       setUpdate(manual ? { state: "error", message: (e as Error).message } : { state: "idle" });
@@ -796,6 +801,15 @@ export default function App() {
             <IconSettings size={18} />
           </button>
           <button
+            className={`icon-btn ${showSettings ? "active" : ""}`}
+            title="App settings — autosave, performance, updates (Ctrl+,)"
+            aria-label="App settings"
+            aria-pressed={showSettings}
+            onClick={() => store().setShowSettings(!showSettings)}
+          >
+            <IconGear size={18} />
+          </button>
+          <button
             className="icon-btn"
             title="Keyboard shortcuts"
             aria-label="Keyboard shortcuts"
@@ -1049,6 +1063,74 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {updatePromptOpen &&
+        (update.state === "available" ||
+          update.state === "downloading" ||
+          update.state === "ready") && (
+          <div className="modal-backdrop" onClick={() => setUpdatePromptOpen(false)}>
+            <div
+              className="modal update-prompt"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Update available"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="panel-header">
+                <span className="panel-heading">
+                  {update.state === "ready" ? "Update installed" : "Update available"}
+                </span>
+                <button
+                  className="icon-btn subtle"
+                  aria-label="Close"
+                  onClick={() => setUpdatePromptOpen(false)}
+                >
+                  <IconClose size={16} />
+                </button>
+              </div>
+              {update.state === "available" && (
+                <>
+                  <p className="update-prompt-line">
+                    Beatform {update.version} is out — you have v{APP_VERSION}. Install now? It
+                    downloads in the background and applies on restart.
+                  </p>
+                  {update.notes && <pre className="update-prompt-notes">{update.notes}</pre>}
+                  <div className="update-prompt-actions">
+                    <button className="ghost-btn accent" onClick={() => void installUpdate()}>
+                      Install now
+                    </button>
+                    <button className="ghost-btn" onClick={() => setUpdatePromptOpen(false)}>
+                      Later
+                    </button>
+                  </div>
+                </>
+              )}
+              {update.state === "downloading" && (
+                <p className="update-prompt-line">
+                  Downloading update…{" "}
+                  {update.total
+                    ? `${Math.round((update.received / update.total) * 100)}%`
+                    : `${(update.received / 1e6).toFixed(0)} MB`}
+                </p>
+              )}
+              {update.state === "ready" && (
+                <>
+                  <p className="update-prompt-line">
+                    Version {update.version} is installed and takes over on the next launch.
+                  </p>
+                  <div className="update-prompt-actions">
+                    <button className="ghost-btn accent" onClick={() => void relaunchApp()}>
+                      Restart now
+                    </button>
+                    <button className="ghost-btn" onClick={() => setUpdatePromptOpen(false)}>
+                      Restart later
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
       {showBatch && (
         <BatchPanel

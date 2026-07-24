@@ -15,6 +15,18 @@ Releases — there is no paid tier, cloud service, or telemetry.
 
 ### Added
 
+- **Update prompt on startup.** When the automatic check (on by default,
+  Settings → Updates) finds a newer release shortly after launch, a dialog
+  now offers it directly: version, release notes, **Install now** / Later.
+  Install shows download progress and then offers a one-click restart.
+  Previously the result of the startup check was only visible if you dug
+  into Settings → Updates yourself. Manual checks still report inline in
+  the Settings dialog, and "Later" only dismisses until the next launch.
+- **App settings gear in the top bar.** App-level preferences (autosave,
+  performance, updates) were reachable only via Ctrl+, or a small button
+  inside the shortcuts overlay. There is now a gear icon in the top bar,
+  next to the visual-settings sliders icon.
+
 - **Spectrum shape controls** (Settings → Sync, in every mode that draws the
   spectrum): three new sliders that shape the drawn bars themselves, beyond
   the existing spline that only rounds corners between still-spiky values.
