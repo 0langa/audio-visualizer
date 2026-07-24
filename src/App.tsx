@@ -26,6 +26,7 @@ import { useFocusTrap } from "./ui/useFocusTrap";
 import { useAppShortcuts, toggleFullscreen } from "./ui/useAppShortcuts";
 import { ExportDialog } from "./ui/ExportDialog";
 import { SettingsDialog } from "./ui/SettingsDialog";
+import { UpdatePrompt } from "./ui/UpdatePrompt";
 import {
   IconBatch,
   IconClose,
@@ -556,6 +557,20 @@ export default function App() {
     if (import.meta.env.DEV) installDevHooks(store);
   }, [store]);
 
+  // Dev-only: drive the update prompt with a synthetic phase so the dialog
+  // (which otherwise needs an installed build plus a newer release) can be
+  // exercised and visually verified in the browser harness.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as Record<string, unknown>).__setUpdatePhase = (
+      phase: UpdatePhase,
+      open = true,
+    ) => {
+      setUpdate(phase);
+      setUpdatePromptOpen(open);
+    };
+  }, []);
+
   const idle = chromeIdle && playback.playing && !showExport && !showHelp;
 
   return (
@@ -1064,73 +1079,14 @@ export default function App() {
         </div>
       )}
 
-      {updatePromptOpen &&
-        (update.state === "available" ||
-          update.state === "downloading" ||
-          update.state === "ready") && (
-          <div className="modal-backdrop" onClick={() => setUpdatePromptOpen(false)}>
-            <div
-              className="modal update-prompt"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Update available"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="panel-header">
-                <span className="panel-heading">
-                  {update.state === "ready" ? "Update installed" : "Update available"}
-                </span>
-                <button
-                  className="icon-btn subtle"
-                  aria-label="Close"
-                  onClick={() => setUpdatePromptOpen(false)}
-                >
-                  <IconClose size={16} />
-                </button>
-              </div>
-              {update.state === "available" && (
-                <>
-                  <p className="update-prompt-line">
-                    Beatform {update.version} is out — you have v{APP_VERSION}. Install now? It
-                    downloads in the background and applies on restart.
-                  </p>
-                  {update.notes && <pre className="update-prompt-notes">{update.notes}</pre>}
-                  <div className="update-prompt-actions">
-                    <button className="ghost-btn accent" onClick={() => void installUpdate()}>
-                      Install now
-                    </button>
-                    <button className="ghost-btn" onClick={() => setUpdatePromptOpen(false)}>
-                      Later
-                    </button>
-                  </div>
-                </>
-              )}
-              {update.state === "downloading" && (
-                <p className="update-prompt-line">
-                  Downloading update…{" "}
-                  {update.total
-                    ? `${Math.round((update.received / update.total) * 100)}%`
-                    : `${(update.received / 1e6).toFixed(0)} MB`}
-                </p>
-              )}
-              {update.state === "ready" && (
-                <>
-                  <p className="update-prompt-line">
-                    Version {update.version} is installed and takes over on the next launch.
-                  </p>
-                  <div className="update-prompt-actions">
-                    <button className="ghost-btn accent" onClick={() => void relaunchApp()}>
-                      Restart now
-                    </button>
-                    <button className="ghost-btn" onClick={() => setUpdatePromptOpen(false)}>
-                      Restart later
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+      {updatePromptOpen && (
+        <UpdatePrompt
+          update={update}
+          onInstall={() => void installUpdate()}
+          onRelaunch={() => void relaunchApp()}
+          onDismiss={() => setUpdatePromptOpen(false)}
+        />
+      )}
 
       {showBatch && (
         <BatchPanel

@@ -1593,32 +1593,172 @@ kbd {
 /* ---------- startup update prompt ---------- */
 
 .update-prompt {
-  max-width: 440px;
+  max-width: 460px;
+  padding: 0;
+  overflow: hidden;
 }
-.update-prompt-line {
-  margin: 12px 2px 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text);
+.update-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px 18px;
+  background:
+    radial-gradient(120% 180% at 0% 0%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--glass-heavy)), var(--glass-heavy));
+  border-bottom: 1px solid var(--border);
 }
-.update-prompt-notes {
-  margin: 10px 2px 0;
-  max-height: 180px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  font: 11.5px/1.45 inherit;
-  font-family: inherit;
+.update-hero-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+.update-hero-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.update-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.update-hero-title {
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.update-hero-versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--text-dim);
+}
+.update-ver {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+}
+.update-ver.new {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-weight: 650;
+}
+.update-notes {
+  margin: 14px 22px 0;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
   background: var(--glass);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 12px 14px;
 }
-.update-prompt-actions {
+.update-notes h4 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.update-notes h4:first-child {
+  margin-top: 0;
+}
+.update-notes p {
+  margin: 6px 0;
+}
+.update-notes ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.update-notes li {
+  margin: 4px 0;
+}
+.update-notes strong {
+  color: var(--accent);
+  font-weight: 650;
+}
+.update-fineprint {
+  margin: 12px 22px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.update-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px 18px;
+}
+.update-cta {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: #fff;
+  padding: 9px 22px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #7b5cff));
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.update-cta:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.update-cta:active {
+  transform: translateY(1px);
+}
+.update-progress-wrap {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding-top: 14px;
+  padding: 22px;
+}
+.update-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #7b5cff));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: width 0.25s ease;
+}
+.update-progress-fill.indeterminate {
+  width: 35%;
+  animation: update-indet 1.2s ease-in-out infinite alternate;
+}
+@keyframes update-indet {
+  from { margin-left: 0; }
+  to { margin-left: 65%; }
+}
+.update-progress-label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- toasts ---------- */
